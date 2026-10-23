@@ -7,7 +7,7 @@ async function upload(env,name){assert.equal(await uploadMedia(env,name,Uint8Arr
 test('image rename updates exact references, preserves history and invalidates static output atomically',async()=>{
  const env=environment();await upload(env,'old.png');await savePage(env,'a',{title:'A',status:'public_static',content_md:'![image](old.png) [x](/media/old.png) bigger_old.png',ogp_image:'old.png',memo:'old.png'});
  await savePage(env,'unrelated',{title:'Other',status:'public_static'});await saveComponent(env,'header',{html:'<img src="/media/old.png">',css:'a{background:url(old.png)}',js:'const image="old.png";'});
- env.sqlite.exec("INSERT INTO static_pages VALUES('a','old HTML','today');INSERT INTO static_pages VALUES('unrelated','old component HTML','today')");
+ env.sqlite.exec("INSERT INTO static_pages(id,html,built_at) VALUES('a','old HTML','today');INSERT INTO static_pages(id,html,built_at) VALUES('unrelated','old component HTML','today')");
  assert.deepEqual(await renameMediaReferences(env,'old.png','new.png','admin'),{pages:1,components:1});
  const p=await loadPage(env,'a');assert.match(p.content_md,/\(new.png\).*\/media\/new.png/);assert.match(p.content_md,/bigger_old.png/);assert.equal(p.ogp_image,'new.png');assert.equal(p.memo,'old.png');assert.ok(p.revision_tag);
  const comp=await loadComponent(env,'header');assert.match(comp.html,/new.png/);assert.match(comp.css,/new.png/);assert.match(comp.js,/new.png/);

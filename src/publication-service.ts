@@ -27,7 +27,7 @@ export async function beginPublication(env:Env,request:Request,owner:string,rebu
  const known=previous?(await env.DB.prepare('SELECT path,hash,size,source_version FROM publication_entries WHERE job_id=?').bind(previous).all<{path:string;hash:string;size:number;source_version:string}>()).results:[];
  const media=(await env.DB.prepare('SELECT key,etag,upload_id FROM media').all<{key:string;etag:string;upload_id:string}>()).results;
  const fingerprints=new Map(media.map(item=>['/media/'+item.key,item.upload_id||item.etag||'']));
- const entries=manifest.entries.filter(item=>!excluded.includes(item.path)).map(item=>{const source=fingerprints.get(item.path)||'',cached=source&&known.find(old=>old.path===item.path&&old.source_version===source&&old.size===item.size);return {...item,source_version:source,hash:cached?cached.hash:null};});
+ const entries=manifest.entries.filter(item=>!excluded.includes(item.path)).map(item=>{const source=fingerprints.get(item.path)||'',cached=source&&known.find(old=>old.path===item.path&&old.source_version===source&&old.size===item.size);return {...item,source_version:source,hash:item.hash||(cached?cached.hash:null)};});
  const statements=[env.DB.prepare('INSERT INTO publication_jobs(id,state) VALUES(?,?)').bind(id,json(state))];
  for(let i=0;i<entries.length;i+=1000)statements.push(env.DB.prepare("INSERT INTO publication_entries(job_id,path,hash,size,source_version) SELECT ?,json_extract(value,'$.path'),json_extract(value,'$.hash'),json_extract(value,'$.size'),json_extract(value,'$.source_version') FROM json_each(?)").bind(id,json(entries.slice(i,i+1000))));
  if(statements.length>41)throw new Error('Too many publication files.');await env.DB.batch(statements);

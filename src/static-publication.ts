@@ -15,7 +15,11 @@ export const PUBLICATION_FILE_LIMIT=20_000;
 export const PUBLICATION_FILE_BYTES=25*1024*1024;
 export const PUBLICATION_MAP_BYTES=32*1024*1024;
 export interface PublicationFile {path:string;body:Uint8Array;contentType:string}
-export interface PublicationItem {path:string;kind:'page'|'media'|'component'|'asset'|'headers'|'redirects'|'feed'|'api';id:string;size:number|null}
+export interface PublicationItem {path:string;kind:'page'|'media'|'component'|'asset'|'headers'|'redirects'|'feed'|'api';id:string;size:number|null;hash?:string|null}
+/** Same digest the browser computes in cloud-publish.js: the first 32 hex digits of SHA-256. */
+export async function publicationHash(bytes:Uint8Array):Promise<string> {
+  return [...new Uint8Array(await crypto.subtle.digest('SHA-256',bytes))].map(b=>b.toString(16).padStart(2,'0')).join('').slice(0,32);
+}
 export interface PublicationManifest {entries:PublicationItem[];count:number;totalKnownBytes:number}
 // These are public source assets only. Never enumerate the workspace or include runtime files.
 export const PUBLICATION_PUBLIC_ASSETS=['/mikanbox/ai-question.js','/mikanbox/admin.css','/mikanbox/cloud-admin.js','/mikanbox/cloud-publish.js','/mikanbox/cloud-media.js','/mikanbox/cloud-backup.js','/mikanbox/cloud-storage.js','/mikanbox/cloud-import.js','/mikanbox/cloud-release.json'] as const;
@@ -72,8 +76,9 @@ async function redirects(env:Env):Promise<string> {
 /** Metadata only: snapshots, user records, settings and image bytes are never loaded here. */
 export async function publicationManifest(env:Env):Promise<PublicationManifest> {
   const entries:PublicationItem[]=[];
-  const pages=await env.DB.prepare("SELECT p.id,length(CAST(s.html AS BLOB)) size FROM posts p JOIN static_pages s ON s.id=p.id WHERE p.status='public_static' ORDER BY p.id").all<{id:string;size:number}>();
-  for(const row of pages.results)if(safePage(row.id))entries.push({path:row.id==='index'?'/index.html':'/'+row.id+'.html',kind:'page',id:row.id,size:row.size});
+  // The hash stored at build time lets publication skip reading unchanged pages.
+  const pages=await env.DB.prepare("SELECT p.id,length(CAST(s.html AS BLOB)) size,s.hash FROM posts p JOIN static_pages s ON s.id=p.id WHERE p.status='public_static' ORDER BY p.id").all<{id:string;size:number;hash:string|null}>();
+  for(const row of pages.results)if(safePage(row.id))entries.push({path:row.id==='index'?'/index.html':'/'+row.id+'.html',kind:'page',id:row.id,size:row.size,hash:row.hash});
   const components=await env.DB.prepare("SELECT id,length(CAST(json_extract(data,'$.js') AS BLOB)) size FROM components WHERE COALESCE(json_extract(data,'$.is_ai_doc'),0)=0 AND length(json_extract(data,'$.js'))>0 ORDER BY id").all<{id:string;size:number}>();
   for(const row of components.results)if(validId(row.id,true))entries.push({path:'/component-js/'+row.id+'.js',kind:'component',id:row.id,size:row.size});
   // Every stored file is published, not only the ones static pages reference:

@@ -18,7 +18,7 @@ async function hash(b:Uint8Array):Promise<string>{return Array.from(new Uint8Arr
 async function rows(env:Env,sql:string):Promise<Row[]>{return (await env.DB.prepare(sql).all<Row>()).results;}
 export async function exportBackupManifest(env:Env):Promise<CloudBackupManifest>{
  const [settings,pages,components,users,revisions,static_pages,media]=await Promise.all([
- rows(env,"SELECT value FROM settings WHERE key='settings'"),rows(env,'SELECT * FROM posts ORDER BY id'),rows(env,'SELECT * FROM components ORDER BY id'),rows(env,'SELECT * FROM users ORDER BY username'),rows(env,'SELECT * FROM post_revisions ORDER BY id'),rows(env,'SELECT * FROM static_pages ORDER BY id'),rows(env,'SELECT key,content_type,size,uploaded,etag,chunk_count,upload_id,object_key FROM media ORDER BY key')]);
+ rows(env,"SELECT value FROM settings WHERE key='settings'"),rows(env,'SELECT * FROM posts ORDER BY id'),rows(env,'SELECT * FROM components ORDER BY id'),rows(env,'SELECT * FROM users ORDER BY username'),rows(env,'SELECT * FROM post_revisions ORDER BY id'),rows(env,'SELECT id,html,built_at FROM static_pages ORDER BY id'),rows(env,'SELECT key,content_type,size,uploaded,etag,chunk_count,upload_id,object_key FROM media ORDER BY key')]);
  const result:CloudBackupManifest={format:'mikanbox-cloud-json',version:2,created_at:new Date().toISOString(),settings:settings[0]?JSON.parse(String(settings[0].value)):{},pages,components,users,revisions,static_pages,media:media.map(r=>({...r,chunk_count:Math.ceil(Number(r.size)/MEDIA_CHUNK_SIZE)} as unknown as BackupMedia))};
  if(jsonBytes(result)>MAX_DOCUMENT)fail('Backup metadata exceeds 20 MB; split content before export.');return result;
 }
