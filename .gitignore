@@ -1,0 +1,16 @@
+node_modules/
+.npm-cache/
+.wrangler/
+.build/
+.test-build/
+.dev.vars*
+.env*
+.baseline/
+artifacts/
+*.sqlite*
+.DS_Store
+
+.publication/
+.backups/
+.build-production/
+.build-release/

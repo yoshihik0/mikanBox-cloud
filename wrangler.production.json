@@ -1,0 +1,46 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "mikanbox",
+  "account_id": "00000000000000000000000000000000",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-03",
+  "workers_dev": true,
+  "assets": {
+    "directory": "./.publication",
+    "binding": "ASSETS",
+    "run_worker_first": [
+      "/admin",
+      "/admin/*",
+      "/mikanBox/*",
+      "/mcp",
+      "/public-mcp",
+      "/public-help.html",
+      "/api/*",
+      "/index.php",
+      "/search",
+      "/search/*",
+      "/search.html",
+      "/preview/*"
+    ],
+    "html_handling": "none"
+  },
+  "vars": {
+    "SITE_ENVIRONMENT": "staging",
+    "STATIC_DELIVERY": "true",
+    "CLOUDFLARE_ACCOUNT_ID": "00000000000000000000000000000000",
+    "CLOUDFLARE_WORKER_NAME": "mikanbox",
+    "CLOUDFLARE_D1_ID": "00000000-0000-0000-0000-000000000000",
+    "CLOUD_RELEASE_MANIFEST_URL": "https://example.invalid/mikanbox/cloud-release.json"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "mikanbox-cloud",
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "observability": {
+    "enabled": false
+  }
+}

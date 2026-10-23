@@ -1,0 +1,17 @@
+import assert from 'node:assert/strict';import {readFile,writeFile} from 'node:fs/promises';import {randomUUID} from 'node:crypto';
+const base='http://localhost:8789';
+const vars=await readFile('.dev.vars','utf8');const setupToken=vars.match(/^SETUP_TOKEN=(.+)$/m)[1];
+let response=await fetch(base+'/admin',{method:'POST',body:new URLSearchParams({login_action:'set_initial_password',username:'image-smoke',display_name:'Image smoke test',setup_token:setupToken,new_password:'local-image-test-password'}),redirect:'manual'});
+if(response.status!==303)response=await fetch(base+'/admin',{method:'POST',body:new URLSearchParams({login_action:'login',username:'image-smoke',password:'local-image-test-password'}),redirect:'manual'});
+assert.equal(response.status,303);const cookie=response.headers.get('set-cookie').split(';')[0];
+const admin=await(await fetch(base+'/admin',{headers:{Cookie:cookie}})).text();const csrf=admin.match(/window.CSRF_TOKEN = "([^"]+)"/)[1];
+const image=new Uint8Array(10_000_000);image.set(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+X2ioAAAAASUVORK5CYII=','base64'));
+const name=`image-test-${randomUUID()}.png`,form=new FormData();form.set('save_action','upload_media');form.set('csrf_token',csrf);form.set('ajax_request','1');form.set('image',new File([image],name,{type:'image/png'}));
+const uploaded=await(await fetch(base+'/admin',{method:'POST',headers:{Cookie:cookie},body:form})).json();assert.equal(uploaded.success,true,uploaded.message);
+const actual=await fetch(base+'/media/'+name);assert.equal(actual.status,200);assert.deepEqual(new Uint8Array(await actual.arrayBuffer()),image);
+const etag=actual.headers.get('etag');assert.equal((await fetch(base+'/media/'+name,{headers:{'If-None-Match':etag}})).status,304);
+const after=await(await fetch(base+'/admin?view=media',{headers:{Cookie:cookie}})).text();assert.match(after,/10.0 \/ 400 MB/);
+const deleted=await(await fetch(base+'/admin',{method:'POST',headers:{Cookie:cookie},body:new URLSearchParams({save_action:'delete_media',file:name,csrf_token:csrf,ajax_request:'1'})})).json();assert.equal(deleted.success,true);
+assert.equal((await fetch(base+'/media/'+name)).status,404);
+await writeFile('artifacts/image-local-smoke.json',JSON.stringify({passed:true,size:10_000_000,storage:'D1',roundtrip:true,etag:true,usage:true,cleanup:true},null,2));
+console.log('Local Cloudflare D1: 10 MB upload, streamed byte-for-byte download, ETag, usage and deletion passed.');
