@@ -66,6 +66,8 @@ export interface Env {
   CLOUDFLARE_API_TOKEN?: string;
   CLOUDFLARE_ACCOUNT_ID?: string;
   CLOUDFLARE_WORKER_NAME?: string;
+  CLOUDFLARE_PUBLIC_WORKER_NAME?: string;
+  PUBLIC_SITE_URL?: string;
   CLOUDFLARE_D1_ID?: string;
   CLOUD_RELEASE_MANIFEST_URL?: string;
 }

@@ -1,7 +1,10 @@
 import type { Env } from './types';
-import { getMediaObject, listMediaFiles } from './storage';
+import { getMediaObject, listMediaFiles, loadSettings } from './storage';
 import { validId } from './validation';
 import { validMediaName, CODE_MEDIA_TYPES } from './media-policy';
+import { MikanBoxRenderer } from './renderer';
+import { generateSitemapXml, generateRssXml, generatePodcastXml } from './feeds';
+import { splitMode, publicRequest } from './site-split';
 
 // Paths the Worker must answer itself. Everything else is served from the
 // published static assets, falling through to the Worker when no file exists.
@@ -12,7 +15,7 @@ export const PUBLICATION_FILE_LIMIT=20_000;
 export const PUBLICATION_FILE_BYTES=25*1024*1024;
 export const PUBLICATION_MAP_BYTES=32*1024*1024;
 export interface PublicationFile {path:string;body:Uint8Array;contentType:string}
-export interface PublicationItem {path:string;kind:'page'|'media'|'component'|'asset'|'headers'|'redirects';id:string;size:number|null}
+export interface PublicationItem {path:string;kind:'page'|'media'|'component'|'asset'|'headers'|'redirects'|'feed'|'api';id:string;size:number|null}
 export interface PublicationManifest {entries:PublicationItem[];count:number;totalKnownBytes:number}
 // These are public source assets only. Never enumerate the workspace or include runtime files.
 export const PUBLICATION_PUBLIC_ASSETS=['/mikanbox/ai-question.js','/mikanbox/admin.css','/mikanbox/cloud-admin.js','/mikanbox/cloud-publish.js','/mikanbox/cloud-media.js','/mikanbox/cloud-backup.js','/mikanbox/cloud-storage.js','/mikanbox/cloud-import.js','/mikanbox/cloud-release.json'] as const;
@@ -35,6 +38,18 @@ function checked(file:PublicationFile):PublicationFile {
   return file;
 }
 
+const FEEDS:Record<string,typeof generateSitemapXml>={'/sitemap.xml':generateSitemapXml,'/rss.xml':generateRssXml,'/podcast.xml':generatePodcastXml};
+// Only the scripts public pages load; the admin scripts stay on the admin Worker.
+const SPLIT_PUBLIC_ASSETS=new Set(['/mikanbox/ai-question.js']);
+const SPLIT_HEADERS=STATIC_HEADERS+`
+/api/*
+  Access-Control-Allow-Origin: *
+`;
+const headersFor=(env:Env)=>splitMode(env)?SPLIT_HEADERS:STATIC_HEADERS;
+async function dbPages(env:Env):Promise<string[]> {
+ const rows=(await env.DB.prepare("SELECT id FROM posts WHERE status='db' ORDER BY id").all<{id:string}>()).results;
+ return rows.map(row=>row.id).filter(id=>validId(id));
+}
 async function redirects(env:Env):Promise<string> {
  const rows=(await env.DB.prepare("SELECT p.id,p.status,CASE WHEN s.id IS NULL THEN 0 ELSE 1 END built FROM posts p LEFT JOIN static_pages s ON s.id=p.id ORDER BY p.id").all<{id:string;status:string;built:number}>()).results;
  const all=new Set(rows.map(row=>row.id)),aliases=new Map<string,string>();
@@ -49,6 +64,8 @@ async function redirects(env:Env):Promise<string> {
   }
  }
  if(aliases.size>2000)throw new Error('Publication exceeds the 2,000 URL alias limit.');
+ // The public Worker runs no code, so DB pages are served from their built JSON.
+ if(splitMode(env))for(const id of await dbPages(env))aliases.set('/api/'+id,'/api/'+id+'.json');
  return [...aliases].map(([source,target])=>`${source} ${target} 200`).join('\n')+'\n';
 }
 
@@ -62,8 +79,12 @@ export async function publicationManifest(env:Env):Promise<PublicationManifest> 
   // Every stored file is published, not only the ones static pages reference:
   // dynamic pages read /media/* from the same static assets.
   for(const file of await listMediaFiles(env))if(safeImage(file.key))entries.push({path:'/media/'+file.key,kind:'media',id:file.key,size:file.size});
-  for(const path of PUBLICATION_PUBLIC_ASSETS)entries.push({path,kind:'asset',id:path,size:null});
-  entries.push({path:'/_headers',kind:'headers',id:'_headers',size:encode.encode(STATIC_HEADERS).byteLength});
+  for(const path of PUBLICATION_PUBLIC_ASSETS)if(!splitMode(env)||SPLIT_PUBLIC_ASSETS.has(path))entries.push({path,kind:'asset',id:path,size:null});
+  if(splitMode(env)) {
+    for(const path of Object.keys(FEEDS))entries.push({path,kind:'feed',id:path,size:null});
+    for(const id of await dbPages(env))entries.push({path:'/api/'+id+'.json',kind:'api',id,size:null});
+  }
+  entries.push({path:'/_headers',kind:'headers',id:'_headers',size:encode.encode(headersFor(env)).byteLength});
   if(entries.length>PUBLICATION_FILE_LIMIT)throw new Error('Publication exceeds 20,000 files.');
   entries.push({path:'/_redirects',kind:'redirects',id:'_redirects',size:encode.encode(await redirects(env)).byteLength});
   if(new Set(entries.map(item=>item.path)).size!==entries.length)throw new Error('Publication path collision.');
@@ -75,7 +96,16 @@ export async function publicationManifest(env:Env):Promise<PublicationManifest> 
 export async function readPublicationEntry(env:Env,request:Request,path:string):Promise<PublicationFile|null> {
   if(!safePath(path))return null;
   if(path==='/_redirects')return checked({path,body:encode.encode(await redirects(env)),contentType:'text/plain; charset=utf-8'});
-  if(path==='/_headers')return checked({path,body:encode.encode(STATIC_HEADERS),contentType:'text/plain; charset=utf-8'});
+  if(path==='/_headers')return checked({path,body:encode.encode(headersFor(env)),contentType:'text/plain; charset=utf-8'});
+  if(splitMode(env)&&FEEDS[path]) {
+    const xml=await FEEDS[path](env,await loadSettings(env),publicRequest(env,request));
+    return checked({path,body:encode.encode(xml),contentType:path==='/sitemap.xml'?'application/xml; charset=utf-8':'application/rss+xml; charset=utf-8'});
+  }
+  if(splitMode(env)&&path.startsWith('/api/')&&path.endsWith('.json')) {
+    const id=path.slice(5,-5);if(!(await dbPages(env)).includes(id))return null;
+    const data=await new MikanBoxRenderer(env,await loadSettings(env),publicRequest(env,request)).getPageDataBlocks(id);
+    return checked({path,body:encode.encode(JSON.stringify(data)),contentType:'application/json; charset=utf-8'});
+  }
   const assetType=assetTypes.get(path);
   if(assetType) {
     if(!env.ASSETS)throw new Error('Bundled public assets are unavailable.');

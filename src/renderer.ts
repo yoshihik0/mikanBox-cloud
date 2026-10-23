@@ -66,6 +66,8 @@ export class MikanBoxRenderer {
   getSiteUrl(): string {
     const ssgRootUrl = (this.siteSettings.ssg_root_url || '').trim().replace(/\/$/, '');
     if (ssgRootUrl) return ssgRootUrl;
+    // 分離構成では、プレビューでも公開側のURLを使う（管理側のアドレスを出さない）
+    if (this.env.PUBLIC_SITE_URL) return this.env.PUBLIC_SITE_URL.trim().replace(/\/$/, '');
     const url = new URL(this.request.url);
     return url.protocol + '//' + url.host;
   }

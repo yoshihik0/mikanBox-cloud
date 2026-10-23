@@ -7,6 +7,7 @@ import { authenticatedUser } from './accounts';
 import { validId } from './validation';
 import { handleMcp } from './mcp';
 import { handlePublicHelp } from './public-help';
+import { splitMode, PREVIEW_SANDBOX } from './site-split';
 
 async function route(request: Request, env: Env): Promise<Response> {
   const url=new URL(request.url),pathname=url.pathname;
@@ -18,6 +19,13 @@ async function route(request: Request, env: Env): Promise<Response> {
     if(!env.ASSETS) return new Response('Not Found',{status:404});
     const target=new URL(request.url);if(pathname==='/admin.css') target.pathname='/mikanbox/admin.css';
     return env.ASSETS.fetch(new Request(target,request));
+  }
+  if(splitMode(env)) {
+    // The public site lives on its own Worker. Here, nothing of the site is served
+    // without a session, and signed-in users are sent to the preview of the same path.
+    if(!await authenticatedUser(request,env))return new Response('Not Found',{status:404,headers:{'Cache-Control':'no-store'}});
+    const direct=['/media/','/component-js/','/preview/','/api/'].some(prefix=>pathname.startsWith(prefix))||['/sitemap.xml','/rss.xml','/podcast.xml'].includes(pathname);
+    if(!direct)return Response.redirect(new URL('/preview'+pathname+url.search,url).href,302);
   }
   if(pathname.startsWith('/media/')) {
 
@@ -69,6 +77,10 @@ export default {
       response.headers.set('X-Mikanbox-Delivery','worker');
       const admin=['/admin','/admin/','/mikanBox/admin.php'].includes(new URL(request.url).pathname);
       if(admin)response.headers.set('Content-Security-Policy',"frame-ancestors 'none'; base-uri 'self'; form-action 'self'");
+      if(splitMode(env)) {
+        response.headers.set('X-Robots-Tag','noindex, nofollow');
+        if(new URL(request.url).pathname.startsWith('/preview/'))response.headers.set('Content-Security-Policy',PREVIEW_SANDBOX);
+      }
       if(request.method==='HEAD')return new Response(null,{status:response.status,headers:response.headers});
       return response;
     } catch(error) {
