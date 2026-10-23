@@ -1,0 +1,23 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "mikanbox-split",
+  "account_id": "00000000000000000000000000000000",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-03",
+  "workers_dev": true,
+  "assets": { "directory": "./public", "binding": "ASSETS", "run_worker_first": true },
+  "vars": {
+    "SITE_ENVIRONMENT": "staging",
+    "CLOUDFLARE_ACCOUNT_ID": "00000000000000000000000000000000",
+    "CLOUDFLARE_WORKER_NAME": "mikanbox-split",
+    "CLOUDFLARE_PUBLIC_WORKER_NAME": "mikanbox-split-public",
+    "PUBLIC_SITE_URL": "https://example.invalid",
+    "CLOUDFLARE_D1_ID": "00000000-0000-0000-0000-000000000000"
+  },
+  "d1_databases": [{
+    "binding": "DB",
+    "database_name": "mikanbox-split",
+    "database_id": "00000000-0000-0000-0000-000000000000",
+    "migrations_dir": "migrations"
+  }]
+}
