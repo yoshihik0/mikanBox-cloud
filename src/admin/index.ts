@@ -4,14 +4,15 @@ import {cleanMediaObjects} from '../r2-media';
 import {importContentPackage,importWordPressContent} from '../content-import';
 import {latestCloudRelease} from '../cloud-release';
 import {exportBackupManifest,exportBackupMediaPart,validateExportSnapshot,createBackupRestore,stageBackupMediaPart,commitBackupRestore,abortBackupRestore} from '../backup-restore';
-import {getRecoveryQuestion,resetPassword,setRecovery} from '../recovery';
 import {cloudConfigured,saveCloudToken,cloudTarget,beginD1Export,pollD1Export,d1Restore,cloudToken} from '../cloudflare-api';
 import {beginPublication,hashPublicationFiles,preparePublication,uploadPublicationFile,finishPublication,cancelPublication} from '../publication-service';
 import {replaceMediaImage} from '../media-transform';
 import type { Env, PageData, ComponentData } from '../types';
 import { loadSettings, saveSettings, loadPage, getSortedPageIds, loadComponent, saveComponent, deleteComponent, listComponentIds, listPages, listComponents, listMediaFiles, uploadMedia, deleteMedia, renameMedia, mediaUsage, getMediaObject, buildDataBackupZip, buildMediaBackupZip } from '../storage';
-import { createSessionToken, setSessionCookie, clearSessionCookie, hashPassword, verifyPassword, verifyCsrf } from '../auth';
-import { authenticatedUser, getUser, listUsers, addUser, rateLimit } from '../accounts';
+import { verifyCsrf } from '../auth';
+import { authenticatedUser, getUser, listUsers, addInitialUser, rateLimit } from '../accounts';
+import { createDevice, claimCode, issueCode, cancelCode, revokeDevice, setExpiryDays, setupTokenUsable, consumeSetupToken, clearDeviceCookie, listDevices, listCodes, unseenDevices, expiryDays } from '../devices';
+import { renderAccountsSection } from './accounts-view';
 import { pageId, componentId, pageStatus } from '../validation';
 import { revisions, saveWithRevision } from '../revisions';
 import { buildStatic } from '../ssg';
@@ -45,47 +46,40 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
   const users=await listUsers(env), initial=users.length===0, auth=await authenticatedUser(request,env);
   const form=request.method==='POST' ? await request.formData().catch(()=>null) : null;
   if (request.method==='POST' && (!form || (request.headers.get('Origin') && request.headers.get('Origin')!==url.origin))) return html(t('err_csrf'),403);
-  const recoveryCsrf=request.headers.get('Cookie')?.match(/(?:^|;\s*)recovery_csrf=([A-Za-z0-9-]+)/)?.[1]||crypto.randomUUID();
-  const loginResponse=(error='',recovery?:{username?:string;question?:string;error?:string},status=200)=>{const response=html(renderLoginPage({lang,passwordHash:initial?'':'configured',loginError:error,t,recovery:{...recovery,csrf:recoveryCsrf}}),status);response.headers.set('Set-Cookie',`recovery_csrf=${recoveryCsrf}; Secure; SameSite=Strict; HttpOnly; Path=/; Max-Age=900`);return response;};
-  if(form&&val(form,'login_action').startsWith('recovery_')) {
-    if(initial||!verifyCsrf(val(form,'csrf_token'),recoveryCsrf))return html(t('err_csrf'),403);
-    const username=val(form,'username'),ip=request.headers.get('CF-Connecting-IP')||'local';
-    try {
-      if(val(form,'login_action')==='recovery_question')return loginResponse('',{username,question:await getRecoveryQuestion(env,username,ip)});
-      await resetPassword(env,username,val(form,'recovery_answer'),val(form,'new_password'),ip);return loginResponse(lang==='ja'?'パスワードを更新しました。ログインしてください。':'Password updated. Please sign in.');
-    }catch(error){return loginResponse('',{username,error:error instanceof Error?error.message:'Recovery failed.'});}
-  }
+  // Before sign-in there is no session, so these forms carry a double-submit token.
+  const loginCsrf=request.headers.get('Cookie')?.match(/(?:^|;\s*)login_csrf=([A-Za-z0-9-]+)/)?.[1]||crypto.randomUUID();
+  const loginResponse=(error='',status=200)=>{const response=html(renderLoginPage({lang,initial,error,t,csrf:loginCsrf}),status);response.headers.append('Set-Cookie',`login_csrf=${loginCsrf}; Secure; SameSite=Strict; HttpOnly; Path=/; Max-Age=900`);return response;};
   if (form?.has('login_action')) {
+    if(!verifyCsrf(val(form,'csrf_token'),loginCsrf))return html(t('err_csrf'),403);
     let error='';
     try {
-      const key=`${request.headers.get('CF-Connecting-IP')||'local'}|login`;
+      const key=`${request.headers.get('CF-Connecting-IP')||'local'}|device`;
       if (await rateLimit(env,key)) throw new Error('しばらく待ってから再試行してください。 / Try again later.');
-      const username=val(form,'username').trim();
-      if (val(form,'login_action')==='set_initial_password' && initial) {
-        if (!env.SETUP_TOKEN || !verifyCsrf(val(form,'setup_token'),env.SETUP_TOKEN)) {
-          await rateLimit(env,key,true); throw new Error('初期設定トークンを確認してください。 / Check the setup token.');
-        }
-        if (settings.password_hash) throw new Error('既存認証データの移行が必要です。 / Existing authentication requires explicit migration.');
-        await addUser(env,username,val(form,'display_name'),val(form,'new_password'),true);
-        if(val(form,'recovery_question')||val(form,'recovery_answer'))await setRecovery(env,username,val(form,'new_password'),val(form,'recovery_question'),val(form,'recovery_answer'));
-        if (!settings.site_id) {
-          settings.site_id=`site-${crypto.randomUUID()}`; settings.site_environment=env.SITE_ENVIRONMENT||'local'; settings.site_name||='🍊mikanBox';
-          if (!await saveSettings(env,settings)) throw new Error(t('err_save_failed'));
-        }
-        await installDefaults(env,lang);
-      } else if (val(form,'login_action')==='login' && !initial) {
-        const user=await getUser(env,username);
-        const dummy='$pbkdf2-sha256$100000$AAAAAAAAAAAAAAAAAAAAAA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
-        if (!await verifyPassword(val(form,'password'),user?.password_hash||dummy) || !user) {
-          await rateLimit(env,key,true); throw new Error(t('err_wrong_password'));
-        }
+      const action=val(form,'login_action'),deviceName=val(form,'device_name');
+      let device:{cookie:string}|null=null;
+      if (action==='setup') {
+        // SETUP_TOKEN registers the first device, and later serves as recovery.
+        if (!await setupTokenUsable(env,val(form,'setup_token'))) {await rateLimit(env,key,true);throw new Error('初期設定トークンを確認してください。使用済みのトークンは使えません。 / Check the setup token. A used token does not work again.');}
+        const username=val(form,'username').trim();
+        if (initial) {
+          if (settings.password_hash) throw new Error('既存認証データの移行が必要です。 / Existing authentication requires explicit migration.');
+          await addInitialUser(env,username,val(form,'display_name'));
+          if (!settings.site_id) {
+            settings.site_id=`site-${crypto.randomUUID()}`; settings.site_environment=env.SITE_ENVIRONMENT||'local'; settings.site_name||='🍊mikanBox';
+            if (!await saveSettings(env,settings)) throw new Error(t('err_save_failed'));
+          }
+          await installDefaults(env,lang);
+        } else if (!await getUser(env,username)) throw new Error('ユーザー名を確認してください。 / Check the username.');
+        await consumeSetupToken(env,!initial);
+        device=await createDevice(env,username,deviceName,request);
+      } else if (action==='claim' && !initial) {
+        device=await claimCode(env,val(form,'code'),deviceName,request);
+        if (!device) {await rateLimit(env,key,true);throw new Error('コードを確認してください。期限切れや使用済みのコードは使えません。 / Check the code. Expired or used codes do not work.');}
       } else throw new Error('Invalid login action.');
-      const user=await getUser(env,username); if (!user) throw new Error('Account was not created.');
       await env.DB.prepare('DELETE FROM login_attempts WHERE id=?').bind(key).run();
-      const {token}=await createSessionToken(env.JWT_SECRET,username,user.auth_version);
-      return redirect(url.pathname,setSessionCookie(token));
+      return redirect(url.pathname,device.cookie);
     } catch(e) {error=e instanceof Error && !/D1_|SQLITE_|constraint|UNIQUE/.test(e.message)?e.message:t('err_save_failed');}
-    return loginResponse(error,undefined,400);
+    return loginResponse(error,400);
   }
   if (!auth) return loginResponse();
   const csrf=auth.session.csrf;
@@ -116,13 +110,11 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
         case 'publication_finish': return json({success:true,...await finishPublication(env,val(form,'publication_lease'),auth.user.username)});
         case 'publication_cancel': await cancelPublication(env,val(form,'publication_lease'),auth.user.username);return json({success:true});
         case 'download_backup_json': {
-          if(!await verifyPassword(val(form,'current_password'),auth.user.password_hash))throw new Error(t('err_wrong_password'));
           return json({success:true,manifest:await exportBackupManifest(env)});
         }
         case 'backup_media_part': return json({success:true,part:await exportBackupMediaPart(env,val(form,'file'),Number(val(form,'index')),JSON.parse(val(form,'expected')))});
         case 'backup_export_validate': await validateExportSnapshot(env,JSON.parse(val(form,'manifest')));return json({success:true});
         case 'restore_backup_json': {
-          if(!await verifyPassword(val(form,'current_password'),auth.user.password_hash))throw new Error(t('err_wrong_password'));
           const stage=await createBackupRestore(env,JSON.parse(val(form,'manifest')),{restoreUsers:val(form,'restore_users')==='1'});
           await env.DB.prepare('UPDATE backup_sessions SET owner=? WHERE id=?').bind(auth.user.username,stage).run();
           return json({success:true,stage});
@@ -131,17 +123,14 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
           const stage=val(form,'stage'),owned=await env.DB.prepare('SELECT id FROM backup_sessions WHERE id=? AND owner=?').bind(stage,auth.user.username).first();if(!owned)throw new Error('Restore session not found.');
           if(action==='backup_restore_part'){await stageBackupMediaPart(env,stage,JSON.parse(val(form,'part')));return json({success:true});}
           if(action==='backup_restore_abort'){await abortBackupRestore(env,stage);return json({success:true});}
-          if(!await verifyPassword(val(form,'current_password'),auth.user.password_hash))throw new Error(t('err_wrong_password'));
           return json({success:true,...await commitBackupRestore(env,stage)});
         }
-        case 'set_recovery': await setRecovery(env,auth.user.username,val(form,'current_password'),val(form,'recovery_question'),val(form,'recovery_answer'));break;
         case 'save_cloud_connection': {
-          if(!await verifyPassword(val(form,'current_password'),auth.user.password_hash))throw new Error(t('err_wrong_password'));
           const target=cloudTarget(env);if(val(form,'cloud_account_id')!==target.account||val(form,'cloud_worker_name')!==target.worker)throw new Error('Cloudflare target must match this installation.');
           if(val(form,'cloud_api_token'))await saveCloudToken(env,val(form,'cloud_api_token'));break;
         }
         case 'begin_d1_export': return json({success:true,...await beginD1Export(env,url.origin)});
-        case 'restore_d1_time': {if(!await verifyPassword(val(form,'current_password'),auth.user.password_hash))throw new Error(t('err_wrong_password'));return json({success:true,restore:await d1Restore(env,val(form,'restore_at'))});}
+        case 'restore_d1_time': {return json({success:true,restore:await d1Restore(env,val(form,'restore_at'))});}
         case 'begin_publication': {
           const lease=crypto.randomUUID(),value=JSON.stringify({lease,expires:Date.now()+30*60*1000});
           const saved=await env.DB.prepare("INSERT INTO settings(key,value) VALUES('publication_lock',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value WHERE json_extract(settings.value,'$.expires')<?").bind(value,Date.now()).run();
@@ -157,7 +146,7 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
         }
         case 'generate_api_key': settings.api_key=crypto.randomUUID().replace(/-/g,'')+crypto.randomUUID().replace(/-/g,'');if(!await saveSettings(env,settings))throw new Error(t('err_save_failed'));break;
         case 'build_ssg': await buildStatic(env,request);break;
-        case 'logout': return redirect(url.pathname,clearSessionCookie());
+        case 'logout': await revokeDevice(env,auth.device,auth.device.id);return redirect(url.pathname,clearDeviceCookie());
         case 'content_import_package': case 'content_import_wordpress': {
           const raw=val(form,'import_payload');
           if(new TextEncoder().encode(raw).length>1_100_000)throw new Error('The import payload exceeds 1 MB.');
@@ -217,26 +206,30 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
           if(!await saveSettings(env,settings)) throw new Error(t('err_save_failed'));break;
         }
         case 'save_memo': case 'save_prompt': {const field=action==='save_memo'?'memo':'ai_prompt';settings[field]=val(form,field);if(!await saveSettings(env,settings)) throw new Error(t('err_save_failed'));break;}
-        case 'add_user': await addUser(env,val(form,'username'),val(form,'display_name'),val(form,'new_password'));break;
+        case 'device_code_create': {
+          const invite=val(form,'invite')==='1'?{username:val(form,'username').trim(),display_name:val(form,'display_name')}:undefined;
+          message=(lang==='ja'?'コード（3時間有効・1回限り）: ':'Code (valid 3 hours, once): ')+await issueCode(env,auth.device,invite);break;
+        }
+        case 'device_code_cancel': await cancelCode(env,val(form,'code_hash'));break;
+        case 'device_revoke': {
+          await revokeDevice(env,auth.device,val(form,'device_id'));
+          if(val(form,'device_id')===auth.device.id)return redirect(url.pathname,clearDeviceCookie());break;
+        }
+        case 'device_expiry': await setExpiryDays(env,Number(val(form,'days')));break;
         case 'update_user': {
-          if(!await verifyPassword(val(form,'current_password'),auth.user.password_hash))throw new Error(t('err_wrong_password'));
           const old=val(form,'old_username'),name=val(form,'username'),display=val(form,'display_name').trim();
           if(!/^[A-Za-z0-9_-]{1,80}$/.test(name)||!display||display.length>120)throw new Error('Check username and display name.');
           const previous=await getUser(env,old);if(!previous)throw new Error('Account not found.');
           const generationBytes=crypto.getRandomValues(new Uint32Array(2)),generation=2+generationBytes[0]*1048576+(generationBytes[1]&1048575);
           const changed=await env.DB.batch([
-            env.DB.prepare('UPDATE users SET username=?,display_name=?,auth_version=? WHERE username=? AND password_hash=? AND auth_version=?').bind(name,display,generation,old,previous.password_hash,previous.auth_version),
+            env.DB.prepare('UPDATE users SET username=?,display_name=?,auth_version=? WHERE username=? AND auth_version=?').bind(name,display,generation,old,previous.auth_version),
+            env.DB.prepare('UPDATE device_sessions SET username=? WHERE username=? AND EXISTS(SELECT 1 FROM users WHERE username=? AND auth_version=?)').bind(name,old,name,generation),
             env.DB.prepare('DELETE FROM edit_locks WHERE owner=? AND EXISTS(SELECT 1 FROM users WHERE username=? AND auth_version=?)').bind(old,name,generation)
           ]);
           if(!changed[0].meta.changes)throw new Error('Account changed; reload and retry.');
-          if(old===auth.user.username)return redirect(url.pathname,clearSessionCookie());break;
+          break;
         }
         case 'delete_user': {const name=val(form,'username');if(name===auth.user.username) throw new Error('自分自身は削除できません。 / Cannot delete your current account.');await env.DB.prepare('DELETE FROM users WHERE username=?').bind(name).run();break;}
-        case 'change_password': {
-          if(!await verifyPassword(val(form,'current_password'),auth.user.password_hash)) throw new Error(t('err_wrong_password'));
-          const pass=val(form,'new_password');if(pass.length<8||pass.length>256) throw new Error('Password must be 8–256 characters.');
-          await env.DB.prepare('UPDATE users SET password_hash=?,auth_version=auth_version+1 WHERE username=?').bind(await hashPassword(pass),auth.user.username).run();return redirect(url.pathname,clearSessionCookie());
-        }
         case 'acquire_lock': {
           const id=pageId(val(form,'id'));
           const r=await env.DB.prepare(`INSERT INTO edit_locks(post_id,owner,expires_at) VALUES(?,?,?) ON CONFLICT(post_id) DO UPDATE SET owner=excluded.owner,expires_at=excluded.expires_at WHERE edit_locks.owner=excluded.owner OR edit_locks.expires_at<?`).bind(id,auth.user.username,Date.now()+120000,Date.now()).run();
@@ -276,7 +269,6 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
         }
         case 'delete_media': {const name=val(form,'file');if(!/^[A-Za-z0-9_.-]+$/.test(name)||name.includes('..')) throw new Error('Invalid media name.');await assertNotPublished(env,['/media/'+name]);if(!await deleteMedia(env,name)) throw new Error(t('err_save_failed'));break;}
         case 'begin_media_migration': {
-          if(!await verifyPassword(val(form,'current_password'),auth.user.password_hash))throw new Error(t('err_wrong_password'));
           return json({success:true,migration:await beginMediaMigration(env)});
         }
         case 'copy_media_migration': return json({success:true,migration:await copyMediaMigrationImage(env,val(form,'migration_id'))});
@@ -309,7 +301,9 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
       message||=t('msg_update_success');
     } catch(e) {success=false;statusCode=400;message=e instanceof Error&&!/D1_|SQLITE_|constraint|UNIQUE/.test(e.message)?e.message:t('err_save_failed');}
     if(form.has('ajax_request')) return json({success,message,editId},statusCode);
-    if(success) {
+    // A new device code is shown once on this response, never put in a URL.
+    if(success&&action==='device_code_create')view='site';
+    else if(success) {
       const params=new URLSearchParams(url.searchParams);params.delete('new');if(editId)params.set('edit',editId);else params.delete('edit');params.set('saved','1');
       return redirect(`${url.pathname}?${params}`);
     }
@@ -346,7 +340,9 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
   const d1Bytes=typeof databaseProbe.meta.size_after==='number'?databaseProbe.meta.size_after:null;
   const storageMode=await mediaStorageMode(env),migration=await migrationStatus(env);
   const target=cloudTarget(env),displaySettings={...settings,storage_migrated:url.searchParams.get('storage_migrated')==='1',media_storage:storageMode,r2_configured:!!env.MEDIA,d1_bytes:d1Bytes,media_migration:migration,r2_bytes:(await env.DB.prepare('SELECT COALESCE(SUM(size),0) bytes FROM r2_objects').first<{bytes:number}>())?.bytes||0,cloud_connection_ready:await cloudConfigured(env),cloud_account_id:target.account,cloud_worker_name:target.worker};
-  const siteHtml=view==='import'?renderImportView({t,csrf,lang,stats:{pages:pages.length,components:components.length,users:users.length,media:files.length,mediaBytes:files.reduce((sum,file)=>sum+file.size,0)}}):renderSiteView({t,trackingComponents:components.filter(c=>!c.data.is_ai_doc&&!c.data.is_wrapper),settings:displaySettings,csrf,helpFile,users,username:auth.user.username,lang,deliveryMode:env.STATIC_DELIVERY==='true'?'static':'worker',release:await latestCloudRelease(env,url.searchParams.has('refresh_updates'))});
+  const siteHtml=view==='import'?renderImportView({t,csrf,lang,stats:{pages:pages.length,components:components.length,users:users.length,media:files.length,mediaBytes:files.reduce((sum,file)=>sum+file.size,0)}}):renderSiteView({t,trackingComponents:components.filter(c=>!c.data.is_ai_doc&&!c.data.is_wrapper),settings:displaySettings,csrf,helpFile,users,username:auth.user.username,accountsHtml:renderAccountsSection({lang,csrf,users,me:auth.device,devices:await listDevices(env),codes:await listCodes(env),expiryDays:await expiryDays(env)}),lang,deliveryMode:env.STATIC_DELIVERY==='true'?'static':'worker',release:await latestCloudRelease(env,url.searchParams.has('refresh_updates'))});
+  const unseen=await unseenDevices(env,auth.device);
+  if(unseen.length)message=(message?message+' ':'')+(lang==='ja'?'新しい端末が登録されました: ':'New device registered: ')+unseen.map(d=>`${d.name} (${d.username})`).join(', ')+(lang==='ja'?'。心当たりがなければ「端末とユーザー」で止めてください。':'. If you do not recognise it, stop it under Devices and users.');
   return html(renderAdminShell({lang,t,view,editId,hasNew,helpFile,message,csrf,settings,pagesHtml,pageEditorHtml,siteHtml,designHtml,designEditorHtml,mediaHtml,
     mediaEnabled:true,aiPromptJson:JSON.stringify(settings.ai_prompt||'').replace(/</g,'\\u003c'),allCategories,category}),statusCode);
 }

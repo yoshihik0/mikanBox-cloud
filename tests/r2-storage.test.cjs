@@ -57,9 +57,9 @@ test('R2 restore rollback, abort and cleanup preserve current referenced images'
  await backup.stageBackupMediaPart(env,id,await backup.exportBackupMediaPart(env,'one.png',0));env.sqlite.exec('UPDATE r2_objects SET created_at=0');assert.equal(await cleanMediaObjects(env),0);
  await savePage(env,'new',{title:'Concurrent',status:'draft'});await assert.rejects(backup.commitBackupRestore(env,id),/not applied/);assert.equal(env.sqlite.prepare('SELECT object_key FROM media').get().object_key,original);await backup.abortBackupRestore(env,id);assert.equal(await cleanMediaObjects(env),2);assert.ok(env.MEDIA.objects.has(original));assert.deepEqual(await read(env,'one.png'),image);
 });
-test('migration menu requires password and R2 setup; empty D1 sites can also switch',async()=>{
- const env=r2Environment('d1'),auth=await login(env);const bad=await post(env,auth,{save_action:'begin_media_migration',current_password:'bad'});assert.equal(bad.data.success,false);
- const begin=await post(env,auth,{save_action:'begin_media_migration',current_password:'test-password'});assert.equal(begin.data.success,true);await post(env,auth,{save_action:'finish_media_migration',migration_id:begin.data.migration.id});assert.equal(env.sqlite.prepare("SELECT value FROM settings WHERE key='media_storage'").get().value,'r2');
+test('migration menu requires R2 setup; empty D1 sites can also switch',async()=>{
+ const env=r2Environment('d1'),auth=await login(env);
+ const begin=await post(env,auth,{save_action:'begin_media_migration'});assert.equal(begin.data.success,true);await post(env,auth,{save_action:'finish_media_migration',migration_id:begin.data.migration.id});assert.equal(env.sqlite.prepare("SELECT value FROM settings WHERE key='media_storage'").get().value,'r2');
  const noR2=environment();await assert.rejects(migration.beginMediaMigration(noR2),/MEDIA/);
 });
 test('R2 restore cannot publish an assembly whose part snapshot changed concurrently',async()=>{

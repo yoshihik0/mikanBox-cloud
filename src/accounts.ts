@@ -1,5 +1,5 @@
 import type { Env } from './types';
-import { getAdminSession, hashPassword } from './auth';
+import { deviceSession } from './devices';
 
 export interface User {
   username: string;
@@ -13,28 +13,23 @@ export async function getUser(env: Env, username: string): Promise<User | null> 
 export async function listUsers(env: Env): Promise<User[]> {
   return (await env.DB.prepare('SELECT * FROM users ORDER BY username').all<User>()).results;
 }
+// Sessions belong to devices (see devices.ts). A deleted user's devices stop working
+// because the session lookup joins users.
 export async function authenticatedUser(request: Request, env: Env) {
-  const session = await getAdminSession(request, env.JWT_SECRET);
+  const session = await deviceSession(request, env);
   if (!session) return null;
-  const user = await getUser(env, session.sub);
-  return user && user.auth_version === session.version ? { user, session } : null;
+  const user = await getUser(env, session.device.username);
+  return user ? { user, session: { csrf: session.csrf }, device: session.device } : null;
 }
-export function validateUser(username: string, displayName: string, password: string) {
+export function validateUser(username: string, displayName: string) {
   if (!/^[A-Za-z0-9_-]{1,80}$/.test(username) || !displayName.trim() || displayName.length > 120)
     throw new Error('ユーザー名・表示名を確認してください。 / Check username and display name.');
-  if (password.length < 8 || password.length > 256)
-    throw new Error('パスワードは8〜256文字にしてください。 / Use 8–256 characters for the password.');
 }
-export async function addUser(env: Env, username: string, displayName: string, password: string, initial = false) {
-  validateUser(username, displayName, password);
-  const hash = await hashPassword(password);
-  // A new generation prevents sessions from a deleted account being reused.
-  const random = crypto.getRandomValues(new Uint32Array(2));
-  const generation = 2 + random[0] * 1048576 + (random[1] & 1048575);
-  const statement = initial
-    ? env.DB.prepare('INSERT INTO users (username, display_name, password_hash, auth_version) SELECT ?, ?, ?, ? WHERE NOT EXISTS (SELECT 1 FROM users)')
-    : env.DB.prepare('INSERT INTO users (username, display_name, password_hash, auth_version) VALUES (?, ?, ?, ?)');
-  const result = await statement.bind(username, displayName.trim(), hash, generation).run();
+/** The first user only. Later users join through invite codes. */
+export async function addInitialUser(env: Env, username: string, displayName: string) {
+  validateUser(username, displayName);
+  const result = await env.DB.prepare("INSERT INTO users (username, display_name, password_hash, auth_version) SELECT ?, ?, '', 1 WHERE NOT EXISTS (SELECT 1 FROM users)")
+    .bind(username, displayName.trim()).run();
   if (!result.meta.changes) throw new Error('初期設定済みです。 / Setup is already complete.');
 }
 export async function rateLimit(env: Env, key: string, failed = false) {

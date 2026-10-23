@@ -1,16 +1,15 @@
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
 const {environment,login,post}=require('./fixtures.cjs');
 const {savePage,uploadMedia,getMediaObject}=require('../.test-build/src/storage.js');
-test('admin backup requires reauthentication and restores staged original bytes through authenticated actions',async()=>{
+test('admin backup restores staged original bytes through authenticated actions',async()=>{
  const env=environment(),auth=await login(env),image=Uint8Array.from(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+X2ioAAAAASUVORK5CYII=','base64'));
  await uploadMedia(env,'original.png',image.buffer,'image/png');
- assert.equal((await post(env,auth,{save_action:'download_backup_json',current_password:'wrong'})).data.success,false);
- const manifest=(await post(env,auth,{save_action:'download_backup_json',current_password:'test-password'})).data.manifest;
+ const manifest=(await post(env,auth,{save_action:'download_backup_json'})).data.manifest;
  const part=(await post(env,auth,{save_action:'backup_media_part',file:'original.png',index:'0',expected:JSON.stringify(manifest.media[0])})).data.part;
  await savePage(env,'later',{title:'Later',status:'draft'});
- const stage=(await post(env,auth,{save_action:'restore_backup_json',manifest:JSON.stringify(manifest),current_password:'test-password'})).data.stage;
+ const stage=(await post(env,auth,{save_action:'restore_backup_json',manifest:JSON.stringify(manifest)})).data.stage;
  assert.ok(stage);assert.equal((await post(env,auth,{save_action:'backup_restore_part',stage,part:JSON.stringify(part)})).data.success,true);
- const result=await post(env,auth,{save_action:'backup_restore_commit',stage,current_password:'test-password'});assert.equal(result.data.success,true);
+ const result=await post(env,auth,{save_action:'backup_restore_commit',stage});assert.equal(result.data.success,true);
  assert.equal(env.sqlite.prepare("SELECT id FROM posts WHERE id='later'").get(),undefined);
  assert.deepEqual(new Uint8Array(await(await getMediaObject(env,'original.png')).arrayBuffer()),image);
 });

@@ -37,12 +37,12 @@ test('media search, category filters and page size settings are honored',async()
  h=await(await call(env,'/admin?view=media&cat=news',undefined,auth.cookie)).text();assert.match(h,/news_cover.png/);assert.match(h,/g_logo.png/);assert.doesNotMatch(h,/second.png/);assert.doesNotMatch(h,/first.png/);assert.match(h,/name="save_action" value="resize_media"/);assert.match(h,/name="save_action" value="convert_media_webp"/);assert.match(h,/name="save_action" value="rename_media"/);
  h=await(await call(env,'/admin?view=media&cat=news&media_all=1',undefined,auth.cookie)).text();assert.match(h,/first.png/);assert.match(h,/second.png/);
 });
-test('account names change only with reauthentication and revoke old sessions',async()=>{
+test('renaming an account keeps its devices signed in under the new name',async()=>{
  const env=environment(),auth=await login(env);
- let r=await post(env,auth,{save_action:'update_user',old_username:'admin',username:'renamed',display_name:'New Name',current_password:'wrong'});assert.equal(r.data.success,false);assert.ok(env.sqlite.prepare("SELECT username FROM users WHERE username='admin'").get());
- r=await call(env,'/admin',{save_action:'update_user',csrf_token:auth.csrf_token,old_username:'admin',username:'renamed',display_name:'New Name',current_password:'test-password'},auth.cookie);assert.equal(r.status,303);assert.match(r.headers.get('Set-Cookie'),/Max-Age=0/);
- assert.equal(env.sqlite.prepare("SELECT display_name FROM users WHERE username='renamed'").get().display_name,'New Name');assert.equal(env.sqlite.prepare("SELECT username FROM users WHERE username='admin'").get(),undefined);assert.match(await(await call(env,'/admin',undefined,auth.cookie)).text(),/name="login_action"/);
- const loginResponse=await call(env,'/admin',{login_action:'login',username:'renamed',password:'test-password'});assert.equal(loginResponse.status,303);
+ const r=await post(env,auth,{save_action:'update_user',old_username:'admin',username:'renamed',display_name:'New Name'});assert.equal(r.data.success,true);
+ assert.equal(env.sqlite.prepare("SELECT display_name FROM users WHERE username='renamed'").get().display_name,'New Name');assert.equal(env.sqlite.prepare("SELECT username FROM users WHERE username='admin'").get(),undefined);
+ assert.equal(env.sqlite.prepare('SELECT username FROM device_sessions').get().username,'renamed');
+ assert.doesNotMatch(await(await call(env,'/admin',undefined,auth.cookie)).text(),/name="login_action"/);
 });
 
 test('unified edit route renames converted images and references including common OGP',async()=>{

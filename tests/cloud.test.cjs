@@ -5,21 +5,24 @@ const {environment,call,login,post}=require('./fixtures.cjs');
 const {savePage,loadPage,saveComponent,loadComponent,saveSettings,loadSettings}=require('../.test-build/src/storage.js');
 const {MikanBoxRenderer}=require('../.test-build/src/renderer.js');
 const {createTranslator}=require('../.test-build/src/i18n.js');
+async function loginForm(env){const page=await call(env,'/admin'),m=page.headers.get('Set-Cookie').match(/login_csrf=([^;]+)/);return {cookie:m[0],csrf:m[1]};}
+async function setup(env,extra={},forgeCookie=false){const f=await loginForm(env);return require('../.test-build/src/index.js').default.fetch(new Request('https://cloud.test/admin',{method:'POST',headers:{Cookie:forgeCookie?'login_csrf=other':f.cookie},body:new URLSearchParams({login_action:'setup',csrf_token:f.csrf,setup_token:env.SETUP_TOKEN,username:'admin',display_name:'Admin',device_name:'Laptop',...extra})}),env);}
+async function claim(env,code){const f=await loginForm(env);return require('../.test-build/src/index.js').default.fetch(new Request('https://cloud.test/admin',{method:'POST',headers:{Cookie:f.cookie},body:new URLSearchParams({login_action:'claim',csrf_token:f.csrf,code,device_name:'Phone'})}),env);}
 const page=(status='draft',content_md='private-content')=>({title:'Test',status,content_md,wrapper_comp:'layout'});
 
-test('initial setup requires its token and cannot reset imported credentials',async()=>{
+test('initial setup requires its token and a used token never works again',async()=>{
   const env=environment();
-  let r=await call(env,'/admin',{login_action:'set_initial_password',username:'evil',display_name:'Evil',new_password:'test-password',setup_token:'wrong'});
-  assert.equal(r.status,400);assert.equal(env.sqlite.prepare('SELECT COUNT(*) n FROM users').get().n,0);
+  let r=await setup(env,{setup_token:'wrong'});assert.equal(r.status,400);assert.equal(env.sqlite.prepare('SELECT COUNT(*) n FROM users').get().n,0);
+  r=await setup(env,{csrf_token:'forged'},true);assert.equal(r.status,403);
   await saveSettings(env,{password_hash:'$2y$imported'});
-  r=await call(env,'/admin',{login_action:'set_initial_password',username:'evil',display_name:'Evil',new_password:'test-password',setup_token:env.SETUP_TOKEN});
-  assert.equal(r.status,400);assert.equal(env.sqlite.prepare('SELECT COUNT(*) n FROM users').get().n,0);
+  r=await setup(env);assert.equal(r.status,400);assert.equal(env.sqlite.prepare('SELECT COUNT(*) n FROM users').get().n,0);
 });
-test('setup creates one account; subsequent setup never replaces its password',async()=>{
+test('setup registers one device; the same token cannot register another',async()=>{
   const env=environment();await login(env);
-  const before=env.sqlite.prepare('SELECT password_hash FROM users').get().password_hash;
-  const r=await call(env,'/admin',{login_action:'set_initial_password',username:'admin',display_name:'Other',new_password:'replacement-password',setup_token:env.SETUP_TOKEN});
-  assert.equal(r.status,400);assert.equal(env.sqlite.prepare('SELECT password_hash FROM users').get().password_hash,before);
+  assert.equal(env.sqlite.prepare('SELECT COUNT(*) n FROM device_sessions').get().n,1);
+  assert.equal(env.sqlite.prepare("SELECT password_hash FROM users").get().password_hash,'');
+  const r=await setup(env,{username:'admin'});assert.equal(r.status,400);
+  assert.equal(env.sqlite.prepare('SELECT COUNT(*) n FROM device_sessions WHERE revoked_at IS NULL').get().n,1);
 });
 test('CSRF and cross-origin writes are rejected; unknown action never succeeds',async()=>{
   const env=environment(),auth=await login(env);
@@ -28,18 +31,57 @@ test('CSRF and cross-origin writes are rejected; unknown action never succeeds',
   const response=await require('../.test-build/src/index.js').default.fetch(new Request('https://cloud.test/admin',{method:'POST',headers:{Origin:'https://other.test',Cookie:auth.cookie},body:new URLSearchParams({save_action:'save_memo',csrf_token:auth.csrf_token})}),env);
   assert.equal(response.status,403);
 });
-test('five failed logins lock out another attempt',async()=>{
-  const env=environment();await login(env);
-  for(let i=0;i<5;i++)assert.equal((await call(env,'/admin',{login_action:'login',username:'admin',password:'wrong'})).status,400);
-  const response=await call(env,'/admin',{login_action:'login',username:'admin',password:'test-password'});assert.equal(response.status,400);
-});
-test('password change revokes existing sessions and old password',async()=>{
+test('five wrong device codes lock out another attempt',async()=>{
   const env=environment(),auth=await login(env);
-  const r=await call(env,'/admin',{save_action:'change_password',csrf_token:auth.csrf_token,current_password:'test-password',new_password:'new-test-password'},auth.cookie);
-  assert.equal(r.status,303);
+  const code=(await post(env,auth,{save_action:'device_code_create'})).data.message.match(/[0-9A-Z]{5}-[0-9A-Z]{5}/)[0];
+  for(let i=0;i<5;i++)assert.equal((await claim(env,'AAAAA-AAAAA')).status,400);
+  assert.equal((await claim(env,code)).status,400);
+});
+test('a device code adds a device once, and an invite code creates its user',async()=>{
+  const env=environment(),auth=await login(env);
+  const code=(await post(env,auth,{save_action:'device_code_create'})).data.message.match(/[0-9A-Z]{5}-[0-9A-Z]{5}/)[0];
+  assert.equal(env.sqlite.prepare('SELECT COUNT(*) n FROM device_codes').get().n,1);assert.doesNotMatch(JSON.stringify(env.sqlite.prepare('SELECT * FROM device_codes').all()),new RegExp(code.replace('-','')));
+  let r=await claim(env,code.toLowerCase());assert.equal(r.status,303);const phone=r.headers.get('Set-Cookie').split(';')[0];
+  assert.doesNotMatch(await(await call(env,'/admin',undefined,phone)).text(),/name="login_action"/);
+  assert.equal((await claim(env,code)).status,400);
+  const invite=(await post(env,auth,{save_action:'device_code_create',invite:'1',username:'second',display_name:'Second'})).data.message.match(/[0-9A-Z]{5}-[0-9A-Z]{5}/)[0];
+  r=await claim(env,invite);assert.equal(r.status,303);assert.equal(env.sqlite.prepare("SELECT display_name FROM users WHERE username='second'").get().display_name,'Second');
+  assert.equal((await post(env,auth,{save_action:'device_code_create',invite:'1',username:'second',display_name:'Again'})).data.success,false);
+});
+test('expired codes and expired devices do not work; use extends a device',async()=>{
+  const env=environment(),auth=await login(env);
+  const code=(await post(env,auth,{save_action:'device_code_create'})).data.message.match(/[0-9A-Z]{5}-[0-9A-Z]{5}/)[0];
+  env.sqlite.prepare('UPDATE device_codes SET expires_at=?').run(Date.now()-1);assert.equal((await claim(env,code)).status,400);
+  env.sqlite.prepare('UPDATE device_sessions SET last_used_at=0').run();await call(env,'/admin',undefined,auth.cookie);
+  assert.ok(env.sqlite.prepare('SELECT expires_at FROM device_sessions').get().expires_at>Date.now()+29*86400_000);
+  env.sqlite.prepare('UPDATE device_sessions SET expires_at=?').run(Date.now()-1);
   assert.match(await(await call(env,'/admin',undefined,auth.cookie)).text(),/name="login_action"/);
-  assert.equal((await call(env,'/admin',{login_action:'login',username:'admin',password:'test-password'})).status,400);
-  assert.equal((await call(env,'/admin',{login_action:'login',username:'admin',password:'new-test-password'})).status,303);
+});
+test('a new device cannot stop older devices for three days; older devices can stop it',async()=>{
+  const env=environment(),auth=await login(env);
+  env.sqlite.prepare('UPDATE device_sessions SET created_at=?').run(Date.now()-4*86400_000);
+  const code=(await post(env,auth,{save_action:'device_code_create'})).data.message.match(/[0-9A-Z]{5}-[0-9A-Z]{5}/)[0];
+  const cookie=(await claim(env,code)).headers.get('Set-Cookie').split(';')[0];
+  const csrf=(await require('../.test-build/src/devices.js').deviceSession(new Request('https://cloud.test/admin',{headers:{Cookie:cookie}}),env)).csrf,newer={cookie,csrf_token:csrf};
+  const [old,fresh]=env.sqlite.prepare('SELECT id FROM device_sessions ORDER BY created_at').all().map(row=>row.id);
+  assert.equal((await post(env,newer,{save_action:'device_revoke',device_id:old})).data.success,false);
+  assert.match(await(await call(env,'/admin?view=site',undefined,auth.cookie)).text(),/New device registered|新しい端末が登録されました/);
+  assert.equal((await post(env,auth,{save_action:'device_revoke',device_id:fresh})).data.success,true);
+  assert.match(await(await call(env,'/admin',undefined,cookie)).text(),/name="login_action"/);
+  const out=await call(env,'/admin',{save_action:'logout',csrf_token:auth.csrf_token},auth.cookie);assert.match(out.headers.get('Set-Cookie'),/Max-Age=0/);
+  assert.match(await(await call(env,'/admin',undefined,auth.cookie)).text(),/name="login_action"/);
+});
+test('recovery with a new SETUP_TOKEN stops every device and clears codes and the MCP key',async()=>{
+  const env=environment(),auth=await login(env);await saveSettings(env,{...await loadSettings(env),api_key:'mcp-secret'});
+  await post(env,auth,{save_action:'device_code_create'});
+  assert.equal((await setup(env,{username:'admin'})).status,400);
+  env.SETUP_TOKEN='new-setup-token-value';
+  assert.equal((await setup(env,{username:'nobody'})).status,400);
+  const r=await setup(env,{username:'admin'});assert.equal(r.status,303);
+  assert.match(await(await call(env,'/admin',undefined,auth.cookie)).text(),/name="login_action"/);
+  assert.doesNotMatch(await(await call(env,'/admin',undefined,r.headers.get('Set-Cookie').split(';')[0])).text(),/name="login_action"/);
+  assert.equal(env.sqlite.prepare('SELECT COUNT(*) n FROM device_codes').get().n,0);assert.equal((await loadSettings(env)).api_key,'');
+  assert.equal((await setup(env,{username:'admin'})).status,400);
 });
 test('page saves retain HTML mode, JS, memo, pending and preview token',async()=>{
   const env=environment(),auth=await login(env);
@@ -130,15 +172,12 @@ test('SQLite workflow fields and sections exist in the Cloud editor',async()=>{
   for(const section of ['pages','site','design','media','users-mgmt','ssg-accordion'])assert.match(body,new RegExp(`id="${section}"`));
   assert.match(body,/value="pending"/);assert.match(body,/value="public_static"/);assert.match(body,/value="public_dynamic"/);
 });
-test('user deletion revokes its session and cannot delete the current account',async()=>{
+test('user deletion stops its devices and cannot delete the current account',async()=>{
   const env=environment(),auth=await login(env);
   assert.equal((await post(env,auth,{save_action:'delete_user',username:'admin'})).data.success,false);
-  assert.equal((await post(env,auth,{save_action:'add_user',username:'second',display_name:'Second',new_password:'second-password'})).data.success,true);
-  const response=await call(env,'/admin',{login_action:'login',username:'second',password:'second-password'});assert.equal(response.status,303);const cookie=response.headers.get('Set-Cookie').split(';')[0];
+  const second=await login(env,'second','Second');
   assert.equal((await post(env,auth,{save_action:'delete_user',username:'second'})).data.success,true);
-  assert.match(await(await call(env,'/admin',undefined,cookie)).text(),/name="login_action"/);
-  assert.equal((await post(env,auth,{save_action:'add_user',username:'second',display_name:'Replacement',new_password:'replacement-password'})).data.success,true);
-  assert.match(await(await call(env,'/admin',undefined,cookie)).text(),/name="login_action"/);
+  assert.match(await(await call(env,'/admin',undefined,second.cookie)).text(),/name="login_action"/);
 });
 test('translations come from current shared JSON copies',()=>{
   const ja=require('../lang/ja.json'),en=require('../lang/en.json');assert.equal(createTranslator('ja')('nav_pages'),ja.nav_pages);assert.equal(createTranslator('en')('label_raw_html'),en.label_raw_html);
@@ -172,11 +211,7 @@ test('Markdown URLs reject script schemes and escape attributes',()=>{
 test('a second user cannot acquire a held edit lock',async()=>{
   const env=environment(),auth=await login(env);await savePage(env,'one',page());
   assert.equal((await post(env,auth,{save_action:'acquire_lock',id:'one'})).data.success,true);
-  await post(env,auth,{save_action:'add_user',username:'second',display_name:'Second',new_password:'second-password'});
-  const response=await call(env,'/admin',{login_action:'login',username:'second',password:'second-password'});
-  const cookie=response.headers.get('Set-Cookie').split(';')[0];
-  const session=await require('../.test-build/src/auth.js').verifySessionToken(cookie.split('=')[1],env.JWT_SECRET);
-  const other={cookie,csrf_token:session.csrf};
+  const other=await login(env,'second','Second');
   assert.equal((await post(env,other,{save_action:'acquire_lock',id:'one'})).data.success,false);
   assert.equal((await post(env,other,{save_action:'save_page',id:'one',old_id:'one',status:'draft',title:'Other'})).data.success,false);
 });

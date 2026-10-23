@@ -22,12 +22,20 @@ async function call(env,url='/admin',data,cookie) {
   if(data){options.method='POST';options.body=new URLSearchParams(data);}
   return worker.fetch(new Request('https://cloud.test'+url,options),env);
 }
-async function login(env,username='admin',display_name='Admin',password='test-password') {
-  const response=await call(env,'/admin',{login_action:'set_initial_password',username,display_name,new_password:password,setup_token:env.SETUP_TOKEN});
-  if(response.status!==303)throw new Error(await response.text());
-  const cookie=response.headers.get('Set-Cookie').split(';')[0];
-  const {verifySessionToken}=require('../.test-build/src/auth.js');
-  const session=await verifySessionToken(cookie.split('=')[1],env.JWT_SECRET);
+// Registers a device through the real setup form for the first user; later users get a device directly.
+async function login(env,username='admin',display_name='Admin') {
+  const devices=require('../.test-build/src/devices.js');
+  let cookie;
+  if(!env.sqlite.prepare('SELECT 1 FROM users').get()) {
+    const page=await call(env,'/admin'),csrfCookie=page.headers.get('Set-Cookie').match(/login_csrf=([^;]+)/);
+    const response=await worker.fetch(new Request('https://cloud.test/admin',{method:'POST',headers:{Cookie:csrfCookie[0]},body:new URLSearchParams({login_action:'setup',csrf_token:csrfCookie[1],setup_token:env.SETUP_TOKEN,username,display_name,device_name:'Test device'})}),env);
+    if(response.status!==303)throw new Error(await response.text());
+    cookie=response.headers.get('Set-Cookie').split(';')[0];
+  } else {
+    env.sqlite.prepare("INSERT INTO users(username,display_name,password_hash,auth_version) VALUES(?,?,'',1) ON CONFLICT(username) DO NOTHING").run(username,display_name);
+    cookie=(await devices.createDevice(env,username,'Test device',new Request('https://cloud.test/admin'))).cookie.split(';')[0];
+  }
+  const session=await devices.deviceSession(new Request('https://cloud.test/admin',{headers:{Cookie:cookie}}),env);
   return {cookie,csrf_token:session.csrf,username};
 }
 async function post(env,auth,data,url='/admin') {

@@ -20,10 +20,10 @@
   const form=event.target,kind=form.dataset?.cloudbackup;if(!['export','restore'].includes(kind))return;
   event.preventDefault();event.stopImmediatePropagation();
   const output=form.querySelector('[data-transfer-status]'),buttons=[...form.querySelectorAll('button')];buttons.forEach(b=>b.disabled=true);
-  const progress=text=>{if(output)output.textContent=text;};const fields=new FormData(form),password=String(fields.get('current_password')||'');let stage='';
+  const progress=text=>{if(output)output.textContent=text;};const fields=new FormData(form);let stage='';
   try{
    if(kind==='export'){
-    const {manifest}=await action('download_backup_json',{current_password:password}),pieces=[new Blob(['{"manifest":'+JSON.stringify(manifest)+',\n"parts":[\n'])];let first=true,count=0;
+    const {manifest}=await action('download_backup_json',{}),pieces=[new Blob(['{"manifest":'+JSON.stringify(manifest)+',\n"parts":[\n'])];let first=true,count=0;
     for(const media of manifest.media)for(let index=0;index<media.chunk_count;index++){
      const {part}=await action('backup_media_part',{file:media.key,index,expected:media});pieces.push(new Blob([(first?'':',\n')+JSON.stringify(part)]));first=false;
      progress((ja?'バックアップを作成中 ':'Creating backup ')+ ++count);
@@ -37,14 +37,14 @@
     const iterator=lines(file)[Symbol.asyncIterator](),header=await iterator.next();
     if(header.done||!header.value.startsWith('{"manifest":')||!header.value.endsWith(','))throw new Error('Unsupported backup file layout.');
     const manifest=JSON.parse(header.value.slice(12,-1)),start=await iterator.next();if(start.value!=='"parts":[')throw new Error('Incomplete backup file.');
-    stage=(await action('restore_backup_json',{manifest,current_password:password,restore_users:fields.get('restore_users')==='1'?'1':'0'})).stage;
+    stage=(await action('restore_backup_json',{manifest,restore_users:fields.get('restore_users')==='1'?'1':'0'})).stage;
     let count=0,closed=false;
     for(let line=await iterator.next();!line.done;line=await iterator.next()){
      if(!line.value)continue;if(line.value===']}'){closed=true;break;}
      await action('backup_restore_part',{stage,part:JSON.parse(line.value.replace(/,$/,''))});progress((ja?'復元データを確認中 ':'Validating restore ')+ ++count);
     }
     if(!closed)throw new Error('Incomplete backup file.');const tail=await iterator.next();if(!tail.done)throw new Error('Unexpected backup data.');
-    const result=await action('backup_restore_commit',{stage,current_password:password});stage='';
+    const result=await action('backup_restore_commit',{stage});stage='';
     progress(ja?'復元が完了しました。':'Restore completed.');
     if(result.accountsRestored){location.href='/admin';return;}
     // Restored snapshots and images need a new immutable asset deployment.

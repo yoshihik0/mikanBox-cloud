@@ -33,6 +33,16 @@ Images are withdrawn automatically by the Media screen; see "Static image delive
 
 Worker delivery has no delivery target and therefore no withdrawal step: private and deleted pages take effect at once.
 
+## Separate public and admin Workers (prototype)
+
+Setting `CLOUDFLARE_PUBLIC_WORKER_NAME` (the public Worker's name) and `PUBLIC_SITE_URL` (the public site's URL) publishes pages to a separate Worker. The public Worker holds static files only and runs no code. The admin screen and MCP stay on the current Worker. Without these settings, everything runs on one Worker as before.
+
+- On the admin address, visitors without a session get no pages, images, component scripts or sitemaps, and search engines are told not to index it (`X-Robots-Tag: noindex`).
+- A signed-in device opening `/about` on the admin address is sent to the preview (`/preview/about`). Previews carry a CSP `sandbox`, so page scripts cannot reach the admin screen. Inside a preview, page scripts cannot use cookies or `localStorage`.
+- Public pages, sitemaps and RSS use `PUBLIC_SITE_URL` and never the admin address. Sitemaps, RSS and DB page JSON (`/api/page-id`) are published as files.
+- Publication sends only changed files. Page hashes are stored at build time.
+- Site search and the AI question box do not work on the public site.
+
 ## Static image delivery (development v0.6.0)
 
 Publication includes images. Every stored file is published, including files no page references, because dynamic pages read the same `/media/filename` paths as static pages.
@@ -65,7 +75,7 @@ R2 requires registering a payment method even when usage stays in the free allow
 "r2_buckets": [{"binding": "MEDIA", "bucket_name": "your-bucket-name"}]
 ```
 
-Enter your current administrator password to begin. Each image is copied and its checksum and R2 write are verified. D1 originals remain visible while image additions, modifications and deletions are paused. Resume or cancel from the same menu after closing the browser. After all images are verified, one database transaction removes D1 image bytes and switches pointers to R2. Incomplete, failed and cancelled migrations retain D1 originals. There is no reverse-switch menu after successful migration. Save a complete JSON backup first. Image URLs and content filenames stay unchanged.
+Start from the confirmation screen. Each image is copied and its checksum and R2 write are verified. D1 originals remain visible while image additions, modifications and deletions are paused. Resume or cancel from the same menu after closing the browser. After all images are verified, one database transaction removes D1 image bytes and switches pointers to R2. Incomplete, failed and cancelled migrations retain D1 originals. There is no reverse-switch menu after successful migration. Save a complete JSON backup first. Image URLs and content filenames stay unchanged.
 
 D1 image storage is limited to 400 MB. D1 Free allows 500 MB per database; Paid allows 10 GB per database and requires a separate plan upgrade. R2 removes the 400 MB combined image limit, retaining 10 MB per image and 10,000 images. R2 Standard’s account-wide monthly free allowance is 10 GB-month, one million Class A operations and ten million Class B operations. These are billing allowances, not hard limits; excess usage is charged.
 
@@ -86,13 +96,22 @@ Rebuild generates public HTML and updates static delivery together, removing unp
 
 JPEG, PNG and WebP images can be resized and converted to WebP in the browser. Uploads default to a 2,000px maximum side. Existing conversion replaces the image and updates references with page history. GIF and SVG uploads preserve original bytes. Browser processing accepts dimensions up to 16,000px and 40 million pixels.
 
-Set a security question and answer during setup or in Site settings. Login-screen password recovery normalizes answers by lowercasing and removing whitespace, stores only hashes, limits failed attempts and revokes previous sessions. Existing users must first configure recovery.
+### Device authentication (prototype)
+
+There are no passwords. Only registered devices (browsers) can open the admin screen. Each device keeps a random token in a cookie; D1 stores only its hash.
+
+- **First device**: on the sign-in screen, enter `SETUP_TOKEN`, a username, a display name and a name for the device. A used `SETUP_TOKEN` never works again.
+- **Adding a device**: on a registered device, open Site → Devices and users → Add a device, issue a code, and enter it on the new device's sign-in screen. Codes are valid for 3 hours and work once. To invite someone, choose their username and display name under Invite someone. After five wrong codes, entry is blocked for 15 minutes.
+- **Expiry**: devices expire 30 (default), 90 or 180 days after last use. Each use extends it.
+- **Stopping a device**: stop it from the list under Devices and users. A device added within the last 3 days cannot stop other devices. When a new device is registered, other devices are told the next time they open the admin screen.
+- **Recovery**: if every device is lost, set a new value with `wrangler secret put SETUP_TOKEN` and use Recovery on the sign-in screen with an existing username. Every registered device stops, and unused codes and the MCP key are cleared.
+- Clearing browser cookies, switching browsers or using a private window is the same as losing the device. Keeping devices safe (screen lock, handling loss) is your responsibility.
 
 ### JSON backup and restore
 
 Download a single JSON backup from Site settings and select that file to restore. It includes settings, all pages, components, revisions, HTML snapshots, users and original images. Images transfer in 500KB parts. Both operations require the current administrator password. Backups contain private content, API keys and authentication hashes: store them securely. Large backups consume browser memory and transfer time; keep the screen open. Metadata is limited to 20MB.
 
-Normal restore preserves current site identity, API key, users and Cloudflare connection. Explicit account restoration replaces passwords and recovery data and signs everyone out. Sign in and rebuild afterward. Restore stages and validates data before atomic replacement; missing parts or concurrent edits leave existing data intact. In D1 mode, existing, incoming and other staged images must total at most 450MB; R2 mode stages image bytes in R2, and actual D1 free space may impose a lower limit.
+Normal restore preserves current site identity, API key, users and Cloudflare connection. Explicit account restoration also restores users; devices of users missing from the backup stop. Rebuild afterward. Restore stages and validates data before atomic replacement; missing parts or concurrent edits leave existing data intact. In D1 mode, existing, incoming and other staged images must total at most 450MB; R2 mode stages image bytes in R2, and actual D1 free space may impose a lower limit.
 
 ### D1 database backup
 
@@ -119,7 +138,7 @@ npm run db:local
 npm run dev
 ```
 
-Open `http://localhost:8787/admin`. Enter a username, display name, setup token, and a password of at least eight characters. The setup token is the `SETUP_TOKEN` in this directory's `.dev.vars`. Setup can run only once. Never publish or commit `.dev.vars`.
+Open `http://localhost:8787/admin`. Enter the setup token, a username, a display name and a name for this device. The setup token is the `SETUP_TOKEN` in this directory's `.dev.vars`. Each token value works once. Never publish or commit `.dev.vars`.
 
 Local D1/R2 state lives in `.wrangler/state/`. The database ID is a local placeholder, not a production connection. The live smoke test uses a separate `.wrangler/smoke-state/`. Existing edition data is not imported automatically.
 
@@ -147,8 +166,8 @@ The standard search form's `/index.php?page=search&q=...` and `/search?q=...` wo
 - Revision recording, selection of the last 50 revisions, edit locks, and stale-edit protection.
 - Token-based pending previews; authenticated administrators can preview drafts.
 - Component CRUD, part/wrapper/AI-document types, memos, CSS, and JavaScript.
-- Site settings, language, site memo, account creation/deletion, and password changes requiring the current password.
-- Username/display-name changes require the acting administrator's current password. Existing sessions for the changed account are revoked; changing your own account requires signing in again.
+- Site settings, language, site memo, adding and stopping devices, and inviting and deleting users.
+- Username/display-name changes. Registered devices keep working under the new username.
 - Image upload, streaming delivery and deletion without R2, up to 10 MB per file. Existing filenames are not overwritten.
 - ZIP downloads of JSON content and media; these are not a complete D1 backup/restore.
 - Bulk acquisition for pages, components, search, navigation, feeds, data backups and static builds avoids one query per content item. Platform data/CPU limits still apply.
@@ -159,7 +178,7 @@ Component JavaScript is available at `/component-js/ID.js`. Page/component JavaS
 
 Pages with DB status expose DATA/DATAROW through `/api/ID`. Draft/pending data cannot be read through public POST_MD embeds, navigation, feeds, or the data API.
 
-Page and settings saves compare their read snapshot with current storage and reject stale writes. A concurrent settings save cannot restore a revoked API key. Deleting an account or changing its password invalidates existing sessions; recreating the same username does not restore old sessions.
+Page and settings saves compare their read snapshot with current storage and reject stale writes. A concurrent settings save cannot restore a revoked API key. Deleting an account stops its devices.
 
 ## Image uploads and limits
 
@@ -232,7 +251,7 @@ The review URL is `https://example.invalid/`, with admin at `/admin`. `wrangler.
 
 The old D1 database `mikanbox` remains unchanged; this version uses the separate `mikanbox-cloud` database. Old content has not been migrated. Deployment switches the existing `mikanbox` Worker's code and database binding. The official PHP server and PHP editions remain separate.
 
-Production secrets are in `.env.production.secrets`, separate from local secrets. Never publish or commit it. For initial setup, open `/admin`, enter the file's `SETUP_TOKEN`, and choose a username, display name, and password. Setup can only be performed once.
+Production secrets are in `.env.production.secrets`, separate from local secrets. Never publish or commit it. For initial setup, open `/admin`, enter the file's `SETUP_TOKEN`, and choose a username, display name and a device name. Each token value works once.
 
 ```sh
 WRANGLER_LOG_PATH=.wrangler/logs npx wrangler d1 migrations apply DB --remote --config wrangler.production.json
