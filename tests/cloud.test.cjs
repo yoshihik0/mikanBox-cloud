@@ -432,3 +432,21 @@ test('admin stores tracking selection and page exclusion without changing wrappe
   response=await post(env,auth,{save_action:'save_page',id:'ai-page',old_id:'ai-page',expected_revision:data.revision_tag,title:'AI',status:'public_dynamic',wrapper_comp:'__none',is_html:'1',content_md:data.content_md,tracking_option_present:'1'});
   assert.equal(response.data.success,true);assert.equal((await loadPage(env,'ai-page')).exclude_tracking,false);
 });
+test('recreating a deleted username never revives its old devices',async()=>{
+  const env=environment(),auth=await login(env),second=await login(env,'second','Second');
+  assert.equal((await post(env,auth,{save_action:'delete_user',username:'second'})).data.success,true);
+  const invite=(await post(env,auth,{save_action:'device_code_create',invite:'1',username:'second',display_name:'New Second'})).data.message.match(/[0-9A-Z]{5}-[0-9A-Z]{5}/)[0];
+  assert.equal((await claim(env,invite)).status,303);
+  assert.match(await(await call(env,'/admin',undefined,second.cookie)).text(),/name="login_action"/);
+});
+test('a device on probation cannot take access away from other users',async()=>{
+  const env=environment(),auth=await login(env);env.sqlite.prepare('UPDATE device_sessions SET created_at=?').run(Date.now()-4*86400_000);
+  const code=(await post(env,auth,{save_action:'device_code_create'})).data.message.match(/[0-9A-Z]{5}-[0-9A-Z]{5}/)[0];
+  const cookie=(await claim(env,code)).headers.get('Set-Cookie').split(';')[0];
+  const fresh={cookie,csrf_token:(await require('../.test-build/src/devices.js').deviceSession(new Request('https://cloud.test/admin',{headers:{Cookie:cookie}}),env)).csrf};
+  await login(env,'other','Other');
+  for(const data of [{save_action:'delete_user',username:'other'},{save_action:'update_user',old_username:'other',username:'gone',display_name:'Gone'},{save_action:'restore_d1_time',restore_at:'2026-01-01T00:00'},{save_action:'restore_backup_json',manifest:'{}',restore_users:'1'}])
+    assert.match((await post(env,fresh,data)).data.message,/3 days|3日間/,data.save_action);
+  assert.ok(env.sqlite.prepare("SELECT 1 FROM users WHERE username='other'").get());
+  assert.equal((await post(env,auth,{save_action:'delete_user',username:'other'})).data.success,true);
+});

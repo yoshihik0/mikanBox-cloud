@@ -11,7 +11,7 @@ import type { Env, PageData, ComponentData } from '../types';
 import { loadSettings, saveSettings, loadPage, getSortedPageIds, loadComponent, saveComponent, deleteComponent, listComponentIds, listPages, listComponents, listMediaFiles, uploadMedia, deleteMedia, renameMedia, mediaUsage, getMediaObject, buildDataBackupZip, buildMediaBackupZip } from '../storage';
 import { verifyCsrf } from '../auth';
 import { authenticatedUser, getUser, listUsers, addInitialUser, rateLimit } from '../accounts';
-import { createDevice, claimCode, issueCode, cancelCode, revokeDevice, setExpiryDays, setupTokenUsable, consumeSetupToken, clearDeviceCookie, listDevices, listCodes, unseenDevices, expiryDays } from '../devices';
+import { onProbation, PROBATION_DAYS, createDevice, claimCode, issueCode, cancelCode, revokeDevice, setExpiryDays, setupTokenUsable, consumeSetupToken, clearDeviceCookie, listDevices, listCodes, unseenDevices, expiryDays } from '../devices';
 import { renderAccountsSection } from './accounts-view';
 import { pageId, componentId, pageStatus } from '../validation';
 import { revisions, saveWithRevision } from '../revisions';
@@ -71,7 +71,7 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
           await installDefaults(env,lang);
         } else if (!await getUser(env,username)) throw new Error('ユーザー名を確認してください。 / Check the username.');
         await consumeSetupToken(env,!initial);
-        device=await createDevice(env,username,deviceName,request);
+        device=await createDevice(env,username,deviceName,request,'setup');
       } else if (action==='claim' && !initial) {
         device=await claimCode(env,val(form,'code'),deviceName,request);
         if (!device) {await rateLimit(env,key,true);throw new Error('コードを確認してください。期限切れや使用済みのコードは使えません。 / Check the code. Expired or used codes do not work.');}
@@ -101,6 +101,10 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
     const action=val(form,'save_action');
     try {
       await checkPublicationLock(env,val(form,'publication_lease'));
+      // A device added within the probation period cannot take access away from others,
+      // so a leaked add code cannot be used to lock the original owner out.
+      const lockout=['delete_user','restore_d1_time'].includes(action)||(action==='update_user'&&val(form,'old_username')!==auth.user.username)||(action==='restore_backup_json'&&val(form,'restore_users')==='1');
+      if(lockout&&onProbation(auth.device))throw new Error(`追加から${PROBATION_DAYS}日間の端末では、この操作はできません。 / A device added within ${PROBATION_DAYS} days cannot do this.`);
       if(settings.demo_mode) throw new Error(t('msg_demo_mode'));
       switch(action) {
         case 'publication_begin': return json({success:true,...await beginPublication(env,request,auth.user.username,val(form,'rebuild')==='1',JSON.parse(val(form,'excluded')||'[]'))});
@@ -229,7 +233,11 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
           if(!changed[0].meta.changes)throw new Error('Account changed; reload and retry.');
           break;
         }
-        case 'delete_user': {const name=val(form,'username');if(name===auth.user.username) throw new Error('自分自身は削除できません。 / Cannot delete your current account.');await env.DB.prepare('DELETE FROM users WHERE username=?').bind(name).run();break;}
+        case 'delete_user': {
+          const name=val(form,'username');if(name===auth.user.username) throw new Error('自分自身は削除できません。 / Cannot delete your current account.');
+          // Stop the user's devices too, so recreating the same username never revives them.
+          await env.DB.batch([env.DB.prepare('DELETE FROM users WHERE username=?').bind(name),env.DB.prepare('UPDATE device_sessions SET revoked_at=? WHERE username=? AND revoked_at IS NULL').bind(Date.now(),name),env.DB.prepare('DELETE FROM device_codes WHERE username=?').bind(name)]);break;
+        }
         case 'acquire_lock': {
           const id=pageId(val(form,'id'));
           const r=await env.DB.prepare(`INSERT INTO edit_locks(post_id,owner,expires_at) VALUES(?,?,?) ON CONFLICT(post_id) DO UPDATE SET owner=excluded.owner,expires_at=excluded.expires_at WHERE edit_locks.owner=excluded.owner OR edit_locks.expires_at<?`).bind(id,auth.user.username,Date.now()+120000,Date.now()).run();

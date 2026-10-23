@@ -9,7 +9,9 @@ CREATE TABLE device_sessions (
   expires_at INTEGER NOT NULL,
   revoked_at INTEGER,
   seen_until INTEGER NOT NULL,
-  user_agent TEXT NOT NULL DEFAULT ''
+  user_agent TEXT NOT NULL DEFAULT '',
+  -- 'setup' (SETUP_TOKEN, the root of trust) or 'code' (added from another device)
+  via TEXT NOT NULL DEFAULT 'code'
 );
 CREATE TABLE device_codes (
   code_hash TEXT PRIMARY KEY,

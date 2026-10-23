@@ -10,7 +10,7 @@ export const CODE_HOURS=3;
 // be used to lock the original owner out before they notice the new device.
 export const PROBATION_DAYS=3;
 const DAY=86400_000,RENEW_EVERY=3600_000;
-export interface Device {id:string;username:string;name:string;created_at:number;last_used_at:number;expires_at:number;revoked_at:number|null;seen_until:number;user_agent:string}
+export interface Device {id:string;username:string;name:string;created_at:number;last_used_at:number;expires_at:number;revoked_at:number|null;seen_until:number;user_agent:string;via:'setup'|'code'}
 export interface DeviceCode {code_hash:string;username:string;display_name:string;created_by:string;created_at:number;expires_at:number;used_at:number|null}
 const hex=(bytes:ArrayBuffer)=>[...new Uint8Array(bytes)].map(b=>b.toString(16).padStart(2,'0')).join('');
 export const sha256=async(text:string)=>hex(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(text)));
@@ -21,10 +21,10 @@ export function deviceCookie(token:string){return `${DEVICE_COOKIE}=${token}; Ht
 export function clearDeviceCookie(){return `${DEVICE_COOKIE}=; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=0`;}
 function readCookie(request:Request){return request.headers.get('Cookie')?.match(new RegExp(`(?:^|;\\s*)${DEVICE_COOKIE}=([A-Za-z0-9_-]{43})(?:;|$)`))?.[1]||null;}
 
-export async function createDevice(env:Env,username:string,name:string,request:Request){
+export async function createDevice(env:Env,username:string,name:string,request:Request,via:'setup'|'code'='code'){
  const token=randomToken(),now=Date.now(),id=crypto.randomUUID();
- await env.DB.prepare('INSERT INTO device_sessions(id,username,token_hash,name,created_at,last_used_at,expires_at,seen_until,user_agent) VALUES(?,?,?,?,?,?,?,?,?)')
-  .bind(id,username,await sha256(token),deviceName(name),now,now,now+await expiryDays(env)*DAY,now,(request.headers.get('User-Agent')||'').slice(0,200)).run();
+ await env.DB.prepare('INSERT INTO device_sessions(id,username,token_hash,name,created_at,last_used_at,expires_at,seen_until,user_agent,via) VALUES(?,?,?,?,?,?,?,?,?,?)')
+  .bind(id,username,await sha256(token),deviceName(name),now,now,now+await expiryDays(env)*DAY,now,(request.headers.get('User-Agent')||'').slice(0,200),via).run();
  return {id,cookie:deviceCookie(token)};
 }
 const deviceName=(name:string)=>name.trim().slice(0,60)||'—';
@@ -68,7 +68,8 @@ export async function cancelCode(env:Env,hash:string){await env.DB.prepare('DELE
 
 // ---- Device list ----
 export async function listDevices(env:Env){return (await env.DB.prepare('SELECT * FROM device_sessions WHERE revoked_at IS NULL AND expires_at>? ORDER BY created_at').bind(Date.now()).all<Device>()).results;}
-export function onProbation(device:Device){return Date.now()-device.created_at<PROBATION_DAYS*DAY;}
+// Only devices added with a code are on probation; SETUP_TOKEN proves control of the Cloudflare account.
+export function onProbation(device:Device){return device.via!=='setup'&&Date.now()-device.created_at<PROBATION_DAYS*DAY;}
 export async function revokeDevice(env:Env,actor:Device,id:string){
  if(id!==actor.id&&onProbation(actor))throw new Error(`追加から${PROBATION_DAYS}日間は、ほかの端末を止められません。 / A device added within ${PROBATION_DAYS} days cannot stop other devices.`);
  await env.DB.prepare('UPDATE device_sessions SET revoked_at=? WHERE id=? AND revoked_at IS NULL').bind(Date.now(),id).run();

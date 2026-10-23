@@ -142,6 +142,8 @@ export async function commitBackupRestore(env:Env,id:string):Promise<{pages:numb
  }
  statements.push(env.DB.prepare("INSERT INTO settings(key,value) VALUES('settings',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").bind(JSON.stringify(restored)));
  if(s.restore_users){const generation=crypto.getRandomValues(new Uint32Array(1))[0]+Date.now();statements.push(env.DB.prepare('DELETE FROM users'));statements.push(env.DB.prepare(`INSERT INTO users(username,display_name,password_hash,auth_version,security_question,security_answer_hash) SELECT json_extract(value,'$.username'),json_extract(value,'$.display_name'),json_extract(value,'$.password_hash'),?,COALESCE(json_extract(value,'$.security_question'),''),COALESCE(json_extract(value,'$.security_answer_hash'),'') FROM (${input('users')})`).bind(generation,id));statements.push(env.DB.prepare('DELETE FROM login_attempts'));}
+ // Devices of users absent from the restored set stop for good, and pending codes are dropped.
+ if(s.restore_users)statements.push(env.DB.prepare('UPDATE device_sessions SET revoked_at=? WHERE revoked_at IS NULL AND username NOT IN (SELECT username FROM users)').bind(Date.now()),env.DB.prepare('DELETE FROM device_codes'));
  statements.push(env.DB.prepare('DELETE FROM backup_sessions WHERE id=?').bind(id));statements.push(env.DB.prepare('DELETE FROM backup_commit_guard WHERE session_id=?').bind(id));
  try{await env.DB.batch(statements);}catch{fail('Restore was not applied: incomplete images, concurrent edits, or D1 capacity. Existing data remains unchanged.');}
  return {pages:desired.filter(r=>r.kind==='posts').length,components:desired.filter(r=>r.kind==='components').length,images:desired.filter(r=>r.kind==='media').length,accountsRestored:!!s.restore_users};
