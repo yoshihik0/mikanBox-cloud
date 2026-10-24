@@ -7,6 +7,7 @@ import type { Env, PageData, ComponentData, Settings } from './types';
 import { MikanBoxMarkdown } from './markdown';
 import { scopeCss } from './cssScope';
 import { createTranslator } from './i18n';
+import { trackingSnippets } from './tracking';
 import {
   loadPage, loadComponent, getSortedPageIds, isPublicStatus, listPages,
 } from './storage';
@@ -230,7 +231,9 @@ export class MikanBoxRenderer {
     // 4. コンポーネントを再帰的に展開
     html = await this.parseComponents(html);
 
-    const trackingId = String(this.siteSettings.tracking_component || '');
+    // Code or ID settings win over the legacy tracking component and are inserted verbatim.
+    const trackingCode = this.excludeTracking ? null : trackingSnippets(this.siteSettings);
+    const trackingId = trackingCode ? '' : String(this.siteSettings.tracking_component || '');
     const tracking = trackingId ? await this.readComponent(trackingId) : null;
     let trackingHtml = '';
     const trackingMarker = '\x02TRACKING\x03';
@@ -257,7 +260,8 @@ export class MikanBoxRenderer {
     trackingHtml = trackingOffset >= 0 ? html.slice(trackingOffset + trackingMarker.length) : '';
     if (trackingOffset >= 0) html = html.slice(0, trackingOffset);
     html = html.replace(/\x04COMMENT(\d+)\x04/g,(_,index)=>comments[Number(index)] || '');
-    html = this.completeHead(html, pageTitle, pageDesc, this.resolveAbsoluteUrl(resolveMediaPath(ogpImage)), trackingHtml);
+    html = this.completeHead(html, pageTitle, pageDesc, this.resolveAbsoluteUrl(resolveMediaPath(ogpImage)), trackingCode ? trackingCode.head : trackingHtml);
+    if (trackingCode) html = this.insertBodyStart(html, trackingCode.body);
 
     // 8. CSSバッファを処理してHEAD_CSSに差し込む
     const processedCss = this.globalCssBuffer.map(cssLine => {
@@ -279,6 +283,15 @@ export class MikanBoxRenderer {
     html=html.includes('</body>')?html.replace('</body>',()=>aiScript+'</body>'):html+aiScript;
     html = html.replace(/\x04COMMENT(\d+)\x04/g,(_,index)=>comments[Number(index)] || '');
     return { html, status: responseStatus };
+  }
+
+  private insertBodyStart(html: string, code: string): string {
+    if (!code) return html;
+    const pattern = /<!--[\s\S]*?-->|<(script|style|textarea|title)\b[^>]*>[\s\S]*?<\/\1\s*>|<\/?[a-z][a-z0-9:-]*\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi;
+    const body = [...html.matchAll(pattern)].find(token => /^<body\b/i.test(token[0]));
+    if (!body) return html;
+    const at = body.index! + body[0].length;
+    return html.slice(0, at) + code + html.slice(at);
   }
 
   private completeHead(html: string, title: string, description: string, image: string, tracking: string): string {

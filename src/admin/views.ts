@@ -8,6 +8,7 @@ import type { Settings, PageData, ComponentData } from '../types';
 import type { User } from '../accounts';
 import type { Revision } from '../revisions';
 import {CLOUD_VERSION} from '../version';
+import {trackingConfigured} from '../tracking';
 import type {PublicationStatus,PublicState} from '../publish-status';
 import type {CloudRelease} from '../cloud-release';
 
@@ -680,7 +681,7 @@ export function renderPageEditor(opts: {
                                 ${wrapperOptions}
                             </select>
                             <small class="sub-text sub-text-block">${t('head_completion_hint')}</small>
-                            ${opts.settings.tracking_component ? `<input type="hidden" name="tracking_option_present" value="1"><label class="checkbox-label tracking-exclusion"><input type="checkbox" name="exclude_tracking" value="1" ${d.exclude_tracking?'checked':''}> ${t('exclude_tracking_label')}</label>` : ''}
+                            ${trackingConfigured(opts.settings) ? `<input type="hidden" name="tracking_option_present" value="1"><label class="checkbox-label tracking-exclusion"><input type="checkbox" name="exclude_tracking" value="1" ${d.exclude_tracking?'checked':''}> ${t('exclude_tracking_label')}</label>` : ''}
                         </div>
                         <div class="form-group grid-span-1">
                             <label class="sub-label">${t('label_category')} ${t('hint_comma_separated')}</label>
@@ -1069,7 +1070,7 @@ export function renderSiteView(opts: {
   csrf: string;
   accountsHtml?: string;
   helpFile: string;
-  trackingComponents?: Array<{id:string}>;
+  trackingLegacy?: {id:string;html:string|null;exists:boolean};
   users?: User[]; username?:string;
   release?:CloudRelease;
   lang?:string;
@@ -1200,9 +1201,40 @@ export function renderSiteView(opts: {
                         </div>
                         <div class="form-group mt-15">
                             <h3>${t('label_common_loading')}</h3>
-                            <label>${t('label_tracking_component')}</label>
-                            <select name="tracking_component"><option value="">${t('label_none')}</option>${(opts.trackingComponents||[]).map(c=>`<option value="${h(c.id)}" ${settings.tracking_component===c.id?'selected':''}>${h(c.id)}</option>`).join('')}</select>
-                            <small class="sub-text sub-text-block">${t('tracking_component_hint')}</small>
+                            ${(()=>{
+                              let headCode=String(settings.tracking_head_code||''),bodyCode=String(settings.tracking_body_code||''),legacyNotice='';
+                              const legacy=opts.trackingLegacy;
+                              if(!headCode&&!bodyCode&&!settings.tracking_id&&settings.tracking_component&&legacy){
+                                if(legacy.html!==null)headCode=legacy.html;else if(legacy.exists)legacyNotice=legacy.id;
+                              }
+                              const inUse=!!headCode.trim()||!!bodyCode.trim();
+                              const messages=JSON.stringify({idle:t('tracking_id_hint'),busy:t('tracking_id_overridden')}).replace(/</g,'\\u003c').replace(/&/g,'\\u0026');
+                              return `<label>${t('label_tracking_id')}</label>
+                            <input type="text" name="tracking_id" id="tracking-id" value="${h(settings.tracking_id||'')}" placeholder="G-XXXXXXXXXX / GTM-XXXXXXX" pattern="([Gg][Tt][Mm]|[Gg])-[A-Za-z0-9]{4,}" ${inUse?'readonly':''}>
+                            <small class="sub-text sub-text-block" id="tracking-id-hint">${t(inUse?'tracking_id_overridden':'tracking_id_hint')}</small>
+                            ${legacyNotice?`<small class="sub-text sub-text-block">${t('tracking_legacy_notice',h(legacyNotice))}</small>`:''}
+                            <details class="mt-10" ${inUse?'open':''}>
+                                <summary>${t('label_tracking_code')}</summary>
+                                <label class="sub-label">${t('label_tracking_head_code')}</label>
+                                <textarea name="tracking_head_code" class="tracking-code" rows="5" spellcheck="false">${h(headCode)}</textarea>
+                                <label class="sub-label">${t('label_tracking_body_code')}</label>
+                                <textarea name="tracking_body_code" class="tracking-code" rows="3" spellcheck="false">${h(bodyCode)}</textarea>
+                                <small class="sub-text sub-text-block">${t('tracking_code_hint')}</small>
+                            </details>
+                            <script>
+                            (function () {
+                                var id = document.getElementById('tracking-id'), hint = document.getElementById('tracking-id-hint');
+                                var codes = document.querySelectorAll('textarea.tracking-code');
+                                var messages = ${messages};
+                                function sync() {
+                                    var used = Array.prototype.some.call(codes, function (c) { return c.value.trim() !== ''; });
+                                    id.readOnly = used;
+                                    hint.textContent = used ? messages.busy : messages.idle;
+                                }
+                                codes.forEach(function (c) { c.addEventListener('input', sync); });
+                            })();
+                            </script>`;
+                            })()}
                         </div>
                         <button type="submit" class="btn btn-blue mt-10">${getIcon('save')} ${t('btn_save')}</button>
                     </form>

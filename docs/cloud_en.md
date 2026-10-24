@@ -286,7 +286,7 @@ The three editions share a filter selector to the right of “Ask AI”: All, Se
 Page and component CSS is inserted automatically across editions. `{{HEAD_CSS}}` optionally specifies the insertion point; only the first occurrence outputs CSS, and remaining tags are removed. If omitted, CSS is inserted before `</head>`, or at the beginning of the HTML if no closing head tag exists. Text inside comments or script/style/textarea/title elements is not treated as an insertion point.
 
 
-Supports the None wrapper option, missing head metadata completion, a shared tracking part and page exclusions. Page editor description/content spacing, Raw HTML checkbox placement and JavaScript field height match the PHP editions. See the bundled common help for details.
+Supports the None wrapper option, missing head metadata completion, a shared tracking ID or code (head and right after the opening body tag) and page exclusions. Page editor description/content spacing, Raw HTML checkbox placement and JavaScript field height match the PHP editions. See the bundled common help for details.
 
 The import/export screen follows SQLite’s status cards, ZIP import, WordPress XML import and execution log, followed by CSV and Cloud-specific complete JSON backup/restore. ZIP/XML add content while retaining existing IDs; images, accounts and site settings are not imported. Limits: 20 MB files, 15 MB ZIP expansion, 1 MB imported content and 300 records. Settings fields and category add-button alignment use the shared PHP CSS.
 

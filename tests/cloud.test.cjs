@@ -408,14 +408,35 @@ test('common head preserves AI metadata, supplies missing values, and respects t
 test('admin stores tracking selection and page exclusion without changing wrapper choice',async()=>{
   const env=environment(),auth=await login(env);
   await saveComponent(env,'Tracking',{html:'<script>window.tracking=1;</script>',is_global:true});
-  let response=await post(env,auth,{save_action:'save_settings',tracking_component:'Tracking'});
-  assert.equal(response.data.success,true);assert.equal((await loadSettings(env)).tracking_component,'Tracking');
+  await saveSettings(env,{...await loadSettings(env),tracking_component:'Tracking'});
+  let html=await(await call(env,'/admin?view=site',undefined,auth.cookie)).text();
+  assert.ok(html.includes('window.tracking=1;'),'legacy tracking component is offered in the code field');
+  let response=await post(env,auth,{save_action:'save_settings',tracking_id:'gtm-abcd12',tracking_head_code:'<script>window.tracking=1;</script>',tracking_body_code:''});
+  assert.equal(response.data.success,true);let saved=await loadSettings(env);assert.equal(saved.tracking_id,'GTM-ABCD12');assert.equal(saved.tracking_head_code,'<script>window.tracking=1;</script>');assert.equal(saved.tracking_component,'');
+  response=await post(env,auth,{save_action:'save_settings',tracking_id:'not an id',tracking_head_code:'',tracking_body_code:''});
+  assert.equal((await loadSettings(env)).tracking_id,'');
+  await post(env,auth,{save_action:'save_settings',tracking_id:'gtm-abcd12',tracking_head_code:'',tracking_body_code:''});
   response=await post(env,auth,{save_action:'save_page',id:'ai-page',title:'AI',status:'public_dynamic',wrapper_comp:'__none',is_html:'1',content_md:'<html><head></head><body>AI</body></html>',tracking_option_present:'1',exclude_tracking:'1'});
   assert.equal(response.data.success,true);let data=await loadPage(env,'ai-page');assert.equal(data.wrapper_comp,'__none');assert.equal(data.exclude_tracking,true);
-  const html=await(await call(env,'/admin?view=pages&edit=ai-page',undefined,auth.cookie)).text();
+  html=await(await call(env,'/admin?view=pages&edit=ai-page',undefined,auth.cookie)).text();
   assert.ok(html.includes('value="__none" selected'));assert.ok(html.includes('name="exclude_tracking"'));assert.ok(html.includes('tracking-exclusion'));
   response=await post(env,auth,{save_action:'save_page',id:'ai-page',old_id:'ai-page',expected_revision:data.revision_tag,title:'AI',status:'public_dynamic',wrapper_comp:'__none',is_html:'1',content_md:data.content_md,tracking_option_present:'1'});
   assert.equal(response.data.success,true);assert.equal((await loadPage(env,'ai-page')).exclude_tracking,false);
+});
+test('tracking ID and code settings insert head and body tags and honor page exclusion',async()=>{
+  const env=environment();
+  const raw='<!DOCTYPE html><html><head><title>T</title></head><body class=original><h1>Body</h1></body></html>';
+  const data={...page('public_dynamic',raw),title:'T',wrapper_comp:'__none',is_html:true};
+  await savePage(env,'ids',data);
+  const render=async settings=>(await new MikanBoxRenderer(env,settings,new Request('https://cloud.test/ids')).render('ids')).html;
+  let html=await render({tracking_id:'gtm-abcd12'});
+  assert.ok(html.indexOf('gtm.js?id=')>0&&html.indexOf('gtm.js?id=')<html.indexOf('</head>'));
+  const ns=html.indexOf('ns.html?id=GTM-ABCD12');assert.ok(ns>html.indexOf('<body')&&ns<html.indexOf('<h1>'));
+  html=await render({tracking_id:'G-ABCD12'});assert.ok(html.includes('gtag/js?id=G-ABCD12')&&!html.includes('<noscript>'));
+  html=await render({tracking_id:'GTM-ABCD12',tracking_head_code:'<script>window.hc=1;</script>',tracking_body_code:'<noscript>nb</noscript>'});
+  assert.ok(html.indexOf('window.hc=1;')<html.indexOf('</head>')&&html.indexOf('<noscript>nb</noscript>')>html.indexOf('<body')&&!html.includes('gtm.js'));
+  await savePage(env,'ids',{...data,exclude_tracking:true});
+  assert.ok(!(await render({tracking_id:'GTM-ABCD12'})).includes('googletagmanager.com'));
 });
 test('recreating a deleted username never revives its old devices',async()=>{
   const env=environment(),auth=await login(env),second=await login(env,'second','Second');
