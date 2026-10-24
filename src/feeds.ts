@@ -10,11 +10,14 @@ function esc(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+// Feeds are also published as static files, hashed and then uploaded in two reads,
+// so they must not depend on the current time. Unknown dates are left out.
 function rfc822(dateStr: string): string {
-  const d = new Date(dateStr);
-  if (isNaN(d.getTime())) return new Date().toUTCString();
+  const d = new Date(dateStr || '');
+  if (isNaN(d.getTime())) return '';
   return d.toUTCString().replace('GMT', '+0000');
 }
+const lastBuild = (latest?: string) => { const date = rfc822(latest || ''); return date ? `  <lastBuildDate>${date}</lastBuildDate>\n` : ''; };
 
 export async function generateSitemapXml(env: Env, settings: Settings, request: Request): Promise<string> {
   const renderer = new MikanBoxRenderer(env, settings, request);
@@ -28,8 +31,8 @@ export async function generateSitemapXml(env: Env, settings: Settings, request: 
     if (!data) continue;
     if (!isPublicStatus(data.status)) continue;
     const loc = esc(siteUrl + '/' + (pageId === 'index' ? '' : pageId));
-    const lastmod = (data.updated_at || new Date().toISOString()).slice(0, 10);
-    xml += `  <url>\n    <loc>${loc}</loc>\n    <lastmod>${lastmod}</lastmod>\n  </url>\n`;
+    const lastmod = (data.updated_at || '').slice(0, 10);
+    xml += `  <url>\n    <loc>${loc}</loc>\n${lastmod ? `    <lastmod>${lastmod}</lastmod>\n` : ''}  </url>\n`;
   }
 
   xml += '</urlset>\n';
@@ -59,16 +62,16 @@ export async function generateRssXml(env: Env, settings: Settings, request: Requ
 
   let xml = '<?xml version="1.0" encoding="UTF-8"?>\n<rss version="2.0">\n<channel>\n';
   xml += `  <title>${siteTitle}</title>\n  <link>${siteUrl}/</link>\n`;
-  xml += `  <description>${siteDesc}</description>\n  <lastBuildDate>${new Date().toUTCString()}</lastBuildDate>\n`;
+  xml += `  <description>${siteDesc}</description>\n` + lastBuild(limited[0]?.data?.updated_at);
 
   for (const item of limited) {
     const d = item.data!;
     const title = esc(d.title || item.id);
     const desc = esc(d.description || '');
     const link = esc(siteUrl + '/' + (item.id === 'index' ? '' : item.id));
-    const pubDate = rfc822(d.updated_at || new Date().toISOString());
+    const pubDate = rfc822(d.updated_at || '');
     xml += `  <item>\n    <title>${title}</title>\n    <link>${link}</link>\n`;
-    xml += `    <description>${desc}</description>\n    <pubDate>${pubDate}</pubDate>\n`;
+    xml += `    <description>${desc}</description>\n${pubDate ? `    <pubDate>${pubDate}</pubDate>\n` : ''}`;
     xml += `    <guid>${link}</guid>\n  </item>\n`;
   }
 
@@ -104,7 +107,7 @@ export async function generatePodcastXml(env: Env, settings: Settings, request: 
   xml += '<rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">\n<channel>\n';
   xml += `  <title>${siteTitle}</title>\n  <link>${siteUrl}/</link>\n`;
   xml += `  <description>${siteDesc}</description>\n  <language>ja</language>\n`;
-  xml += `  <lastBuildDate>${new Date().toUTCString()}</lastBuildDate>\n`;
+  xml += lastBuild(items[0]?.data?.updated_at);
   xml += `  <itunes:author>${author}</itunes:author>\n`;
   xml += `  <itunes:summary>${siteDesc}</itunes:summary>\n`;
   if (ogpImage) xml += `  <itunes:image href="${esc(ogpImage)}"/>\n`;
@@ -138,10 +141,10 @@ export async function generatePodcastXml(env: Env, settings: Settings, request: 
     const title = esc(d.title || item.id);
     const desc = esc(d.description || '');
     const link = esc(siteUrl + '/' + item.id);
-    const pubDate = rfc822(d.updated_at || new Date().toISOString());
+    const pubDate = rfc822(d.updated_at || '');
 
     xml += `  <item>\n    <title>${title}</title>\n    <link>${link}</link>\n`;
-    xml += `    <description>${desc}</description>\n    <pubDate>${pubDate}</pubDate>\n`;
+    xml += `    <description>${desc}</description>\n${pubDate ? `    <pubDate>${pubDate}</pubDate>\n` : ''}`;
     xml += `    <guid>${link}</guid>\n`;
     xml += `    <enclosure url="${esc(audioFile)}" length="${fileSize}" type="${mime}"/>\n`;
     if (duration) xml += `    <itunes:duration>${duration}</itunes:duration>\n`;

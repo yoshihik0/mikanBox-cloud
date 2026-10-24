@@ -63,3 +63,10 @@ test('publication creates an assets-only version on the public Worker',async()=>
   assert.ok(calls.every(call=>!call.includes('cloud-admin')&&!call.includes('content/v2')),calls.join('\n'));
  }finally{global.fetch=original;}
 });
+test('published feeds do not change between the hashing read and the upload read',async()=>{
+ const env=split(environment());await savePage(env,'index',page('public_static'));await savePage(env,'audio',{...page('public_static'),podcast_audio:'a.mp3'});
+ const reads=async()=>Promise.all(['/rss.xml','/podcast.xml','/sitemap.xml'].map(async path=>decode.decode((await readPublicationEntry(env,admin,path)).body)));
+ const first=await reads(),RealDate=Date;
+ global.Date=class extends RealDate{constructor(...args){super(...(args.length?args:[RealDate.now()+3600_000]));}static now(){return RealDate.now()+3600_000;}};
+ try{assert.deepEqual(await reads(),first);}finally{global.Date=RealDate;}
+});
