@@ -33,10 +33,16 @@ function csrfField(token: string): string {
   return `<input type="hidden" name="csrf_token" value="${h(token)}">`;
 }
 
-const statuses = ['draft','pending','public_dynamic','public_static','db'];
-function statusClass(status: string) { return ({public_dynamic:'dynamic',public_static:'static'} as Record<string,string>)[status] || status; }
+// The Cloud edition publishes statically only, so 'public_static' is simply "public".
+const statuses = ['draft','pending','public_static','db'];
+function statusClass(status: string) { return ({public_dynamic:'static',public:'static',public_static:'static'} as Record<string,string>)[status] || status; }
+function statusLabel(t: (key:string)=>string, status: string) {
+  // The shared label reads "公開(静的)" / "Public (static)"; drop the mode in parentheses.
+  return status === 'public_static' ? t('page_status_public_static').replace(/\s*[(（].*$/, '') : t('page_status_'+status);
+}
 function statusOptions(t: (key:string)=>string, selected: string) {
-  return statuses.map(status=>`<option value="${status}" ${selected===status?'selected':''}>${t('page_status_'+status)}</option>`).join('');
+  const current = ['public','public_dynamic'].includes(selected) ? 'public_static' : selected;
+  return statuses.map(status=>`<option value="${status}" ${current===status?'selected':''}>${statusLabel(t,status)}</option>`).join('');
 }
 export function renderLoginPage(opts: {lang:string; initial:boolean; error:string; t:(key:string,...args:(string|number)[])=>string; csrf:string}):string {
   const {lang,initial,error,t,csrf}=opts, ja=lang==='ja';
@@ -421,8 +427,7 @@ ${opts.mediaEnabled?`<div id="drop-zone">${getIcon('cloud')} ${t('hint_drop_uplo
                 const selectEl = document.querySelector(\`select[onchange*="'\${id}'"]\`);
                 if (selectEl) {
                     selectEl.classList.remove('static', 'dynamic', 'draft', 'db');
-                    if (newStatus === 'public_dynamic') selectEl.classList.add('dynamic');
-                    else if (newStatus === 'public_static') selectEl.classList.add('static');
+                    if (newStatus === 'public_static') selectEl.classList.add('static');
                     else if (newStatus === 'pending') selectEl.classList.add('pending');
                     else if (newStatus === 'db') selectEl.classList.add('db');
                     else selectEl.classList.add('draft');
@@ -534,7 +539,7 @@ export function renderPagesView(opts: {
   const hasEditor = view === 'pages' && (editId !== null || hasNew);
 
   const rows = pages.map(({ id: pid, data: d }) => {
-    const status=d.status === 'public' ? 'public_dynamic' : d.status || 'draft';
+    const status=['public','public_dynamic'].includes(d.status) ? 'public_static' : d.status || 'draft';
     const cls=statusClass(status);
     const previewUrl = `/preview/${pid}`;
 
@@ -618,7 +623,7 @@ export function renderPageEditor(opts: {
 }): string {
   const { t, editId, editData, csrf, helpFile, wrapperComponents, allCategories } = opts;
   const d = editData || {} as PageData;
-  const status=d.status === 'public' ? 'public_dynamic' : d.status||'draft';
+  const status=['public','public_dynamic'].includes(d.status) ? 'public_static' : d.status||'draft';
   const previewUrl = editId ? `/preview/${editId}` : '/';
 
   const wrapperOptions = wrapperComponents.map(c =>
@@ -1068,8 +1073,6 @@ export function renderSiteView(opts: {
   users?: User[]; username?:string;
   release?:CloudRelease;
   lang?:string;
-  // Fixed at deployment by STATIC_DELIVERY; this screen cannot change it.
-  deliveryMode?:'static'|'worker';
 }): string {
   const { t, settings, csrf, helpFile } = opts;
   const lang = opts.lang || settings.system_lang || '';

@@ -24,7 +24,6 @@ test('static ZIP exports only built public snapshots without settings, users, AI
   await snapshot(env,'index','<h1>Saved build</h1>');
   await snapshot(env,'private','SECRET_DRAFT','draft');
   await snapshot(env,'pending','SECRET_PENDING','pending');
-  await snapshot(env,'dynamic','Not static','public_dynamic');
   await savePage(env,'unbuilt',{title:'New',status:'public_static'});
   await saveComponent(env,'DESIGN.md',{html:'SECRET_AI',is_ai_doc:true,js:'SECRET_JS'});
   const files=unzip(await buildStaticExportZip(env,request,{structure:'flat'}));

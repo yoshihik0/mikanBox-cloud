@@ -12,8 +12,9 @@ export function componentId(id: string): string {
   if (!validId(id, true)) throw new Error('コンポーネントIDを確認してください。 / Invalid component ID.');
   return id;
 }
+/** 'public_dynamic' and 'public' are accepted for older clients and stored as 'public_static'. */
 export function pageStatus(status: string) {
-  if (!['draft', 'pending', 'public_dynamic', 'public_static', 'db'].includes(status))
+  if (!['draft', 'pending', 'public', 'public_dynamic', 'public_static', 'db'].includes(status))
     throw new Error('公開状態を確認してください。 / Invalid status.');
-  return status as 'draft' | 'pending' | 'public_dynamic' | 'public_static' | 'db';
+  return (['public', 'public_dynamic'].includes(status) ? 'public_static' : status) as 'draft' | 'pending' | 'public_static' | 'db';
 }

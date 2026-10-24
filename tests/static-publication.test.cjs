@@ -16,7 +16,7 @@ async function snapshot(env,id,html,status='public_static') {
 }
 test('publication manifest includes current built public pages and every stored image without loading secrets and snapshot bodies',async()=>{
   const value=env();await saveSettings(value,{api_key:'SECRET_KEY'});
-  await snapshot(value,'index','<h1>Published</h1>');await snapshot(value,'draft','SECRET_DRAFT','draft');await snapshot(value,'pending','SECRET_PENDING','pending');await snapshot(value,'dynamic','Not static','public_dynamic');
+  await snapshot(value,'index','<h1>Published</h1>');await snapshot(value,'draft','SECRET_DRAFT','draft');await snapshot(value,'pending','SECRET_PENDING','pending');
   await savePage(value,'unbuilt',{title:'Not built',status:'public_static'});
   await saveComponent(value,'card',{html:'',js:'publicJS()'});await saveComponent(value,'DESIGN.md',{html:'SECRET_DOC',is_ai_doc:true,js:'SECRET_JS()'});
   const image=new Uint8Array([137,80,78,71,13,10,26,10]);await uploadMedia(value,'unused-private-context.png',image.buffer,'image/png');
@@ -24,7 +24,7 @@ test('publication manifest includes current built public pages and every stored 
   assert.ok(paths.includes('/index.html'));assert.ok(paths.includes('/component-js/card.js'));
   // Images are published even when no static page references them, because dynamic pages read the same paths.
   assert.ok(paths.includes('/media/unused-private-context.png'));
-  for(const path of ['/draft.html','/pending.html','/dynamic.html','/unbuilt.html','/component-js/DESIGN.md.js','/data/settings.json'])assert.equal(paths.includes(path),false);
+  for(const path of ['/draft.html','/pending.html','/unbuilt.html','/component-js/DESIGN.md.js','/data/settings.json'])assert.equal(paths.includes(path),false);
   assert.equal(manifest.count,paths.length);assert.ok(manifest.totalKnownBytes>image.length);assert.doesNotMatch(JSON.stringify(manifest),/SECRET|Published/);
   assert.deepEqual((await readPublicationEntry(value,request,'/media/unused-private-context.png')).body,image);
 });

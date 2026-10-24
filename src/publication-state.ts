@@ -2,7 +2,6 @@ import type {Env} from './types';
 // Static files bypass the Worker. Published files must be withdrawn before
 // changing their source to private or deleting it.
 export async function publishedPaths(env:Env):Promise<string[]> {
-  if(env.STATIC_DELIVERY!=='true')return [];
   const row=await env.DB.prepare("SELECT value FROM settings WHERE key='static_publication'").first<{value:string}>();
   return row?JSON.parse(row.value).paths||[]:[];
 }

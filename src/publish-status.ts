@@ -1,9 +1,9 @@
 import type {Env} from './types';
 import {sha256} from './devices';
 import type {PageData} from './types';
+import {normalizeStatus} from './storage';
 /** Hash of the page source as loaded, so the build and the page list compare the same thing. */
 export const sourceHash=(data:PageData)=>sha256(JSON.stringify(data));
-import {splitMode} from './site-split';
 // Where each page stands on the public site, for the globe icon in the page list.
 // live: the public page shows the current source. stale: it is public but older than
 // the source, or not public yet. none: never published. A change that alters other
@@ -15,16 +15,13 @@ export async function publicationStatus(env:Env,origin:string,list:Array<{id:str
  const publication=await env.DB.prepare("SELECT value FROM settings WHERE key='static_publication'").first<{value:string}>();
  const published=publication?JSON.parse(publication.value) as {paths?:string[];published_at?:string}:{};
  const paths=new Set(published.paths||[]),publishedAt=published.published_at||null;
- // Without a separate delivery target, a built page is served as soon as it is built.
- const deployed=splitMode(env)||env.STATIC_DELIVERY==='true';
  const built=new Map((await env.DB.prepare('SELECT id,built_at,source_hash FROM static_pages').all<{id:string;built_at:string;source_hash:string|null}>()).results.map(row=>[row.id,row]));
  const pages:Record<string,PublicState>={};let stale=0;
  for(const row of list){
-  const status=row.data.status==='public'?'public_dynamic':row.data.status||'draft',url=base+(row.id==='index'?'/':'/'+row.id);
-  if(status==='public_dynamic'&&!splitMode(env)){pages[row.id]={url,state:'live'};continue;}
+  const status=normalizeStatus(row.data.status||'draft'),url=base+(row.id==='index'?'/':'/'+row.id);
   const page=built.get(row.id),path=row.id==='index'?'/index.html':'/'+row.id+'.html';
-  const onSite=deployed?paths.has(path):!!page;
-  const current=status==='public_static'&&!!page&&page.source_hash===await sourceHash(row.data)&&(!deployed||(!!publishedAt&&page.built_at<=publishedAt));
+  const onSite=paths.has(path);
+  const current=status==='public_static'&&!!page&&page.source_hash===await sourceHash(row.data)&&!!publishedAt&&page.built_at<=publishedAt;
   const state=current&&onSite?'live':onSite?'stale':'none';
   if(state!=='live'&&(status==='public_static'||onSite))stale++;
   pages[row.id]={url,state};

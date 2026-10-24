@@ -36,14 +36,14 @@ test('WordPress WXR fields map to mikanBox page data and duplicate slugs are rej
     {title:'Private',slug:'private',status:'private',content_md:'Secret'}
   ]});
   assert.deepEqual(payload.pages.map(p=>[p.id,p.data.status,p.data.category]),[
-    ['hello-world','public_dynamic','News'],['pending','pending',''],['private','draft','']
+    ['hello-world','public_static','News'],['pending','pending',''],['private','draft','']
   ]);
   assert.equal(payload.pages[0].data.content_md,'# Hello');
   assert.equal(payload.pages[0].data.preview_token,undefined);
   await assert.rejects(importWordPressContent(environment(),{pages:[{slug:'duplicate',title:'One'},{slug:'duplicate',title:'Two'}]}),/Duplicate page ID/);
 });
 
-test('legacy public status becomes dynamic and pending pages receive fresh preview tokens',async()=>{
+test('legacy public statuses become public and pending pages receive fresh preview tokens',async()=>{
   const env=environment();
   const first=await importContentPackage(env,{pages:[
     {id:'legacy-public',data:{title:'Public',status:'public'}},
@@ -52,7 +52,7 @@ test('legacy public status becomes dynamic and pending pages receive fresh previ
   assert.equal(first.pages,2);
   const publicData=JSON.parse((await env.DB.prepare("SELECT data FROM posts WHERE id='legacy-public'").first()).data);
   const pendingData=JSON.parse((await env.DB.prepare("SELECT data FROM posts WHERE id='needs-review'").first()).data);
-  assert.equal(publicData.status,'public_dynamic');
+  assert.equal(publicData.status,'public_static');
   assert.ok(pendingData.preview_token);
   assert.notEqual(pendingData.preview_token,'source-token');
   assert.equal(pendingData.revision_tag,undefined);

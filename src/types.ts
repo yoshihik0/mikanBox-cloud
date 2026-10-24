@@ -62,7 +62,6 @@ export interface Env {
   SETUP_TOKEN: string;
   SITE_ENVIRONMENT?: string;
   ASSETS?: Fetcher;
-  STATIC_DELIVERY?: string;
   CLOUDFLARE_API_TOKEN?: string;
   CLOUDFLARE_ACCOUNT_ID?: string;
   CLOUDFLARE_WORKER_NAME?: string;

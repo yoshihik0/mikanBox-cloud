@@ -42,4 +42,12 @@ async function post(env,auth,data,url='/admin') {
   const response=await call(env,url,{...data,csrf_token:auth.csrf_token,ajax_request:'1'},auth.cookie);
   return {response,data:await response.json()};
 }
-module.exports={environment,call,login,post};
+// Public pages are only served as built static files, so tests that check page
+// output render it the way the build does instead of requesting it from the Worker.
+async function publicView(env,path='/') {
+  const {MikanBoxRenderer}=require('../.test-build/src/renderer.js'),{loadSettings}=require('../.test-build/src/storage.js');
+  const url=new URL('https://cloud.test'+path),id=url.pathname.replace(/^\/+|\/+$/g,'').replace(/\.html$/,'')||'index';
+  const result=await new MikanBoxRenderer(env,await loadSettings(env),new Request(url)).render(id);
+  return {status:result.status,text:async()=>result.html};
+}
+module.exports={environment,call,login,post,publicView};

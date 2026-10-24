@@ -1,5 +1,5 @@
 const {test}=require('node:test');const assert=require('node:assert/strict');const vm=require('node:vm');const fs=require('node:fs');
-const {environment,call,login}=require('./fixtures.cjs');
+const {environment,call,login,publicView}=require('./fixtures.cjs');
 const {savePage,saveSettings,saveComponent,listPages,listComponents}=require('../.test-build/src/storage.js');
 const {helpSections}=require('../.test-build/src/public-help.js');
 const worker=require('../.test-build/src/index.js').default;
@@ -24,7 +24,7 @@ test('help headings in fenced examples do not become sections',()=>{
 });
 test('AI question tag and WebMCP script are rendered once with Cloud endpoints',async()=>{
  const env=environment();await savePage(env,'question',{title:'AI',status:'public_dynamic',content_md:'{{AI_QUESTION:section-1}}\n{{AI_QUESTION}}\n\n```\n{{AI_QUESTION}}\n```'});
- const h=await(await call(env,'/question')).text();assert.equal((h.match(/data-mikanbox-ai-question/g)||[]).length,2);assert.equal((h.match(/src="\/mikanbox\/ai-question.js"/g)||[]).length,1);assert.match(h,/data-mcp-endpoint="\/public-mcp"/);assert.match(h,/data-section="section-1"/);assert.match(h,/<code>[\s\S]*\{\{AI_QUESTION\}\}/);
+ const h=await(await publicView(env,'/question')).text();assert.equal((h.match(/data-mikanbox-ai-question/g)||[]).length,2);assert.equal((h.match(/src="\/mikanbox\/ai-question.js"/g)||[]).length,1);assert.match(h,/data-mcp-endpoint="\/public-mcp"/);assert.match(h,/data-section="section-1"/);assert.match(h,/<code>[\s\S]*\{\{AI_QUESTION\}\}/);
 });
 test('browser script registers and executes four WebMCP tools with no admin key',async()=>{
  const tools=[],requests=[],callbacks=[];
@@ -47,5 +47,5 @@ test('navigation, search, feeds and static builds stay within Free D1 query limi
  const prepare=env.DB.prepare.bind(env.DB);let queries=0;env.DB.prepare=(...args)=>{queries++;return prepare(...args);};
  const search=await call(env,'/search?q=Find');assert.equal(search.status,200);assert.match(await search.text(),/Find me 79/);assert.ok(queries<20);
  queries=0;const rss=await call(env,'/rss.xml');assert.equal(rss.status,200);assert.ok(queries<10);
- queries=0;await require('../.test-build/src/ssg.js').buildStatic(env,new Request('https://cloud.test/'));assert.ok(queries<10);assert.equal(env.sqlite.prepare('SELECT COUNT(*) n FROM static_pages').get().n,80);
+ queries=0;await require('../.test-build/src/ssg.js').buildStatic(env,new Request('https://cloud.test/'));assert.ok(queries<10);assert.equal(env.sqlite.prepare('SELECT COUNT(*) n FROM static_pages').get().n,81); // the search page is public too
 });

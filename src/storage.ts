@@ -12,6 +12,11 @@ import { MEDIA_FILE_LIMIT,MEDIA_COUNT_LIMIT,MEDIA_CHUNK_SIZE,MEDIA_ZIP_LIMIT,val
 export function isPublicStatus(status: string): boolean {
   return status === 'public' || status === 'public_dynamic' || status === 'public_static';
 }
+// The Cloud edition publishes statically only: every public status is stored as
+// 'public_static'. Older values still arrive from MCP clients, imports and backups.
+export function normalizeStatus<T extends string>(status: T): T | 'public_static' {
+  return isPublicStatus(status) ? 'public_static' : status;
+}
 
 function sanitizeId(id: string): string {
   return validId(id) ? id : '';
@@ -64,8 +69,9 @@ export async function savePage(env: Env, id: string, data: PageData): Promise<bo
   const clean = sanitizeId(id);
   if (!clean) return false;
   try {
+    data = { ...data, status: normalizeStatus(data.status || 'draft') };
     const json = JSON.stringify(data, null, 2);
-    const status = data.status || 'draft';
+    const status = data.status;
     const sortOrder = typeof data.sort_order === 'number' ? data.sort_order : 0;
     const updatedAt = data.updated_at || '';
     await env.DB.prepare(

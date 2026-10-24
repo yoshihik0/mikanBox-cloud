@@ -1,5 +1,5 @@
 import type { Env } from './types';
-import { loadSettings, loadPage, loadComponent, getMediaObject } from './storage';
+import { loadSettings, loadPage, loadComponent, getMediaObject, isPublicStatus } from './storage';
 import { MikanBoxRenderer } from './renderer';
 import { generateSitemapXml, generateRssXml, generatePodcastXml } from './feeds';
 import { handleAdmin } from './admin/index';
@@ -58,13 +58,8 @@ async function route(request: Request, env: Env): Promise<Response> {
   if(!validId(id))return new Response('Not Found',{status:404});
   const data=await loadPage(env,id),auth=await authenticatedUser(request,env);
   if(preview&&!auth)return new Response('Unauthorized',{status:401,headers:{'Cache-Control':'no-store'}});
-  if(data?.status==='public_static'&&!auth&&id!=='search') {
-    if(env.STATIC_DELIVERY==='true')return new Response('Static page is not published.',{status:404,headers:{'Cache-Control':'no-store'}});
-    const row=await env.DB.prepare(`SELECT html FROM static_pages WHERE id=(
-      SELECT id FROM posts WHERE id=? OR id=? ORDER BY CASE WHEN id=? THEN 0 ELSE 1 END LIMIT 1
-    )`).bind(id,id+'/index',id).first<{html:string}>();
-    return new Response(row?.html||'Static page has not been built.',{status:row?200:404,headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-cache'}});
-  }
+  // Public pages are served only as published static files; the Worker never renders them for visitors.
+  if(data&&isPublicStatus(data.status)&&!auth&&id!=='search')return new Response('Not Found',{status:404,headers:{'Cache-Control':'no-store'}});
   const result=await renderer.render(id,!!auth);
   return new Response(result.html,{status:result.status,headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','Referrer-Policy':'same-origin'}});
 }

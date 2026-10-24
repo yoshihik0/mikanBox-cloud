@@ -40,7 +40,7 @@ function validatePackage(input: unknown): ContentPackage {
     const sortOrder=source.sort_order===undefined?0:source.sort_order;
     if(typeof sortOrder!=='number'||!Number.isSafeInteger(sortOrder)||Math.abs(sortOrder)>1_000_000)throw new Error('Invalid page sort order.');
     const rawStatus=String(source.status??'draft');
-    const status=rawStatus==='public'?'public_dynamic':rawStatus;
+    const status=['public','public_dynamic'].includes(rawStatus)?'public_static':rawStatus;
     data.status=status;data.sort_order=sortOrder;data.updated_at=typeof source.updated_at==='string'&&source.updated_at?source.updated_at:new Date().toISOString();
     if(status==='pending')data.preview_token=crypto.randomUUID();
     // Map the SQLite legacy field while refusing to copy source preview/revision state.
@@ -87,7 +87,7 @@ export function normalizeWordPressImport(input: unknown): ContentPackage {
     const slug=String(item.slug||'').replace(/[^A-Za-z0-9_-]/g,'_').replace(/^_+|_+$/g,'');
     const id=slug || `post_${String(item.postId||index+1).replace(/[^A-Za-z0-9_-]/g,'_')}`;
     const wpStatus=String(item.status||'');
-    const status=wpStatus==='publish'?'public_dynamic':wpStatus==='pending'?'pending':'draft';
+    const status=wpStatus==='publish'?'public_static':wpStatus==='pending'?'pending':'draft';
     const title=String(item.title||'');
     const updated=String(item.date||'');
     const updatedAt=!updated||updated==='0000-00-00 00:00:00'?new Date().toISOString():updated;

@@ -1,5 +1,6 @@
 import presets from './defaults-data.json';
 import type {Env,PageData,ComponentData} from './types';
+import {normalizeStatus} from './storage';
 export function standardDefaults(language: string) {
   return presets[language==='en'?'en':'ja'] as {pages:Record<string,PageData>;components:Record<string,ComponentData>};
 }
@@ -11,7 +12,7 @@ export async function installDefaults(env: Env,language: string) {
       .bind(id,JSON.stringify(data),data.is_wrapper?1:0));
   }
   for(const [id,data] of Object.entries(defaults.pages)) {
-    const page={...data,revision_tag:crypto.randomUUID()};
+    const page={...data,status:normalizeStatus(data.status),revision_tag:crypto.randomUUID()};
     statements.push(env.DB.prepare('INSERT INTO posts(id,data,status,sort_order,updated_at) VALUES(?,?,?,?,?) ON CONFLICT(id) DO NOTHING')
       .bind(id,JSON.stringify(page),page.status,page.sort_order||0,page.updated_at||''));
   }

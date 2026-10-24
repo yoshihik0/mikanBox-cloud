@@ -1,7 +1,7 @@
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const vm=require('node:vm');
-const {environment,call,login,post}=require('./fixtures.cjs');
+const {environment,call,login,post,publicView}=require('./fixtures.cjs');
 const {savePage,loadPage,saveComponent,loadComponent,saveSettings,loadSettings}=require('../.test-build/src/storage.js');
 const {MikanBoxRenderer}=require('../.test-build/src/renderer.js');
 const {createTranslator}=require('../.test-build/src/i18n.js');
@@ -123,18 +123,23 @@ test('draft and pending are excluded from direct access, embedding, feeds, nav a
     await savePage(env,'secret',page(status,'SENSITIVE-SECRET\n{{DATA:key}}DATA-SECRET{{/DATA}}'));
     assert.equal((await call(env,'/secret')).status,404);
     for(const content of ['{{POST_MD:secret}}','{{POST_MD:secret:key}}','{{POST_MD:secret#row:key}}','{{NAV_LINKS}}']) {
-      await savePage(env,'index',page('public_dynamic',content));const response=await call(env,'/');const body=await response.text();assert.equal(response.status,200);assert.doesNotMatch(body,/SENSITIVE-SECRET|DATA-SECRET/);
+      await savePage(env,'index',page('public_static',content));const response=await publicView(env,'/');const body=await response.text();assert.equal(response.status,200);assert.doesNotMatch(body,/SENSITIVE-SECRET|DATA-SECRET/);
     }
     assert.equal((await call(env,'/api/secret')).status,404);
     for(const feed of ['sitemap.xml','rss.xml','podcast.xml'])assert.doesNotMatch(await(await call(env,'/'+feed)).text(),/SENSITIVE-SECRET|DATA-SECRET|\/secret/);
   }
 });
-test('static publication preserves built snapshot until rebuilt and hides status changes',async()=>{
+test('the Worker never serves public pages; they reach visitors only as built static files',async()=>{
   const env=environment(),auth=await login(env);await savePage(env,'built',page('public_static','Original'));
   assert.equal((await call(env,'/built')).status,404);
-  assert.equal((await post(env,auth,{save_action:'build_ssg'})).data.success,true);assert.match(await(await call(env,'/built')).text(),/Original/);
-  await savePage(env,'built',page('public_static','Edited'));assert.match(await(await call(env,'/built')).text(),/Original/);
-  await savePage(env,'built',page('draft','Private'));assert.equal((await call(env,'/built')).status,404);
+  assert.equal((await post(env,auth,{save_action:'build_ssg'})).data.success,true);
+  const response=await call(env,'/built');assert.equal(response.status,404);assert.doesNotMatch(await response.text(),/Original/);
+  assert.match(env.sqlite.prepare("SELECT html FROM static_pages WHERE id='built'").get().html,/Original/);
+});
+test('older dynamic statuses are stored as public',async()=>{
+  const env=environment();await savePage(env,'old',page('public_dynamic','Body'));await savePage(env,'older',page('public','Body'));
+  assert.deepEqual(env.sqlite.prepare("SELECT status FROM posts WHERE id IN ('old','older')").all().map(r=>r.status),['public_static','public_static']);
+  assert.equal(JSON.parse(env.sqlite.prepare("SELECT data FROM posts WHERE id='old'").get().data).status,'public_static');
 });
 test('authenticated preview works and private pages remain uncached',async()=>{
   const env=environment(),auth=await login(env);await savePage(env,'secret',page());
@@ -142,17 +147,17 @@ test('authenticated preview works and private pages remain uncached',async()=>{
 });
 test('component cycles end and JS is emitted once',async()=>{
   const env=environment();await saveComponent(env,'cycle',{html:'{{COMPONENT:cycle}}',js:'window.cycle=1;'});
-  await savePage(env,'index',page('public_dynamic','{{COMPONENT:cycle}}{{COMPONENT:cycle}}'));
-  const body=await(await call(env,'/')).text();assert.match(body,/Infinite loop/);assert.equal((body.match(/window.cycle=1/g)||[]).length,1);
+  await savePage(env,'index',page('public_static','{{COMPONENT:cycle}}{{COMPONENT:cycle}}'));
+  const body=await(await publicView(env,'/')).text();assert.match(body,/Infinite loop/);assert.equal((body.match(/window.cycle=1/g)||[]).length,1);
 });
 test('HTML comments preserve component tags as literals',async()=>{
-  const env=environment();await saveComponent(env,'part',{html:'EXPANDED'});await savePage(env,'index',{...page('public_dynamic','<!-- {{COMPONENT:part}} -->'),is_html:true});
-  const body=await(await call(env,'/')).text();assert.match(body,/<!-- \{\{COMPONENT:part\}\} -->/);assert.doesNotMatch(body,/EXPANDED/);
+  const env=environment();await saveComponent(env,'part',{html:'EXPANDED'});await savePage(env,'index',{...page('public_static','<!-- {{COMPONENT:part}} -->'),is_html:true});
+  const body=await(await publicView(env,'/')).text();assert.match(body,/<!-- \{\{COMPONENT:part\}\} -->/);assert.doesNotMatch(body,/EXPANDED/);
 });
 test('external Markdown does not fetch arbitrary URLs',async()=>{
   const env=environment();await savePage(env,'index',page('public_dynamic','{{EXT_MD:https://example.test/private}}'));
   const original=global.fetch;global.fetch=()=>{throw new Error('Must not fetch');};
-  try {assert.match(await(await call(env,'/')).text(),/not yet supported/);}finally{global.fetch=original;}
+  try {assert.match(await(await publicView(env,'/')).text(),/not yet supported/);}finally{global.fetch=original;}
 });
 test('generated scripts parse in Japanese and English and escape saved prompts',async()=>{
   const env=environment(),auth=await login(env);await savePage(env,'example',{...page(),memo:'Memo',js:'window.x=1;'});await saveComponent(env,'layout',{html:'{{CONTENT}}',is_wrapper:true});
@@ -170,7 +175,7 @@ test('SQLite workflow fields and sections exist in the Cloud editor',async()=>{
   const body=await(await call(env,'/admin?view=pages&edit=one',undefined,auth.cookie)).text();
   for(const name of ['memo','js','is_html','expected_revision','content_md','category','wrapper_comp'])assert.match(body,new RegExp(`name="${name}"`));
   for(const section of ['pages','site','design','media','users-mgmt','publish-box'])assert.match(body,new RegExp(`id="${section}"`));
-  assert.match(body,/value="pending"/);assert.match(body,/value="public_static"/);assert.match(body,/value="public_dynamic"/);
+  assert.match(body,/value="pending"/);assert.match(body,/value="public_static"/);assert.doesNotMatch(body,/value="public_dynamic"/);
 });
 test('user deletion stops its devices and cannot delete the current account',async()=>{
   const env=environment(),auth=await login(env);
@@ -224,12 +229,12 @@ test('CSS scope handles functional selectors, media groups, strings and keyframe
   assert.match(result,/content:"\{"/);
 });
 test('page CSS is isolated to the page content',async()=>{
-  const env=environment();await savePage(env,'index',{...page('public_dynamic','Hello'),css:'h1{color:red}'});
-  const body=await(await call(env,'/')).text();assert.match(body,/class="mikan-content-scope"/);assert.match(body,/\.mikan-content-scope h1/);
+  const env=environment();await savePage(env,'index',{...page('public_static','Hello'),css:'h1{color:red}'});
+  const body=await(await publicView(env,'/')).text();assert.match(body,/class="mikan-content-scope"/);assert.match(body,/\.mikan-content-scope h1/);
 });
 test('literal dollar signs in authored content and JS are preserved',async()=>{
-  const env=environment();await savePage(env,'index',{...page('public_dynamic','Dollar $& $1'),js:'window.value="$& $1";'});
-  const body=await(await call(env,'/')).text();assert.match(body,/Dollar \$& \$1/);assert.match(body,/window.value="\$& \$1"/);
+  const env=environment();await savePage(env,'index',{...page('public_static','Dollar $& $1'),js:'window.value="$& $1";'});
+  const body=await(await publicView(env,'/')).text();assert.match(body,/Dollar \$& \$1/);assert.match(body,/window.value="\$& \$1"/);
 });
 
 
@@ -347,25 +352,6 @@ test('chunked D1 media handles large images, quota boundaries, atomic rollback a
   assert.equal(broken.sqlite.prepare('SELECT COUNT(*) n FROM media').get().n,0);
   env.sqlite.prepare('UPDATE media SET size=? WHERE key=?').run(MEDIA_ZIP_LIMIT+1,'last.png');await assert.rejects(buildMediaBackupZip(env),/20 MB/);
 });
-
-test('directory index URLs resolve both dynamic pages and static snapshots with exact-page precedence',async()=>{
-  const {buildStatic}=require('../.test-build/src/ssg.js');
-  const env=environment();
-  for(const status of ['public_dynamic','public_static']) {
-    await savePage(env,'test/index',{...page(status,'DIRECTORY-PAGE-MARKER'),title:'Directory test'});
-    if(status==='public_static')await buildStatic(env,new Request('https://cloud.test/admin'));
-    for(const path of ['/test/index.html','/test/index/','/test/','/test']) {
-      const response=await call(env,path);assert.equal(response.status,200,path);assert.match(await response.text(),/DIRECTORY-PAGE-MARKER/);
-    }
-  }
-  await savePage(env,'test',page('public_static','EXACT-PAGE-MARKER'));
-  const notBuilt=await call(env,'/test/');assert.equal(notBuilt.status,404);assert.doesNotMatch(await notBuilt.text(),/DIRECTORY-PAGE-MARKER/);
-  await buildStatic(env,new Request('https://cloud.test/admin'));
-  assert.match(await(await call(env,'/test/')).text(),/EXACT-PAGE-MARKER/);
-  await savePage(env,'test',page('draft','PRIVATE-PAGE-MARKER'));
-  const privatePage=await call(env,'/test/');assert.equal(privatePage.status,404);assert.doesNotMatch(await privatePage.text(),/PRIVATE-PAGE-MARKER|DIRECTORY-PAGE-MARKER/);
-});
-
 
 test('CSS uses first marker or real head closing tag with prefix fallback', async()=>{
   const env=environment();

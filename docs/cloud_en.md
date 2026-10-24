@@ -12,26 +12,22 @@ The admin version comparison uses Cloud versions, not PHP releases. This deploym
 
 Media omits the image conversion note and maximum-file-size line, and explains using files on a page: a bare filename in Markdown and `media/filename` in HTML. Existing `images/filename` references for images remain supported.
 
-## Delivery modes and withdrawal (development v0.6.0)
+## Delivery and withdrawal
 
-The delivery mode is fixed at installation. `STATIC_DELIVERY` in the `vars` of the production `wrangler.production.json` is applied as a Worker environment variable by `wrangler deploy`. The admin screen cannot change it. It can be edited as a Worker environment variable in the Cloudflare dashboard, but the next `wrangler deploy` restores the value from the configuration file. Publication inherits the bindings of the version it runs against.
+Public pages are served as static files only. Viewing them runs neither the Worker nor D1, so it consumes no daily Worker requests and no D1 row reads. The former Worker delivery (the Worker serving built HTML from D1 or dynamic pages) and the `STATIC_DELIVERY` setting are gone. Only the site search page is still handled by the Worker when the public site and admin share one Worker.
 
-- **Static delivery** (`STATIC_DELIVERY` is `true`): published pages and images are served from the deployed static files. Viewing them runs neither the Worker nor D1, so it consumes no daily Worker requests and no D1 row reads.
-- **Worker delivery** (default): the Worker serves static pages from the HTML built in D1. Viewing them consumes Worker and D1 allowances. There is no delivery target, so site generation only regenerates HTML.
+Pages have four statuses: draft, pending, public and DB. There is no per-page choice between static and dynamic. Public pages are built into HTML and published. Former dynamic pages become public through migration `0014` and when restoring backups. `public_dynamic` sent through MCP or imports is stored as public.
 
 The build (rebuild and publish) button sits below the page list. Progress and results appear beside it, together with the number of pages whose changes are not on the public site and the time of the last publication.
 
-Choosing static or dynamic per page is separate from this. A page published as static gets its HTML built during site generation; a dynamic page is generated per request. Dynamic pages are handled by the Worker in both delivery modes.
-
 ### Withdrawal
 
-Under static delivery, files placed on the delivery target bypass the Worker, so deleting the source leaves the deployed file in place. Removing it from the delivery target is called withdrawal.
+Files placed on the delivery target bypass the Worker, so deleting the source leaves the deployed file in place. Removing it from the delivery target is called withdrawal.
 
-Pages are withdrawn by site generation. Pages made private and pages deleted are removed from the delivery target then, along with their URL aliases. **They stay readable until you run site generation.** After taking a page out of publication, run site generation as well.
+Pages are withdrawn by a build. Pages made private and pages deleted are removed from the delivery target then, along with their URL aliases. **They stay readable until you build.** After unpublishing, build as well.
 
 Images are withdrawn automatically by the Media screen; see "Static image delivery" below.
 
-Worker delivery has no delivery target and therefore no withdrawal step: private and deleted pages take effect at once.
 
 ## Separate public and admin Workers (prototype)
 
@@ -164,7 +160,7 @@ The standard search form's `/index.php?page=search&q=...` and `/search?q=...` wo
 ## Implemented operations
 
 - Page lists, search, category filtering, pagination, creation, editing, and deletion.
-- Separate draft, pending, public_dynamic, public_static, and DB statuses.
+- Separate draft, pending, public and DB statuses.
 - Memos, Markdown/HTML input, page CSS/JavaScript, SEO fields, and wrapper selection.
 - Revision recording, selection of the last 50 revisions, edit locks, and stale-edit protection.
 - Token-based pending previews; authenticated administrators can preview drafts.
@@ -185,7 +181,7 @@ Page and settings saves compare their read snapshot with current storage and rej
 
 ## Image uploads and limits
 
-A page ID such as `test/index` works at `/test/index.html`, `/test/index/`, `/test/`, and `/test` in both dynamic and static publication modes. Static pages require a build. An exact `test` page takes precedence when present. These URLs resolve D1 pages; they do not create physical directories or HTML files.
+A page ID such as `test/index` works at `/test/index.html`, `/test/index/`, `/test/`, and `/test` once built. Static pages require a build. An exact `test` page takes precedence when present. These URLs resolve D1 pages; they do not create physical directories or HTML files.
 
 Choose an image in the media section or drag it onto the screen. Click its filename to copy it; use `![Description](filename.png)` or `{{IMAGE:filename.png}}` in page content. A Download link saves each file individually.
 
@@ -269,9 +265,9 @@ Administration, editing, search, MCP and APIs run through the Worker. Built publ
 
 In v0.3.0, the admin build saved HTML snapshots and `npm run publish:static` in this workspace updated delivery. v0.4.3 adds automatic admin publication through the dedicated token described above. The workspace command remains usable until that token is configured.
 
-Publication downloads files individually. Dynamic pages, drafts, pending pages, settings, credentials and AI documents are excluded. Search stays on the Worker even when its page status is static. HTML and image changes are applied together by switching deployments. Editing is temporarily blocked during publication.
+Publication downloads files individually. Drafts, pending pages, settings, credentials and AI documents are excluded. HTML and image changes are applied together by switching deployments. Editing is temporarily blocked during publication.
 
-Published pages are withdrawn by site generation, and deleting or renaming a published image withdraws it automatically from the Media screen. Component JS withdrawal requires a publication. Previously cached browser copies cannot be recalled. See "Delivery modes and withdrawal" above.
+Published pages are withdrawn by site generation, and deleting or renaming a published image withdraws it automatically from the Media screen. Component JS withdrawal requires a publication. Previously cached browser copies cannot be recalled. See "Delivery and withdrawal" above.
 
 Workers Free supports 20,000 static files and 25 MiB per file, with 2,000 URL aliases. Images now count toward static publication files (up to 10,000 of them). Images, administration, search, dynamic pages and publication consume Worker/D1/R2 allowances. Use the publication command for code updates to retain deployed HTML.
 
