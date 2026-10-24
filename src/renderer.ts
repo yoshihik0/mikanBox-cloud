@@ -672,7 +672,7 @@ export class MikanBoxRenderer {
 <p class="mikan-search-note">${escapeHtml(text.note)}</p>
 </form>
 <script>(function(){var p=new URLSearchParams(location.search),page=p.get('page'),q=p.get('q');
-if(page&&page!=='search'&&/^[A-Za-z0-9_\/-]+$/.test(page)){location.replace('/'+page);return;}
+if(page&&page!=='search'&&/^[A-Za-z0-9_-][A-Za-z0-9_\/-]*$/.test(page)){var to=new URL('/'+page,location.origin);if(to.origin===location.origin){location.replace(to.href);return;}}
 if(q)location.replace('https://www.google.com/search?'+new URLSearchParams({q:q,as_sitesearch:${JSON.stringify(site).replace(/</g,'\\u003c')}}));})();</script>`;
   }
 

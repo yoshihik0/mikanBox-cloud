@@ -435,3 +435,11 @@ test('a device on probation cannot take access away from other users',async()=>{
   assert.ok(env.sqlite.prepare("SELECT 1 FROM users WHERE username='other'").get());
   assert.equal((await post(env,auth,{save_action:'delete_user',username:'other'})).data.success,true);
 });
+test('the search page only forwards legacy page links within the site',async()=>{
+  const env=environment();await savePage(env,'search',page('public_static','{{SEARCH_RESULTS}}'));
+  const script=(await(await publicView(env,'/search')).text()).match(/<script>\(function\(\)\{var p=new URLSearchParams[\s\S]*?<\/script>/)[0].slice(8,-9);
+  const run=search=>{const location={search,origin:'https://www.example.test',replace(url){this.to=url;}};vm.runInNewContext(script,{location,URL,URLSearchParams});return location.to;};
+  assert.equal(run('?page=about'),'https://www.example.test/about');
+  for(const evil of ['?page=/evil.example','?page=//evil.example','?page=%2F%2Fevil.example'])assert.equal(run(evil),undefined,evil);
+  assert.match(run('?page=search&q=needle'),/^https:\/\/www\.google\.com\/search\?q=needle&as_sitesearch=/);
+});
