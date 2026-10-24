@@ -656,35 +656,24 @@ export class MikanBoxRenderer {
     return html;
   }
 
-  private async generateSearchResults(componentId: string): Promise<string> {
-    const t=createTranslator(this.siteSettings.system_lang==='en'?'en':'ja');
-    const keyword=(new URL(this.request.url).searchParams.get('q')||'').trim().slice(0,200);
-    if(!keyword)return `<p class="search-no-query">${escapeHtml(t('search_no_query'))}</p>`;
-    const term=keyword.toLocaleLowerCase();
-    const matches:Array<{id:string;page:PageData;text:string}>=[];
-    for(const {id,data:page} of await this.publicPages()) {
-      if(!page||!isPublicStatus(page.status)||id===this.currentPageId)continue;
-      const text=(page.content_md||'').replace(/<[^>]*>/g,' ').replace(/\{\{[^}]+\}\}/g,' ').replace(/\s+/g,' ').trim();
-      if(`${page.title} ${text}`.toLocaleLowerCase().includes(term)) matches.push({id,page,text});
-    }
-    if(!matches.length)return `<p class="search-no-results">${escapeHtml(t('search_no_results',keyword))}</p>`;
-    const component=await this.readComponent(componentId);
-    const usable=component&&!component.is_ai_doc?component:null;
-    const template=usable?.html||'<article><h3><a href="{{RESULT_URL}}">{{RESULT_TITLE}}</a></h3><p>{{RESULT_SNIPPET}}</p><time>{{RESULT_DATE}}</time></article>';
-    const prefix=`cmp-${componentId}`;
-    if(usable?.css)this.globalCssBuffer.push(usable.is_global?usable.css:scopeCss(usable.css,'.'+prefix));
-    if(usable?.js)this.javascriptBuffer.set(componentId,usable.js);
-    const highlight=(text:string)=>{
-      const index=text.toLocaleLowerCase().indexOf(term);
-      return index<0?escapeHtml(text):escapeHtml(text.slice(0,index))+'<strong class="search-highlight">'+escapeHtml(text.slice(index,index+keyword.length))+'</strong>'+escapeHtml(text.slice(index+keyword.length));
-    };
-    const items=matches.map(({id,page,text})=>{
-      const index=text.toLocaleLowerCase().indexOf(term),start=Math.max(0,index-60);
-      const snippet=(start?'…':'')+text.slice(start,start+180)+(text.length>start+180?'…':'');
-      const fields:Record<string,string>={RESULT_TITLE:highlight(page.title||id),RESULT_SNIPPET:highlight(snippet),RESULT_URL:escapeHtml(this.buildFullUrl(this.getSiteUrl(),this.getPageLink(id))+'#:~:text='+encodeURIComponent(keyword)),RESULT_DATE:escapeHtml((page.updated_at||'').slice(0,10))};
-      return template.replace(/\{\{(RESULT_TITLE|RESULT_SNIPPET|RESULT_URL|RESULT_DATE)\}\}/g,(_,key)=>fields[key]);
-    }).join('');
-    return `<div class="search-results-list ${usable?.css&&!usable.is_global?prefix:''}">${items}</div>`;
+  // The Cloud edition publishes statically, so there is no server to run a search.
+  // {{SEARCH_RESULTS}} becomes a Google site search form. Visitors arriving from the
+  // standard search box (index.php?page=search&q=…, redirected here) go straight to
+  // Google, and other legacy index.php?page=… links go to that page.
+  private async generateSearchResults(_componentId: string): Promise<string> {
+    const en=this.siteSettings.system_lang==='en';
+    const site=this.getSiteUrl().replace(/^https?:\/\//,'').replace(/\/$/,'');
+    const text=en
+      ?{placeholder:'Enter a keyword...',button:'Search',note:'Searches this site with Google. Only pages Google has indexed are found.'}
+      :{placeholder:'キーワードを入力...',button:'検索',note:'Googleで、このサイトの中を検索します。Googleに登録されたページだけが見つかります。'};
+    return `<form class="mikan-search-form mikan-google-search" action="https://www.google.com/search" method="get">
+<input type="hidden" name="as_sitesearch" value="${escapeHtml(site)}">
+<div class="mikan-search-input-container"><input type="search" name="q" class="mikan-search-input" required placeholder="${escapeHtml(text.placeholder)}"><button type="submit" class="mikan-search-button">${escapeHtml(text.button)}</button></div>
+<p class="mikan-search-note">${escapeHtml(text.note)}</p>
+</form>
+<script>(function(){var p=new URLSearchParams(location.search),page=p.get('page'),q=p.get('q');
+if(page&&page!=='search'&&/^[A-Za-z0-9_\/-]+$/.test(page)){location.replace('/'+page);return;}
+if(q)location.replace('https://www.google.com/search?'+new URLSearchParams({q:q,as_sitesearch:${JSON.stringify(site).replace(/</g,'\\u003c')}}));})();</script>`;
   }
 
   // ---- generateNavLinks ----

@@ -10,7 +10,7 @@ import { splitMode, publicRequest } from './site-split';
 // published static assets, falling through to the Worker when no file exists.
 // /media/* is absent on purpose: published images are static files, and images
 // not yet published still reach the Worker through that fall-through.
-export const WORKER_FIRST_ROUTES=['/admin','/admin/*','/mikanBox/*','/mcp','/public-mcp','/public-help.html','/api/*','/index.php','/search','/search/*','/search.html','/preview/*'];
+export const WORKER_FIRST_ROUTES=['/admin','/admin/*','/mikanBox/*','/mcp','/public-mcp','/public-help.html','/api/*','/preview/*'];
 export const PUBLICATION_FILE_LIMIT=20_000;
 export const PUBLICATION_FILE_BYTES=25*1024*1024;
 export const PUBLICATION_MAP_BYTES=32*1024*1024;
@@ -25,7 +25,7 @@ export interface PublicationManifest {entries:PublicationItem[];count:number;tot
 export const PUBLICATION_PUBLIC_ASSETS=['/mikanbox/ai-question.js','/mikanbox/admin.css','/mikanbox/cloud-admin.js','/mikanbox/cloud-publish.js','/mikanbox/cloud-media.js','/mikanbox/cloud-backup.js','/mikanbox/cloud-storage.js','/mikanbox/cloud-import.js','/mikanbox/cloud-release.json'] as const;
 const assetTypes=new Map<string,string>(PUBLICATION_PUBLIC_ASSETS.map(path=>[path,path.endsWith('.css')?'text/css; charset=utf-8':path.endsWith('.json')?'application/json; charset=utf-8':'text/javascript; charset=utf-8']));
 const imageTypes:Record<string,string>={jpg:'image/jpeg',jpeg:'image/jpeg',png:'image/png',gif:'image/gif',webp:'image/webp',svg:'image/svg+xml',...CODE_MEDIA_TYPES};
-const blockedRoots=new Set(['preview','admin','api','mcp','public-mcp','public-help','search','media','mikanbox','component-js','sitemap.xml','rss.xml','podcast.xml']);
+const blockedRoots=new Set(['preview','admin','api','mcp','public-mcp','public-help','media','mikanbox','component-js','sitemap.xml','rss.xml','podcast.xml']);
 const encode=new TextEncoder();
 const STATIC_HEADERS=`/*
   X-Mikanbox-Delivery: static
@@ -68,6 +68,9 @@ async function redirects(env:Env):Promise<string> {
   }
  }
  if(aliases.size>2000)throw new Error('Publication exceeds the 2,000 URL alias limit.');
+ // The standard search box submits to index.php?page=search&q=…; the static search
+ // page passes the query on to Google (see generateSearchResults).
+ if(aliases.has('/search'))aliases.set('/index.php',aliases.get('/search')!);
  // The public Worker runs no code, so DB pages are served from their built JSON.
  if(splitMode(env))for(const id of await dbPages(env))aliases.set('/api/'+id,'/api/'+id+'.json');
  return [...aliases].map(([source,target])=>`${source} ${target} 200`).join('\n')+'\n';

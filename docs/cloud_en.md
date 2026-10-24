@@ -14,7 +14,9 @@ Media omits the image conversion note and maximum-file-size line, and explains u
 
 ## Delivery and withdrawal
 
-Public pages are served as static files only. Viewing them runs neither the Worker nor D1, so it consumes no daily Worker requests and no D1 row reads. The former Worker delivery (the Worker serving built HTML from D1 or dynamic pages) and the `STATIC_DELIVERY` setting are gone. Only the site search page is still handled by the Worker when the public site and admin share one Worker.
+Public pages are served as static files only. Viewing them runs neither the Worker nor D1, so it consumes no daily Worker requests and no D1 row reads. The former Worker delivery (the Worker serving built HTML from D1 or dynamic pages) and the `STATIC_DELIVERY` setting are gone.
+
+Site search uses Google site search. `{{SEARCH_RESULTS}}` becomes a form that searches this site with Google (the site URL goes into `as_sitesearch`). The search page (ID `search`) is published statically too, and a query sent by the standard search box (`_search_box`) to `index.php?page=search&q=…` is passed straight on to Google by the search page. Only pages Google has indexed are found, newly published pages take a while to appear, and the words entered are sent to Google.
 
 Pages have four statuses: draft, pending, public and DB. There is no per-page choice between static and dynamic. Public pages are built into HTML and published. Former dynamic pages become public through migration `0014` and when restoring backups. `public_dynamic` sent through MCP or imports is stored as public.
 
@@ -39,7 +41,7 @@ Setting `CLOUDFLARE_PUBLIC_WORKER_NAME` (the public Worker's name) and `PUBLIC_S
 - Publication sends only changed files. Page hashes are stored at build time.
 - The globe icon in the page list opens the public page. Blue means the public site shows the current content; grey means changes are not published yet, or the page has never been published. Parts that change because of other pages (a page list component, for instance) only update when you build.
 - There is no sign-out button at the top. To stop using a device, stop it under Devices and users.
-- Site search and the AI question box do not work on the public site. The search page is left out of sitemaps and RSS.
+- The AI question box does not work on the public site. Site search uses Google, as described under Delivery and withdrawal.
 - As in the PHP editions, the 404 page is never listed in sitemaps or RSS, split or not.
 
 ## Static image delivery (development v0.6.0)

@@ -59,7 +59,7 @@ async function route(request: Request, env: Env): Promise<Response> {
   const data=await loadPage(env,id),auth=await authenticatedUser(request,env);
   if(preview&&!auth)return new Response('Unauthorized',{status:401,headers:{'Cache-Control':'no-store'}});
   // Public pages are served only as published static files; the Worker never renders them for visitors.
-  if(data&&isPublicStatus(data.status)&&!auth&&id!=='search')return new Response('Not Found',{status:404,headers:{'Cache-Control':'no-store'}});
+  if(data&&isPublicStatus(data.status)&&!auth)return new Response('Not Found',{status:404,headers:{'Cache-Control':'no-store'}});
   const result=await renderer.render(id,!!auth);
   return new Response(result.html,{status:result.status,headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','Referrer-Policy':'same-origin'}});
 }

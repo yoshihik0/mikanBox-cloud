@@ -293,16 +293,15 @@ test('fresh setup installs standard content and AI instruction IDs without overw
   assert.equal((await loadComponent(env,'DESIGN.md')).html,'Private AI instructions');
   assert.equal(await loadComponent(env,'../DESIGN.md'),null);
 });
-test('standard search form route renders public results and excludes private and DB content',async()=>{
-  const env=environment();await login(env);
-  await savePage(env,'matching',page('public_dynamic','needle <script>alert(1)</script>'));
-  for(const status of ['draft','pending','db'])await savePage(env,'secret-'+status,{...page(status,'needle PRIVATE-CONTENT'),title:'SECRET-'+status});
-  const response=await call(env,'/index.php?page=search&q=needle');assert.equal(response.status,200);
-  const body=await response.text();assert.match(body,/search-results-list/);assert.match(body,/matching\/#:~:text=needle/);assert.match(body,/<strong class="search-highlight">needle<\/strong>/);
-  assert.doesNotMatch(body,/SECRET-|PRIVATE-CONTENT|<script>alert\(1\)<\/script>|\{\{SEARCH_RESULTS/);
+test('the search page is a Google site search form that forwards the standard search box',async()=>{
+  const env=environment();await saveSettings(env,{ssg_root_url:'https://www.example.test/site'});
+  await savePage(env,'matching',page('public_static','needle PUBLIC'));await savePage(env,'secret',page('draft','needle PRIVATE-CONTENT'));
+  await savePage(env,'search',page('public_static','{{SEARCH_RESULTS:_search_result_item}}'));
+  const body=await(await publicView(env,'/search')).text();
+  assert.match(body,/action="https:\/\/www\.google\.com\/search"/);assert.match(body,/name="as_sitesearch" value="www\.example\.test\/site"/);
+  assert.match(body,/as_sitesearch:"www\.example\.test\/site"/);assert.doesNotMatch(body,/PRIVATE-CONTENT|PUBLIC|\{\{SEARCH_RESULTS/);
+  assert.equal((await call(env,'/index.php?page=search&q=needle')).status,404);
 });
-
-
 test('D1 image upload validates content, authentication and duplicates, then serves exact bytes',async()=>{
   const env=environment(),auth=await login(env);
   const image=Uint8Array.from(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+X2ioAAAAASUVORK5CYII=','base64'));

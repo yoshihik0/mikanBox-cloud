@@ -42,11 +42,16 @@ test('per-file retrieval rechecks publication status and component AI flags afte
   await savePage(value,'page',{title:'Hidden',status:'draft'});await saveComponent(value,'script',{html:'Hidden',js:'secret()',is_ai_doc:true});
   assert.equal(await readPublicationEntry(value,request,'/page.html'),null);assert.equal(await readPublicationEntry(value,request,'/component-js/script.js'),null);
 });
+test('the search page is published and index.php leads to it',async()=>{
+  const value=env();await snapshot(value,'search','<form>');
+  assert.ok((await publicationManifest(value)).entries.some(e=>e.path==='/search.html'));
+  assert.match(decode.decode((await readPublicationEntry(value,request,'/_redirects')).body),/^\/index\.php \/search\.html 200$/m);
+});
 test('reserved pages and malicious path variants cannot be exported or fetched',async()=>{
   const value=env();
-  for(const id of ['search','admin','api/x','mcp','public-mcp','public-help','media/x','mikanbox/x','component-js/x'])await snapshot(value,id,'FORBIDDEN');
+  for(const id of ['admin','api/x','mcp','public-mcp','public-help','media/x','mikanbox/x','component-js/x'])await snapshot(value,id,'FORBIDDEN');
   const manifest=await publicationManifest(value);assert.equal(manifest.entries.some(e=>e.kind==='page'),false);
-  for(const path of ['/search.html','/admin.html','/api/x.html','/mcp.html','/public-help.html','/media/../secret.png','/media/%2e%2e.png','/media/x.png?x=1','//index.html','/mikanbox/config.json','/mikanbox/../../.env','/media/x.mp3','/admin','/data/settings.json'])assert.equal(await readPublicationEntry(value,request,path),null,path);
+  for(const path of ['/admin.html','/api/x.html','/mcp.html','/public-help.html','/media/../secret.png','/media/%2e%2e.png','/media/x.png?x=1','//index.html','/mikanbox/config.json','/mikanbox/../../.env','/media/x.mp3','/admin','/data/settings.json'])assert.equal(await readPublicationEntry(value,request,path),null,path);
 });
 test('publication only reads the fixed public assets and strips request credentials from asset fetches',async()=>{
   const value=env(),seen=[];value.ASSETS={fetch:async req=>{seen.push(req);return new Response('safe asset');}};
