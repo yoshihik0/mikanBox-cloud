@@ -8,6 +8,7 @@ import type { Settings, PageData, ComponentData } from '../types';
 import type { User } from '../accounts';
 import type { Revision } from '../revisions';
 import {CLOUD_VERSION} from '../version';
+import type {PublicationStatus,PublicState} from '../publish-status';
 import type {CloudRelease} from '../cloud-release';
 
 // PHP版と同じMaterial Iconsマッピング
@@ -54,6 +55,24 @@ export function renderLoginPage(opts: {lang:string; initial:boolean; error:strin
   </div></body></html>`;
 }
 
+// Globe icon: blue when the public page shows the current source, grey when it is
+// older or not yet public. Never-published pages have nothing to open.
+function globeLink(state: PublicState | undefined, ja: boolean): string {
+  if (!state) return '';
+  if (state.state === 'none') return `<span class="btn btn-sm btn-gray" aria-disabled="true" style="opacity:.45;cursor:default" title="${ja ? 'まだ公開されていません' : 'Not published yet'}">${getIcon('globe')}</span>`;
+  const live = state.state === 'live';
+  return `<a href="${h(state.url)}" target="_blank" class="btn btn-sm ${live ? 'btn-blue' : 'btn-gray'}" title="${live ? (ja ? '公開ページを開く' : 'Open the public page') : (ja ? '公開ページを開く（変更がまだ反映されていません）' : 'Open the public page (changes not published yet)')}">${getIcon('globe')}</a>`;
+}
+// The build is how pages reach the public site, so it sits with the page list and
+// reports there rather than in the toast at the top of the screen.
+function publishBox(csrf: string, t: (key: string, ...args: (string | number)[]) => string, publication: PublicationStatus | undefined, ja: boolean): string {
+  const when = publication?.publishedAt ? new Date(publication.publishedAt).toLocaleString(ja ? 'ja-JP' : 'en-US', { dateStyle: 'short', timeStyle: 'short' }) : '';
+  const summary = !publication ? '' : publication.stale
+    ? (ja ? `公開側に反映していない変更があります（${publication.stale}ページ）。` : `${publication.stale} page(s) have changes not on the public site.`)
+    : (ja ? '公開側は最新です。' : 'The public site is up to date.');
+  return `<form method="post" class="flex-row gap-10 mt-10" id="publish-box">${csrfField(csrf)}<input type="hidden" name="save_action" value="build_ssg"><button class="btn btn-blue btn-small">${getIcon('cloud')} ${t('btn_ssg_build')}</button><span class="sub-text" data-publish-status role="status">${h(summary)}${when ? ` ${ja ? '最後の公開' : 'Last published'}: ${h(when)}` : ''}</span></form>`;
+}
+
 // ===== 管理画面メインシェル =====
 export function renderAdminShell(opts: {
   lang: string;
@@ -80,7 +99,7 @@ export function renderAdminShell(opts: {
           pagesHtml, pageEditorHtml, siteHtml, designHtml, designEditorHtml, mediaHtml, aiPromptJson } = opts;
   const showPageEditor = view === 'pages' && (editId !== null || hasNew);
   const showDesignEditor = view === 'components' && (editId !== null || hasNew);
-  const ssgRootUrl = (settings.ssg_root_url || '').trim().replace(/\/$/, '') || '/';
+  const ssgRootUrl = (settings.ssg_root_url || '').trim().replace(/\/$/, '') || String(settings._public_url || '') || '/';
 
   return `<!DOCTYPE html>
 <html lang="${h(lang)}">
@@ -142,7 +161,6 @@ ${opts.mediaEnabled?`<div id="drop-zone">${getIcon('cloud')} ${t('hint_drop_uplo
 <div class="main">
     <div class="page-top-links">
         <a href="${h(ssgRootUrl)}" target="_blank">${t('admin_view_site')}</a>
-        <form method="post" style="display:inline">${csrfField(csrf)}<input type="hidden" name="save_action" value="logout"><button type="submit" class="btn btn-gray btn-small">${t('admin_logout')}</button></form>
     </div>
 
     ${message ? `<div id="admin-toast" class="toast toast-show">${h(message)}</div>` : ''}
@@ -422,7 +440,6 @@ ${opts.mediaEnabled?`<div id="drop-zone">${getIcon('cloud')} ${t('hint_drop_uplo
         const sections = [
             { id: 'pages', color: '#e0f2fe', navId: 'nav-pages' },
             { id: 'site', color: '#ffffff', navId: 'nav-settings' },
-            { id: 'ssg-accordion', color: '#ffffff', navId: 'nav-settings' },
             { id: 'settings', color: '#ffffff', navId: 'nav-settings' },
             { id: 'backup', color: '#ffffff', navId: 'nav-settings' },
             { id: 'cloud-connection', color: '#ffffff', navId: 'nav-settings' },
@@ -510,8 +527,10 @@ export function renderPagesView(opts: {
   helpFile: string;
   settings: Settings;
   query?: string; category?:string; pageNumber?:number; totalPages?:number;
+  lang?: string; publication?: PublicationStatus;
 }): string {
   const { t, pages, view, editId, hasNew, csrf, helpFile } = opts;
+  const ja = opts.lang !== 'en', publication = opts.publication;
   const hasEditor = view === 'pages' && (editId !== null || hasNew);
 
   const rows = pages.map(({ id: pid, data: d }) => {
@@ -524,6 +543,7 @@ export function renderPagesView(opts: {
                     <div class="flex-center" style="gap: 5px;">
                          <a href="?view=pages&amp;edit=${h(pid)}#page-editor" class="btn btn-sm btn-blue">${getIcon('edit')} ${t('btn_edit')}</a>
                          <a href="${h(previewUrl)}" target="_blank" class="btn btn-sm btn-blue" title="${t('btn_preview')}">${getIcon('open_in_new')}</a>
+                         ${globeLink(publication?.pages[pid], ja)}
                     </div>
                 </td>
                 <td class="td-narrow">
@@ -575,6 +595,7 @@ export function renderPagesView(opts: {
         </form>
         </div>
         ${(opts.totalPages||1)>1?`<div class="pagination">${Array.from({length:opts.totalPages||1},(_,i)=>`<a class="pagination-link ${opts.pageNumber===i+1?'active':''}" href="?view=pages&amp;p_pages=${i+1}&amp;q=${encodeURIComponent(opts.query||'')}&amp;cat=${encodeURIComponent(opts.category||'')}#pages">${i+1}</a>`).join('')}</div>`:''}
+        ${publishBox(csrf, t, publication, ja)}
         </div>
     </div>
 
@@ -1086,16 +1107,6 @@ export function renderSiteView(opts: {
             <small class="sub-text sub-text-block">${lang==='en'?'Cloud updates require deploying a new Worker and any database migrations. One-click code updates are not implemented.':'Cloud版の更新は、新しいWorkerの公開と必要なDB更新を行います。1クリックでのコード更新は未実装です。'}</small>
         </div>
 
-    <div id="ssg-accordion"><div class="section-container section-tight"><details class="section-accordion"><summary class="header section-header accordion-summary"><h2 class="accordion-title">${t('ssg_head')} <span class="accordion-arrow">▼</span></h2></summary><div class="editor-container editor-container-sub"><form method="post">${csrfField(csrf)}<input type="hidden" name="save_action" value="build_ssg"><button class="btn btn-blue btn-small">${getIcon('save')} ${t('btn_ssg_build')}</button></form>
-      <p class="ssg-mode-hint"><strong>${opts.deliveryMode==='worker'?(lang==='en'?'Delivery: through the Worker':'配信モード: Worker配信'):(lang==='en'?'Delivery: static files':'配信モード: 静的配信')}</strong><br>${opts.deliveryMode==='worker'
-        ?(lang==='en'?'Static pages are served by the Worker from D1, so viewing them uses Worker and D1 allowances. Rebuild only regenerates HTML; there is no delivery target to update. This is fixed at installation (STATIC_DELIVERY) and cannot be changed here.':'静的ページもWorkerがD1から配信するため、閲覧でWorkerとD1の利用枠を使います。サイト生成はHTMLの再構築だけを行い、更新する配信先はありません。これは設置時の設定（STATIC_DELIVERY）で決まり、この画面では変更できません。')
-        :(lang==='en'?'Published pages and images are served as static files, so viewing them uses no Worker or D1 allowance. This is fixed at installation (STATIC_DELIVERY) and cannot be changed here.':'公開済みのページと画像は静的ファイルとして配信されるため、閲覧でWorkerとD1の利用枠を使いません。これは設置時の設定（STATIC_DELIVERY）で決まり、この画面では変更できません。')}</p>
-      <p class="ssg-mode-hint">${opts.deliveryMode==='worker'
-        ?(lang==='en'?'Rebuild regenerates public pages. Pages that are no longer public, or deleted, stop being served at once.':'サイト生成で公開ページを再構築します。非公開にしたページと削除したページは、すぐに配信されなくなります。')
-        :(lang==='en'?'Rebuild regenerates public pages and updates the delivery target together. Pages that are no longer public, or deleted, are removed from the delivery target at that point, so they stay readable until you rebuild. An uploaded image is visible immediately and becomes a static file at the next rebuild.':'サイト生成で公開ページの再構築と配信先の更新をまとめて行います。非公開にしたページと削除したページは、このときに配信先から取り除くので、サイト生成までは読める状態が続きます。アップロードした画像はすぐ表示され、配信先の静的ファイルになるのは次のサイト生成です。')} ${lang==='en'?'Keep this screen open until publication completes.':'処理が終わるまで画面を開いておいてください。'}</p>
-      <form method="post" style="margin-top:16px">${csrfField(csrf)}<input type="hidden" name="save_action" value="download_static_zip"><label>${settings.system_lang==='en'?'HTML file structure':'HTMLファイルの構造'} <select name="structure"><option value="flat">ID.html</option><option value="directory">ID/index.html</option></select></label><button class="btn btn-gray btn-small">${getIcon('download')} ${settings.system_lang==='en'?'Download static ZIP':'静的ZIPを保存'}</button><p class="ssg-mode-hint">${settings.system_lang==='en'?'Exports already-built static pages and their images, up to 20 MB. Dynamic pages remain links to the live site.':'ビルド済みの静的ページと使用画像を、合計20 MBまで保存します。動的ページは公開サイトへのリンクになります。'}</p></form>
-    </div></details></div></div>
-
     <div id="language">
         <div class="section-container section-tight">
             <details class="section-accordion">
@@ -1324,5 +1335,5 @@ export function renderImportView(opts: {t:(key:string,...args:(string|number)[])
                       <form method="post" enctype="multipart/form-data" data-cloudbackup="restore" onsubmit="return confirm('${lang==='en'?'Replace all current site data with this backup?':'現在のサイトデータをすべてバックアップ内容で置き換えます。続けますか？'}')">${csrfField(csrf)}<input type="hidden" name="save_action" value="restore_backup_json"><label class="form-group backup-field">${lang==='en'?'Backup JSON file':'バックアップJSONファイル'} <input type="file" name="backup_file" accept="application/json,.json" required></label><label class="form-group backup-field"><input type="checkbox" name="restore_users" value="1"> ${lang==='en'?'Also restore user accounts (signs everyone out)':'ユーザーも復元（全員ログアウト）'}</label><button type="submit" class="btn btn-orange btn-small">${lang==='en'?'Restore and replace':'復元して置き換え'}</button><span data-transfer-status role="status"></span></form>
                     </div>
 </section>`;
-  return renderDataImportView({t,csrf,lang,stats:opts.stats||{pages:0,components:0,users:0,media:0,mediaBytes:0},cloudBackupHtml});
+  return renderDataImportView({t,csrf,lang,stats:opts.stats||{pages:0,components:0,users:0,media:0,mediaBytes:0},cloudBackupHtml:cloudBackupHtml+`<section id="static-zip" class="data-tool-card"><div class="header section-header"><h3>${lang==='en'?'Static HTML (ZIP)':'静的HTML（ZIP）'}</h3></div><form method="post">${csrfField(csrf)}<input type="hidden" name="save_action" value="download_static_zip"><label>${lang==='en'?'HTML file structure':'HTMLファイルの構造'} <select name="structure"><option value="flat">ID.html</option><option value="directory">ID/index.html</option></select></label><button class="btn btn-gray btn-small">${getIcon('download')} ${lang==='en'?'Download static ZIP':'静的ZIPを保存'}</button><p class="ssg-mode-hint">${lang==='en'?'Exports already-built static pages and their images, up to 20 MB. Dynamic pages remain links to the live site.':'ビルド済みの静的ページと使用画像を、合計20 MBまで保存します。動的ページは公開サイトへのリンクになります。'}</p></form></section>`});
 }

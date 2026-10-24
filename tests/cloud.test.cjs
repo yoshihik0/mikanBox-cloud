@@ -169,7 +169,7 @@ test('SQLite workflow fields and sections exist in the Cloud editor',async()=>{
   const env=environment(),auth=await login(env);await savePage(env,'one',page());
   const body=await(await call(env,'/admin?view=pages&edit=one',undefined,auth.cookie)).text();
   for(const name of ['memo','js','is_html','expected_revision','content_md','category','wrapper_comp'])assert.match(body,new RegExp(`name="${name}"`));
-  for(const section of ['pages','site','design','media','users-mgmt','ssg-accordion'])assert.match(body,new RegExp(`id="${section}"`));
+  for(const section of ['pages','site','design','media','users-mgmt','publish-box'])assert.match(body,new RegExp(`id="${section}"`));
   assert.match(body,/value="pending"/);assert.match(body,/value="public_static"/);assert.match(body,/value="public_dynamic"/);
 });
 test('user deletion stops its devices and cannot delete the current account',async()=>{

@@ -19,7 +19,7 @@ The delivery mode is fixed at installation. `STATIC_DELIVERY` in the `vars` of t
 - **Static delivery** (`STATIC_DELIVERY` is `true`): published pages and images are served from the deployed static files. Viewing them runs neither the Worker nor D1, so it consumes no daily Worker requests and no D1 row reads.
 - **Worker delivery** (default): the Worker serves static pages from the HTML built in D1. Viewing them consumes Worker and D1 allowances. There is no delivery target, so site generation only regenerates HTML.
 
-Which mode an installation runs in is shown in Site generation on the Site screen.
+The build (rebuild and publish) button sits below the page list. Progress and results appear beside it, together with the number of pages whose changes are not on the public site and the time of the last publication.
 
 Choosing static or dynamic per page is separate from this. A page published as static gets its HTML built during site generation; a dynamic page is generated per request. Dynamic pages are handled by the Worker in both delivery modes.
 
@@ -41,6 +41,8 @@ Setting `CLOUDFLARE_PUBLIC_WORKER_NAME` (the public Worker's name) and `PUBLIC_S
 - A signed-in device opening `/about` on the admin address is sent to the preview (`/preview/about`). Previews carry a CSP `sandbox`, so page scripts cannot reach the admin screen. Inside a preview, page scripts cannot use cookies or `localStorage`.
 - Public pages, sitemaps and RSS use `PUBLIC_SITE_URL` and never the admin address. Sitemaps, RSS and DB page JSON (`/api/page-id`) are published as files.
 - Publication sends only changed files. Page hashes are stored at build time.
+- The globe icon in the page list opens the public page. Blue means the public site shows the current content; grey means changes are not published yet, or the page has never been published. Parts that change because of other pages (a page list component, for instance) only update when you build.
+- There is no sign-out button at the top. To stop using a device, stop it under Devices and users.
 - Site search and the AI question box do not work on the public site. The search page is left out of sitemaps and RSS.
 - As in the PHP editions, the 404 page is never listed in sitemaps or RSS, split or not.
 
@@ -110,7 +112,7 @@ There are no passwords. Only registered devices (browsers) can open the admin sc
 
 ### JSON backup and restore
 
-Download a single JSON backup from Site settings and select that file to restore. It includes settings, all pages, components, revisions, HTML snapshots, users and original images. Images transfer in 500KB parts. Both operations require the current administrator password. Backups contain private content, API keys and authentication hashes: store them securely. Large backups consume browser memory and transfer time; keep the screen open. Metadata is limited to 20MB.
+Download a single JSON backup from Site settings and select that file to restore. It includes settings, all pages, components, revisions, HTML snapshots, users and original images. Images transfer in 500KB parts. Both operations start from a confirmation screen. Backups contain private content, API keys and authentication hashes: store them securely. Large backups consume browser memory and transfer time; keep the screen open. Metadata is limited to 20MB.
 
 Normal restore preserves current site identity, API key, users and Cloudflare connection. Explicit account restoration also restores users; devices of users missing from the backup stop. Rebuild afterward. Restore stages and validates data before atomic replacement; missing parts or concurrent edits leave existing data intact. In D1 mode, existing, incoming and other staged images must total at most 450MB; R2 mode stages image bytes in R2, and actual D1 free space may impose a lower limit.
 
@@ -223,7 +225,7 @@ Public pages and the administration screen load the script that registers four h
 
 ## Static HTML ZIP export
 
-Build static pages in Site settings, then choose Download static ZIP. Choose `ID.html` or `ID/index.html`. The root `index` exports as `index.html`; directory-style IDs ending in `/index` retain `directory/index.html`. Output path collisions fail clearly.
+After a build, open the Data migration and import screen and choose Download static ZIP under Static HTML (ZIP). Choose `ID.html` or `ID/index.html`. The root `index` exports as `index.html`; directory-style IDs ending in `/index` retain `directory/index.html`. Output path collisions fail clearly.
 
 Only currently public_static, already-built snapshots are included. Links to included pages, images and component scripts become relative paths. Referenced images and public assets are bundled. Dynamic pages, search and APIs retain live-site links. Credentials, settings, users and private pages are excluded. ZIP pages do not register WebMCP; AI question controls become links to Cloud help.
 

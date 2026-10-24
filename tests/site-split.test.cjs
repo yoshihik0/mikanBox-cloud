@@ -77,3 +77,16 @@ test('feeds leave out the 404 page, and the search page in split mode',async()=>
  split(env);
  for(const make of [generateSitemapXml,generateRssXml]){xml=await make(env,await loadSettings(env),admin);assert.doesNotMatch(xml,/\/404</);assert.doesNotMatch(xml,/\/search</);assert.match(xml,/example\.test\//);}
 });
+test('the page list knows which pages the public site shows as current',async()=>{
+ const {publicationStatus}=require('../.test-build/src/publish-status.js');
+ const env=split(environment());await savePage(env,'index',page('public_static'));await savePage(env,'later',page('public_static'));await savePage(env,'draft',page('draft'));
+ await buildStatic(env,publicRequest(env,admin));
+ const list=async()=>require('../.test-build/src/storage.js').listPages(env);
+ let status=await publicationStatus(env,'https://admin.cloud.test',await list());
+ assert.equal(status.pages.index.state,'none');assert.equal(status.pages.draft.state,'none');assert.equal(status.stale,2);
+ env.sqlite.prepare("INSERT INTO settings(key,value) VALUES('static_publication',?)").run(JSON.stringify({paths:['/index.html','/later.html'],published_at:new Date(Date.now()+1000).toISOString()}));
+ status=await publicationStatus(env,'https://admin.cloud.test',await list());
+ assert.deepEqual(status.pages.index,{url:'https://www.example.test/',state:'live'});assert.equal(status.pages.later.url,'https://www.example.test/later');assert.equal(status.stale,0);
+ await savePage(env,'later',page('public_static','Edited'));
+ status=await publicationStatus(env,'https://admin.cloud.test',await list());assert.equal(status.pages.later.state,'stale');assert.equal(status.pages.index.state,'live');assert.equal(status.stale,1);
+});

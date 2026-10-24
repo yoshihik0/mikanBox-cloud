@@ -1,4 +1,4 @@
-import type {Env} from './types';
+import type {Env,Settings} from './types';
 import {loadSettings,saveSettings} from './storage';
 // Device authentication: no passwords. A browser holds a random session token in an
 // HttpOnly cookie; D1 keeps only its SHA-256. Entry is limited to SETUP_TOKEN (first
@@ -16,7 +16,8 @@ const hex=(bytes:ArrayBuffer)=>[...new Uint8Array(bytes)].map(b=>b.toString(16).
 export const sha256=async(text:string)=>hex(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(text)));
 function randomToken(){const bytes=crypto.getRandomValues(new Uint8Array(32));let s='';for(const b of bytes)s+=String.fromCharCode(b);return btoa(s).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');}
 async function hmac(secret:string,text:string){const key=await crypto.subtle.importKey('raw',new TextEncoder().encode(secret),{name:'HMAC',hash:'SHA-256'},false,['sign']);return hex(await crypto.subtle.sign('HMAC',key,new TextEncoder().encode(text))).slice(0,32);}
-export async function expiryDays(env:Env){const days=Number((await loadSettings(env)).device_expiry_days);return (EXPIRY_CHOICES as readonly number[]).includes(days)?days:30;}
+export function expiryFrom(settings:Settings){const days=Number(settings.device_expiry_days);return (EXPIRY_CHOICES as readonly number[]).includes(days)?days:30;}
+export async function expiryDays(env:Env){return expiryFrom(await loadSettings(env));}
 export function deviceCookie(token:string){return `${DEVICE_COOKIE}=${token}; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=${400*86400}`;}
 export function clearDeviceCookie(){return `${DEVICE_COOKIE}=; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=0`;}
 function readCookie(request:Request){return request.headers.get('Cookie')?.match(new RegExp(`(?:^|;\\s*)${DEVICE_COOKIE}=([A-Za-z0-9_-]{43})(?:;|$)`))?.[1]||null;}

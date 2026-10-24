@@ -1,7 +1,9 @@
 (() => {
  'use strict';
  const ja=document.documentElement.lang==='ja';let publishing=false;
- function status(text,error=false){if(window.showToast)window.showToast(text,error);const output=document.querySelector('[data-transfer-status]');if(output)output.textContent=text;}
+ // The build reports beside its own button; other operations use the toast.
+ let statusTarget=null;
+ function status(text,error=false){if(statusTarget){statusTarget.textContent=text;statusTarget.classList.toggle('error',!!error);return;}if(window.showToast)window.showToast(text,error);const output=document.querySelector('[data-transfer-status]');if(output)output.textContent=text;}
  async function action(name,extra={},lease=''){
   const form=extra instanceof FormData?extra:new FormData();if(!(extra instanceof FormData))for(const [key,value] of Object.entries(extra))form.set(key,typeof value==='string'?value:JSON.stringify(value));
   form.set('save_action',name);form.set('csrf_token',window.CSRF_TOKEN);form.set('ajax_request','1');if(lease)form.set('publication_lease',lease);
@@ -51,7 +53,8 @@
   event.preventDefault();event.stopImmediatePropagation();const buttons=[...form.querySelectorAll('button')];buttons.forEach(b=>b.disabled=true);
   try{
    let data=new FormData(form);
-   if(name==='build_ssg'){await window.cloudPublish(true);return;}
+   // Reload afterwards so the globe icons and the last-published time are current.
+   if(name==='build_ssg'){statusTarget=form.querySelector('[data-publish-status]');await window.cloudPublish(true);setTimeout(()=>location.reload(),1500);return;}
    if(name==='begin_d1_export'){
     let result=await action(name);for(let i=0;i<600&&result.export.status!=='complete';i++){if(result.export.status==='error')throw new Error(result.export.error||'Export failed.');await new Promise(resolve=>setTimeout(resolve,1000));const response=await fetch('/admin?d1_export_poll=1',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({capability:result.capability}),credentials:'same-origin'}),next=await response.json();if(!response.ok||!next.success)throw new Error(next.message||'Export polling failed.');result={...result,export:next.export};}
     if(result.export.status!=='complete'||!result.export.result?.signed_url)throw new Error('Export did not finish. Try again.');const link=document.createElement('a');link.href=result.export.result.signed_url;link.download=result.export.result.filename||'mikanbox.sql';link.click();status(ja?'D1の書き出しが完了しました。':'D1 export completed.');return;
@@ -69,6 +72,6 @@
    }
    await action(name,data);
    location.reload();
-  }catch(error){status(error.message,true);}finally{buttons.forEach(b=>b.disabled=false);}
+  }catch(error){status(error.message,true);}finally{statusTarget=null;buttons.forEach(b=>b.disabled=false);}
  },true);
 })();

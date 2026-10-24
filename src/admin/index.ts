@@ -11,8 +11,9 @@ import type { Env, PageData, ComponentData } from '../types';
 import { loadSettings, saveSettings, loadPage, getSortedPageIds, loadComponent, saveComponent, deleteComponent, listComponentIds, listPages, listComponents, listMediaFiles, uploadMedia, deleteMedia, renameMedia, mediaUsage, getMediaObject, buildDataBackupZip, buildMediaBackupZip } from '../storage';
 import { verifyCsrf } from '../auth';
 import { authenticatedUser, getUser, listUsers, addInitialUser, rateLimit } from '../accounts';
-import { onProbation, PROBATION_DAYS, createDevice, claimCode, issueCode, cancelCode, revokeDevice, setExpiryDays, setupTokenUsable, consumeSetupToken, clearDeviceCookie, listDevices, listCodes, unseenDevices, expiryDays } from '../devices';
+import { onProbation, PROBATION_DAYS, createDevice, claimCode, issueCode, cancelCode, revokeDevice, setExpiryDays, setupTokenUsable, consumeSetupToken, clearDeviceCookie, listDevices, listCodes, unseenDevices, expiryFrom } from '../devices';
 import { renderAccountsSection } from './accounts-view';
+import { publicationStatus } from '../publish-status';
 import { pageId, componentId, pageStatus } from '../validation';
 import { revisions, saveWithRevision } from '../revisions';
 import { buildStatic } from '../ssg';
@@ -331,7 +332,7 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
   const hasNew=url.searchParams.has('new'),helpFile=help(lang);
   const pageEditorHtml=view==='pages'&&(editId||hasNew)?renderPageEditor({t,editId,editData:editData as PageData|null,csrf,helpFile,wrapperComponents:components.filter(c=>c.data.is_wrapper),allCategories,settings:{...settings,_site_base:url.origin},revisions:pageRevisions,selectedRevision:pageRevisions.find(r=>r.id===Number(url.searchParams.get('rev')))}):'';
   const designEditorHtml=view==='components'&&(editId||hasNew)?renderDesignEditor({t,editId,editData:editData as ComponentData|null,csrf,helpFile}):'';
-  const pagesHtml=renderPagesView({t,pages:filtered.slice((pageNumber-1)*perPage,pageNumber*perPage),view,editId,hasNew,csrf,helpFile,settings,query,category,pageNumber,totalPages});
+  const pagesHtml=renderPagesView({t,pages:filtered.slice((pageNumber-1)*perPage,pageNumber*perPage),view,editId,hasNew,csrf,helpFile,settings,query,category,pageNumber,totalPages,lang,publication:await publicationStatus(env,url.origin,pages)});
   const mediaQuery=url.searchParams.get('q_media')||'',mediaCategory=category,ignoreMediaCategory=url.searchParams.get('media_all')==='1';
   const mediaTypeFilter=['image','audio','video','js','css'].includes(url.searchParams.get('media_type')||'')?url.searchParams.get('media_type')!:'';
   const extensions:Record<string,string[]>={image:['jpg','jpeg','png','gif','webp','svg'],audio:['mp3','m4a'],video:['mp4'],js:['js'],css:['css']};
@@ -348,9 +349,9 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
   const d1Bytes=typeof databaseProbe.meta.size_after==='number'?databaseProbe.meta.size_after:null;
   const storageMode=await mediaStorageMode(env),migration=await migrationStatus(env);
   const target=cloudTarget(env),displaySettings={...settings,storage_migrated:url.searchParams.get('storage_migrated')==='1',media_storage:storageMode,r2_configured:!!env.MEDIA,d1_bytes:d1Bytes,media_migration:migration,r2_bytes:(await env.DB.prepare('SELECT COALESCE(SUM(size),0) bytes FROM r2_objects').first<{bytes:number}>())?.bytes||0,cloud_connection_ready:await cloudConfigured(env),cloud_account_id:target.account,cloud_worker_name:target.worker};
-  const siteHtml=view==='import'?renderImportView({t,csrf,lang,stats:{pages:pages.length,components:components.length,users:users.length,media:files.length,mediaBytes:files.reduce((sum,file)=>sum+file.size,0)}}):renderSiteView({t,trackingComponents:components.filter(c=>!c.data.is_ai_doc&&!c.data.is_wrapper),settings:displaySettings,csrf,helpFile,users,username:auth.user.username,accountsHtml:renderAccountsSection({lang,csrf,users,me:auth.device,devices:await listDevices(env),codes:await listCodes(env),expiryDays:await expiryDays(env)}),lang,deliveryMode:env.STATIC_DELIVERY==='true'?'static':'worker',release:await latestCloudRelease(env,url.searchParams.has('refresh_updates'))});
+  const siteHtml=view==='import'?renderImportView({t,csrf,lang,stats:{pages:pages.length,components:components.length,users:users.length,media:files.length,mediaBytes:files.reduce((sum,file)=>sum+file.size,0)}}):renderSiteView({t,trackingComponents:components.filter(c=>!c.data.is_ai_doc&&!c.data.is_wrapper),settings:displaySettings,csrf,helpFile,users,username:auth.user.username,accountsHtml:renderAccountsSection({lang,csrf,users,me:auth.device,devices:await listDevices(env),codes:await listCodes(env),expiryDays:expiryFrom(settings)}),lang,deliveryMode:env.STATIC_DELIVERY==='true'?'static':'worker',release:await latestCloudRelease(env,url.searchParams.has('refresh_updates'))});
   const unseen=await unseenDevices(env,auth.device);
   if(unseen.length)message=(message?message+' ':'')+(lang==='ja'?'新しい端末が登録されました: ':'New device registered: ')+unseen.map(d=>`${d.name} (${d.username})`).join(', ')+(lang==='ja'?'。心当たりがなければ「端末とユーザー」で止めてください。':'. If you do not recognise it, stop it under Devices and users.');
-  return html(renderAdminShell({lang,t,view,editId,hasNew,helpFile,message,csrf,settings,pagesHtml,pageEditorHtml,siteHtml,designHtml,designEditorHtml,mediaHtml,
+  return html(renderAdminShell({lang,t,view,editId,hasNew,helpFile,message,csrf,settings:{...settings,_public_url:env.PUBLIC_SITE_URL||''},pagesHtml,pageEditorHtml,siteHtml,designHtml,designEditorHtml,mediaHtml,
     mediaEnabled:true,aiPromptJson:JSON.stringify(settings.ai_prompt||'').replace(/</g,'\\u003c'),allCategories,category}),statusCode);
 }
