@@ -41,7 +41,8 @@ Setting `CLOUDFLARE_PUBLIC_WORKER_NAME` (the public Worker's name) and `PUBLIC_S
 - A signed-in device opening `/about` on the admin address is sent to the preview (`/preview/about`). Previews carry a CSP `sandbox`, so page scripts cannot reach the admin screen. Inside a preview, page scripts cannot use cookies or `localStorage`.
 - Public pages, sitemaps and RSS use `PUBLIC_SITE_URL` and never the admin address. Sitemaps, RSS and DB page JSON (`/api/page-id`) are published as files.
 - Publication sends only changed files. Page hashes are stored at build time.
-- Site search and the AI question box do not work on the public site.
+- Site search and the AI question box do not work on the public site. The search page is left out of sitemaps and RSS.
+- As in the PHP editions, the 404 page is never listed in sitemaps or RSS, split or not.
 
 ## Static image delivery (development v0.6.0)
 

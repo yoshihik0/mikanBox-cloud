@@ -70,3 +70,10 @@ test('published feeds do not change between the hashing read and the upload read
  global.Date=class extends RealDate{constructor(...args){super(...(args.length?args:[RealDate.now()+3600_000]));}static now(){return RealDate.now()+3600_000;}};
  try{assert.deepEqual(await reads(),first);}finally{global.Date=RealDate;}
 });
+test('feeds leave out the 404 page, and the search page in split mode',async()=>{
+ const {generateSitemapXml,generateRssXml}=require('../.test-build/src/feeds.js'),{loadSettings}=require('../.test-build/src/storage.js');
+ const env=environment();for(const id of ['index','404','search'])await savePage(env,id,page('public_static'));
+ let xml=await generateSitemapXml(env,await loadSettings(env),admin);assert.doesNotMatch(xml,/\/404</);assert.match(xml,/\/search</);
+ split(env);
+ for(const make of [generateSitemapXml,generateRssXml]){xml=await make(env,await loadSettings(env),admin);assert.doesNotMatch(xml,/\/404</);assert.doesNotMatch(xml,/\/search</);assert.match(xml,/example\.test\//);}
+});

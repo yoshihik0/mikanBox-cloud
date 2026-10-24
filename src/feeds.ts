@@ -5,6 +5,11 @@
 import type { Env, Settings } from './types';
 import { loadPage, listPages, isPublicStatus } from './storage';
 import { MikanBoxRenderer } from './renderer';
+import { splitMode } from './site-split';
+
+// Pages that are not content to visit: the 404 page is an error response (as in the
+// PHP editions), and in split mode the search page has no Worker to answer it.
+const notListed = (env: Env, id: string) => id === '404' || (id === 'search' && splitMode(env));
 
 function esc(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -29,7 +34,7 @@ export async function generateSitemapXml(env: Env, settings: Settings, request: 
 
   for (const {id:pageId,data} of allPosts) {
     if (!data) continue;
-    if (!isPublicStatus(data.status)) continue;
+    if (!isPublicStatus(data.status) || notListed(env, pageId)) continue;
     const loc = esc(siteUrl + '/' + (pageId === 'index' ? '' : pageId));
     const lastmod = (data.updated_at || '').slice(0, 10);
     xml += `  <url>\n    <loc>${loc}</loc>\n${lastmod ? `    <lastmod>${lastmod}</lastmod>\n` : ''}  </url>\n`;
@@ -50,7 +55,7 @@ export async function generateRssXml(env: Env, settings: Settings, request: Requ
   const items: Item[] = [];
   for (const {id:pageId,data} of allPosts) {
     if (!data) continue;
-    if (!isPublicStatus(data.status)) continue;
+    if (!isPublicStatus(data.status) || notListed(env, pageId)) continue;
     items.push({ id: pageId, data });
   }
   items.sort((a, b) => {
@@ -96,7 +101,7 @@ export async function generatePodcastXml(env: Env, settings: Settings, request: 
 
   for (const {id:pageId,data} of allPosts) {
     if (!data) continue;
-    if (!isPublicStatus(data.status)) continue;
+    if (!isPublicStatus(data.status) || notListed(env, pageId)) continue;
     const cats = (data.category || '').split(',').map(s => s.trim()).filter(Boolean);
     if (!cats.includes('podcast')) continue;
     items.push({ id: pageId, data });
