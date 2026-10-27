@@ -1945,3 +1945,14 @@ input[type="datetime-local"], input:not([type]) {
 .btn-orange { background: #f97316; color: #fff; }
 .btn-orange:hover { background: #ea580c; }
 .account-list-heading { font-size: .95rem; margin: 0 0 12px; padding-bottom: 5px; border-bottom: 1px solid #e2e8f0; }
+
+/* Cloud: the build button and its status share one baseline; setup hints wrap below. */
+.publish-box { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; }
+.publish-box .btn { flex: none; display: inline-flex; align-items: center; gap: 6px; }
+.publish-box .publish-status { flex: 1 1 14em; margin: 0; font-size: 0.85rem; line-height: 1.4; color: var(--text-sub); }
+.publish-box .publish-status.error { color: #b91c1c; font-weight: 600; background: none; border: 0; padding: 0; }
+.publish-box.is-busy .btn { opacity: 0.7; cursor: progress; }
+.publish-box .publish-setup { flex: 1 1 100%; margin: 0; padding: 8px 12px; border-radius: 6px; background: #fef3c7; border: 1px solid #fde68a; color: #92400e; font-size: 0.85rem; }
+.publish-box .publish-setup a { font-weight: 600; }
+/* Forms in a two-column grid whose last cell holds only buttons: line them up with the inputs above. */
+.grid-2col > .form-actions { align-self: end; display: flex; align-items: center; gap: 10px; min-height: 36px; }

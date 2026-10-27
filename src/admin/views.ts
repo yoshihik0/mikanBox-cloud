@@ -76,12 +76,14 @@ function globeLink(state: PublicState | undefined, ja: boolean): string {
 }
 // The build is how pages reach the public site, so it sits with the page list and
 // reports there rather than in the toast at the top of the screen.
-function publishBox(csrf: string, t: (key: string, ...args: (string | number)[]) => string, publication: PublicationStatus | undefined, ja: boolean): string {
+function publishBox(csrf: string, t: (key: string, ...args: (string | number)[]) => string, publication: PublicationStatus | undefined, ja: boolean, cloudReady: boolean): string {
   const when = publication?.publishedAt ? new Date(publication.publishedAt).toLocaleString(ja ? 'ja-JP' : 'en-US', { dateStyle: 'short', timeStyle: 'short' }) : '';
   const summary = !publication ? '' : publication.stale
     ? (ja ? `公開側に反映していない変更があります（${publication.stale}ページ）。` : `${publication.stale} page(s) have changes not on the public site.`)
     : (ja ? '公開側は最新です。' : 'The public site is up to date.');
-  return `<form method="post" class="flex-row gap-10 mt-10" id="publish-box">${csrfField(csrf)}<input type="hidden" name="save_action" value="build_ssg"><button class="btn btn-blue btn-small">${getIcon('cloud')} ${t('btn_ssg_build')}</button><span class="sub-text" data-publish-status role="status">${h(summary)}${when ? ` ${ja ? '最後の公開' : 'Last published'}: ${h(when)}` : ''}</span></form>`;
+  // Publishing needs the Cloudflare API token from Site → Cloud publication connection; say so here, where the button is.
+  const setup = cloudReady ? '' : `<p class="publish-setup" role="note">${ja ? '公開するには、Cloudflare APIトークンの設定が必要です。' : 'Publishing needs a Cloudflare API token.'} <a href="/admin?view=site#cloud-connection" data-open-cloud-connection>${ja ? 'サイト →「Cloud公開接続」で設定する' : 'Set it up under Site → Cloud publication connection'}</a></p>`;
+  return `<form method="post" class="publish-box mt-10" id="publish-box">${csrfField(csrf)}<input type="hidden" name="save_action" value="build_ssg"><button class="btn btn-blue btn-small">${getIcon('cloud')} <span data-publish-label>${t('btn_ssg_build')}</span></button><span class="publish-status" data-publish-status role="status">${h(summary)}${when ? ` ${ja ? '最後の公開' : 'Last published'}: ${h(when)}` : ''}</span>${setup}</form>`;
 }
 
 // ===== 管理画面メインシェル =====
@@ -547,7 +549,7 @@ export function renderPagesView(opts: {
   helpFile: string;
   settings: Settings;
   query?: string; category?:string; pageNumber?:number; totalPages?:number;
-  lang?: string; publication?: PublicationStatus;
+  lang?: string; publication?: PublicationStatus; cloudReady?: boolean;
 }): string {
   const { t, pages, view, editId, hasNew, csrf, helpFile } = opts;
   const ja = opts.lang !== 'en', publication = opts.publication;
@@ -615,7 +617,7 @@ export function renderPagesView(opts: {
         </form>
         </div>
         ${(opts.totalPages||1)>1?`<div class="pagination">${Array.from({length:opts.totalPages||1},(_,i)=>`<a class="pagination-link ${opts.pageNumber===i+1?'active':''}" href="?view=pages&amp;p_pages=${i+1}&amp;q=${encodeURIComponent(opts.query||'')}&amp;cat=${encodeURIComponent(opts.category||'')}#pages">${i+1}</a>`).join('')}</div>`:''}
-        ${publishBox(csrf, t, publication, ja)}
+        ${publishBox(csrf, t, publication, ja, opts.cloudReady !== false)}
         </div>
     </div>
 
@@ -1264,7 +1266,7 @@ export function renderSiteView(opts: {
     ${opts.accountsHtml||''}
     <div id="cloud-connection" class="section-large-bottom"><div class="section-container section-tight"><details class="section-accordion"><summary class="header section-header accordion-summary"><h2 class="accordion-title">${lang==='en'?'Cloud publication connection':'Cloud公開接続'} <span class="accordion-arrow">▼</span></h2></summary><div class="editor-container editor-container-sub">
                     <p>${lang==='en'?'Configure the Cloudflare account and Worker used for publication. The token is stored securely and is never shown again.':'公開に使うCloudflareアカウントとWorkerを設定します。トークンは安全に保存され、再表示されません。'}</p>
-                    <form method="post" class="grid-2col"><input type="hidden" name="save_action" value="save_cloud_connection">${csrfField(csrf)}<div class="form-group"><label>${lang==='en'?'Cloudflare account ID':'CloudflareアカウントID'}</label><input type="text" name="cloud_account_id" value="${h(settings.cloud_account_id||'')}" required></div><div class="form-group"><label>${lang==='en'?'Worker name':'Worker名'}</label><input type="text" name="cloud_worker_name" value="${h(settings.cloud_worker_name||'')}" required></div><div class="form-group"><label>${lang==='en'?'Cloudflare API token':'Cloudflare APIトークン'}</label><input type="password" name="cloud_api_token" autocomplete="new-password" ${settings.cloud_connection_ready?'placeholder="•••••••• (set)"':'required'}></div><div><button class="btn btn-gray btn-small">${t('btn_save')}</button> <span role="status">${settings.cloud_connection_ready?(lang==='en'?'Connection configured':'接続設定済み'):(lang==='en'?'Not configured':'未設定')}</span></div></form>
+                    <form method="post" class="grid-2col"><input type="hidden" name="save_action" value="save_cloud_connection">${csrfField(csrf)}<div class="form-group"><label>${lang==='en'?'Cloudflare account ID':'CloudflareアカウントID'}</label><input type="text" name="cloud_account_id" value="${h(settings.cloud_account_id||'')}" required></div><div class="form-group"><label>${lang==='en'?'Worker name':'Worker名'}</label><input type="text" name="cloud_worker_name" value="${h(settings.cloud_worker_name||'')}" required></div><div class="form-group"><label>${lang==='en'?'Cloudflare API token':'Cloudflare APIトークン'}</label><input type="password" name="cloud_api_token" autocomplete="new-password" ${settings.cloud_connection_ready?'placeholder="•••••••• (set)"':'required'}></div><div class="form-actions"><button class="btn btn-gray btn-small">${t('btn_save')}</button> <span role="status">${settings.cloud_connection_ready?(lang==='en'?'Connection configured':'接続設定済み'):(lang==='en'?'Not configured':'未設定')}</span></div></form>
     </div></details></div></div>
 
 

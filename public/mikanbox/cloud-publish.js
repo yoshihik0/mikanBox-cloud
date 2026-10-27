@@ -3,7 +3,9 @@
  const ja=document.documentElement.lang==='ja';let publishing=false;
  // The build reports beside its own button; other operations use the toast.
  let statusTarget=null;
- function status(text,error=false){if(statusTarget){statusTarget.textContent=text;statusTarget.classList.toggle('error',!!error);return;}if(window.showToast)window.showToast(text,error);const output=document.querySelector('[data-transfer-status]');if(output)output.textContent=text;}
+ // Where the token is set. The server's message names it in two languages; here it becomes a link beside the button.
+ const needsToken=text=>/Cloudflare配信用トークン|deployment token/.test(text);
+ function status(text,error=false){if(statusTarget){statusTarget.textContent=needsToken(text)?(ja?'Cloudflare APIトークンが未設定のため公開できません。':'Publishing is not possible: the Cloudflare API token is not set.'):text;statusTarget.classList.toggle('error',!!error);if(error&&needsToken(text)){const link=document.createElement('a');link.href='/admin?view=site#cloud-connection';link.textContent=ja?' 設定する':' Set it up';link.dataset.openCloudConnection='';statusTarget.append(link);}return;}if(window.showToast)window.showToast(text,error);const output=document.querySelector('[data-transfer-status]');if(output)output.textContent=text;}
  async function action(name,extra={},lease=''){
   const form=extra instanceof FormData?extra:new FormData();if(!(extra instanceof FormData))for(const [key,value] of Object.entries(extra))form.set(key,typeof value==='string'?value:JSON.stringify(value));
   form.set('save_action',name);form.set('csrf_token',window.CSRF_TOKEN);form.set('ajax_request','1');if(lease)form.set('publication_lease',lease);
@@ -47,10 +49,14 @@
   const renamed=name==='rename_media'?data.get('new_name'):data.get('new_filename');
   return !!renamed&&renamed!==data.get('file');
  }
+ // The Cloud publication connection lives in a collapsed section of the Site view.
+ function openConnection(){const box=document.getElementById('cloud-connection');if(!box)return;const details=box.querySelector('details');if(details)details.open=true;box.scrollIntoView({block:'center'});}
+ document.addEventListener('click',event=>{const link=event.target?.closest?.('[data-open-cloud-connection]');if(!link||!document.getElementById('cloud-connection'))return;event.preventDefault();openConnection();});
+ if(location.hash==='#cloud-connection')addEventListener('load',openConnection);
  document.addEventListener('submit',async event=>{
   const form=event.target,name=form.querySelector('[name="save_action"]')?.value;
   if(!['build_ssg','delete_media','rename_media','resize_media','edit_media','convert_media_webp','begin_d1_export','restore_d1_time'].includes(name))return;
-  event.preventDefault();event.stopImmediatePropagation();const buttons=[...form.querySelectorAll('button')];buttons.forEach(b=>b.disabled=true);
+  event.preventDefault();event.stopImmediatePropagation();const buttons=[...form.querySelectorAll('button')];buttons.forEach(b=>b.disabled=true);const label=form.querySelector('[data-publish-label]'),labelText=label?.textContent;if(label)label.textContent=ja?'公開中…':'Publishing…';form.classList?.add('is-busy');
   try{
    let data=new FormData(form);
    // Reload afterwards so the globe icons and the last-published time are current.
@@ -72,6 +78,6 @@
    }
    await action(name,data);
    location.reload();
-  }catch(error){status(error.message,true);}finally{statusTarget=null;buttons.forEach(b=>b.disabled=false);}
+  }catch(error){status(error.message,true);}finally{statusTarget=null;buttons.forEach(b=>b.disabled=false);if(label)label.textContent=labelText;form.classList?.remove('is-busy');}
  },true);
 })();
