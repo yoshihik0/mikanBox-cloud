@@ -14,6 +14,7 @@
     "prepare:local": "node scripts/prepare-local.mjs",
     "sync:assets": "node scripts/sync-assets.mjs",
     "sync:defaults": "node scripts/sync-defaults.mjs",
+    "deploy:cloud": "node scripts/deploy-cloud.mjs",
     "publish:static": "npm run check && npm run test && node scripts/publish-static.mjs"
   },
   "devDependencies": {

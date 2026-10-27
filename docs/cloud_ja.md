@@ -149,6 +149,8 @@ npm test
 npm run build
 ```
 
+コードや画面用ファイル（`public/mikanbox/`）を更新して試験サイトへ反映するには `npm run deploy:cloud` を使います。配信用の `.publication` フォルダへ画面用ファイルをコピーしてから、Workerをデプロイします（`--dry-run` で確認のみ）。ページと画像の公開は別で、管理画面の再構築ボタンを使います。
+
 `build` は公開せずにバンドルだけを検証するdry runです。Wranglerのログは権限の問題がある場合、`WRANGLER_LOG_PATH=.wrangler/logs` を指定してこのフォルダ内に保存してください。
 
 ## 標準コンテンツ

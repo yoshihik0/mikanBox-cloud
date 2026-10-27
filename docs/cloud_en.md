@@ -149,6 +149,8 @@ npm test
 npm run build
 ```
 
+To release code or browser assets (`public/mikanbox/`) to the staging site, use `npm run deploy:cloud`. It copies the browser assets into the generated `.publication` folder and then deploys the Worker (`--dry-run` only checks). Publishing pages and images is separate: use the admin screen's build button.
+
 `build` performs a dry run without publishing. If Wrangler cannot write to its default log directory, set `WRANGLER_LOG_PATH=.wrangler/logs` to keep logs inside the Cloud directory.
 
 ## Standard content
