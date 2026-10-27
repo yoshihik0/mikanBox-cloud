@@ -115,8 +115,10 @@
   function parsePackageFiles(files) {
     const json = new Map();
     for (const [name, bytes] of files) {
+      const parts = name.replace(/^\.\//, '').split('/');
+      if (parts.includes('__MACOSX') || parts.some(part => part.startsWith('._'))) continue;
       if (!name.toLowerCase().endsWith('.json')) continue;
-      const clean = name.replace(/^\.\//, '').replace(/^__MACOSX\//, '');
+      const clean = name.replace(/^\.\//, '');
       try { json.set(clean, JSON.parse(decoder.decode(bytes))); } catch (error) {
         if(/(?:^|\/)(?:posts|components)\//.test(clean))throw new Error(msg(`パッケージ内のJSONを解析できません: ${clean}`,`Could not parse package JSON: ${clean}`));
       }

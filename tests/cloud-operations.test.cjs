@@ -1,9 +1,9 @@
 const test=require('node:test'),assert=require('node:assert/strict');
-const {environment,login}=require('./fixtures.cjs');
+const {environment,login,call}=require('./fixtures.cjs');
 const {savePage,loadPage,uploadMedia,getMediaObject}=require('../.test-build/src/storage.js');
 const {replaceMediaImage}=require('../.test-build/src/media-transform.js');
 const {renameMediaReferences}=require('../.test-build/src/content-operations.js');
-const {saveCloudToken,cloudToken,beginD1Export,pollD1Export}=require('../.test-build/src/cloudflare-api.js');
+const {saveCloudToken,cloudToken,beginD1Export,pollD1Export,prepareD1Download}=require('../.test-build/src/cloudflare-api.js');
 const {beginPublication,hashPublicationFiles,preparePublication,uploadPublicationFile,finishPublication}=require('../.test-build/src/publication-service.js');
 const {readPublicationEntry}=require('../.test-build/src/static-publication.js');
 const {latestCloudRelease}=require('../.test-build/src/cloud-release.js');
@@ -30,6 +30,22 @@ test('encrypted Cloud credentials and export polling do not depend on D1 availab
   await assert.rejects(pollD1Export(env,started.capability,'https://other.test'),/invalid/);
  }finally{global.fetch=original;}
 });
+test('completed D1 export streams an authenticated same-origin attachment',async()=>{
+ const env=target(environment()),auth=await login(env),original=global.fetch;env.CLOUDFLARE_API_TOKEN='private-test-credential-123456';let downloads=0,apiCalls=0,redirect=false;
+ global.fetch=async(url,init={})=>{const u=String(url);if(u.startsWith('https://api.cloudflare.com/')){apiCalls++;if(apiCalls>1)throw new Error('Completed export must not be polled again');return Response.json({success:true,result:{at_bookmark:'bookmark',status:'complete',result:{signed_url:'https://example.test/backup.sql'}}});}if(u==='https://example.test/backup.sql'){downloads++;assert.equal(init.redirect,'manual');return redirect?new Response(null,{status:302,headers:{location:'https://other.test/'}}):new Response('CREATE TABLE example(id INTEGER);');}throw new Error('unexpected URL');};
+ try{
+  const started=await beginD1Export(env,'https://cloud.test'),ready=await prepareD1Download(env,started.export,'https://cloud.test');assert.doesNotMatch(JSON.stringify(ready),/example.test/);const data={save_action:'download_d1_export',csrf_token:auth.csrf_token,capability:ready.download_capability};
+  const unauth=await call(env,'/admin',data);assert.doesNotMatch(unauth.headers.get('content-disposition')||'',/attachment/);assert.equal(downloads,0);
+  const badCsrf=await call(env,'/admin',{...data,csrf_token:'bad'},auth.cookie);assert.equal(badCsrf.status,403);assert.equal(downloads,0);
+  const invalid=await call(env,'/admin',{...data,capability:'invalid'},auth.cookie);assert.equal(invalid.status,400);assert.equal(downloads,0);
+  const response=await call(env,'/admin',data,auth.cookie);assert.equal(response.status,200);assert.match(response.headers.get('content-disposition'),/^attachment;/);assert.equal(response.headers.get('cache-control'),'no-store');assert.match(await response.text(),/CREATE TABLE/);assert.equal(downloads,1);assert.equal(apiCalls,1);
+  redirect=true;const redirected=await call(env,'/admin',data,auth.cookie);assert.equal(redirected.status,400);assert.equal(downloads,2);
+ }finally{global.fetch=original;}
+});
+test('split publication token is checked against the public Worker',async()=>{
+ const env=target(environment()),original=global.fetch;env.CLOUDFLARE_PUBLIC_WORKER_NAME='public-site';let url='';
+ try{global.fetch=async target=>{url=target;return Response.json({success:true,result:{deployments:[]}});};await saveCloudToken(env,'private-test-credential-123456');assert.match(url,/\/scripts\/public-site\/deployments$/);}finally{global.fetch=original;}
+});
 test('image replacement and WebP conversion preserve bytes, references and history atomically',async()=>{
  const env=environment(),png=new Uint8Array([137,80,78,71,13,10,26,10]),webp=new TextEncoder().encode('RIFFxxxxWEBPdata');
  await uploadMedia(env,'photo.png',png.buffer,'image/png');await savePage(env,'page',{title:'Image',status:'public_static',content_md:'![image](/media/photo.png)'});
@@ -47,6 +63,7 @@ test('publication inherits existing bindings and recovers an accepted deployment
   if(url.includes('/workers/assets/upload'))return Response.json({success:true,result:{jwt:'completed'}});
   if(url.endsWith('/versions/initial'))return Response.json({success:true,result:{resources:{bindings:[{name:'DB',type:'d1'},{name:'JWT_SECRET',type:'secret_text'},{name:'ASSETS',type:'assets'}],script_runtime:{compatibility_date:'2026-10-03',compatibility_flags:[]}}}});
   if(url.endsWith('/content/v2')){const form=new FormData();form.set('worker.js',new Blob(['export default{}']), 'worker.js');const response=new Response(form);response.headers.set('cf-entrypoint','worker.js');return response;}
+  if(url.endsWith('/versions?per_page=1'))return Response.json({success:true,result:{items:[{id:'initial'}]}});
   if(url.endsWith('/versions?bindings_inherit=strict')){metadata=JSON.parse(await init.body.get('metadata').text());return Response.json({success:true,result:{id:'new-version'}});}
   if(url.endsWith('/deployments')&&init.method==='POST'){deployCalls++;active='new-version';if(failResponse){failResponse=false;throw new Error('Response lost after deploy');}return Response.json({success:true,result:{}});}
   throw new Error('Unexpected API path: '+url);
@@ -58,7 +75,7 @@ test('publication inherits existing bindings and recovers an accepted deployment
   await assert.rejects(finishPublication(env,begin.job,'admin'),/not uploaded/);
   for(const entry of prepared.uploads){const file=files.find(f=>f.hash===entry.hash);await uploadPublicationFile(env,begin.job,'admin',entry.hash,new File([Buffer.from(file.bytes).toString('base64')],entry.hash,{type:file.contentType}));}
   await assert.rejects(finishPublication(env,begin.job,'admin'),/Response lost/);const result=await finishPublication(env,begin.job,'admin');assert.equal(result.version,'new-version');assert.equal(deployCalls,1);
-  assert.deepEqual(metadata.bindings.filter(b=>b.name!=='ASSETS'),[{name:'DB',type:'inherit',version_id:'initial'},{name:'JWT_SECRET',type:'inherit',version_id:'initial'}]);assert.equal(metadata.assets.config.html_handling,'none');assert.ok(metadata.assets.config._headers.includes('static'));
+  assert.deepEqual(metadata.bindings.filter(b=>b.name!=='ASSETS'),[{name:'DB',type:'inherit',version_id:'latest'},{name:'JWT_SECRET',type:'inherit',version_id:'latest'}]);assert.equal(metadata.assets.config.html_handling,'none');assert.ok(metadata.assets.config._headers.includes('static'));
   assert.equal(env.sqlite.prepare("SELECT key FROM settings WHERE key='publication_lock'").get(),undefined);
  }finally{global.fetch=original;}
 });

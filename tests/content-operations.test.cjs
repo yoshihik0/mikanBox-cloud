@@ -70,3 +70,32 @@ test('rename preflight counts exact content references and file-only confirmatio
  const ask=await post(env,auth,{save_action:'rename_media',file:'old.png',new_name:'new.png'});assert.equal(ask.data.require_confirm,true);assert.ok(await getMediaObject(env,'old.png'));
  const renamed=await post(env,auth,{save_action:'rename_media',file:'old.png',new_name:'new.png',confirmed:'0'});assert.equal(renamed.data.success,true,renamed.data.message);assert.ok(await getMediaObject(env,'new.png'));assert.equal((await loadPage(env,'used')).content_md,'old.png old.png');assert.equal((await loadComponent(env,'used')).html,'old.png');
 });
+
+test('WebP conversion updates saved page and component references through the actual admin action',async()=>{
+ const env=environment(),auth=await login(env);await upload(env,'photo.png');
+ await savePage(env,'image-test',{title:'Test',status:'draft',content_md:'![img](photo.png)',css:'background:url(photo.png)',js:'const image="photo.png"',ogp_image:'photo.png'});
+ await saveComponent(env,'image-part',{html:'<img src="photo.png">',css:'background:url(photo.png)',js:'const image="photo.png"'});
+ const webp=new TextEncoder().encode('RIFFxxxxWEBPdata'),before=await getMediaObject(env,'photo.png');
+ const r=await multipart(env,auth,{save_action:'convert_media_webp',file:'photo.png',source_file:'photo.png',new_filename:'photo.webp',source_etag:before.httpEtag,image:new File([webp],'photo.webp',{type:'image/webp'})});
+ assert.equal(r.data.success,true,r.data.message);assert.equal(await getMediaObject(env,'photo.png'),null);assert.ok(await getMediaObject(env,'photo.webp'));
+ const page=await loadPage(env,'image-test'),part=await loadComponent(env,'image-part');for(const value of [page.content_md,page.css,page.js,page.ogp_image,part.html,part.css,part.js])assert.match(value,/photo\.webp/);
+});
+
+test('WebP conversion with an existing target reports the collision and preserves all data',async()=>{
+ const env=environment(),auth=await login(env);await upload(env,'photo.png');const webp=new TextEncoder().encode('RIFFxxxxWEBPdata');await uploadMedia(env,'photo.webp',webp.buffer,'image/webp');
+ await savePage(env,'linked',{title:'Linked',status:'draft',content_md:'![photo](photo.png)'});
+ const status=await post(env,auth,{save_action:'media_reference_status',file:'photo.png',target:'photo.webp'});assert.equal(status.data.target_exists,true);
+ const before=await getMediaObject(env,'photo.png');const r=await multipart(env,auth,{save_action:'convert_media_webp',file:'photo.png',source_file:'photo.png',new_filename:'photo.webp',source_etag:before.httpEtag,image:new File([webp],'photo.webp',{type:'image/webp'})});
+ assert.equal(r.data.success,false);assert.match(r.data.message,/already exists/);assert.ok(await getMediaObject(env,'photo.png'));assert.ok(await getMediaObject(env,'photo.webp'));assert.equal((await loadPage(env,'linked')).content_md,'![photo](photo.png)');
+});
+
+test('published conversion preserves the old published path and protects it from reuse',async()=>{
+ const env=environment(),auth=await login(env);await upload(env,'photo.png');
+ await savePage(env,'linked',{title:'Linked',status:'draft',content_md:'photo.png'});
+ env.sqlite.prepare("INSERT INTO settings(key,value) VALUES('static_publication',?)").run(JSON.stringify({paths:['/media/photo.png','/page.html']}));
+ const webp=new TextEncoder().encode('RIFFxxxxWEBPdata'),before=await getMediaObject(env,'photo.png');
+ const r=await multipart(env,auth,{save_action:'convert_media_webp',file:'photo.png',source_file:'photo.png',new_filename:'photo.webp',source_etag:before.httpEtag,image:new File([webp],'photo.webp',{type:'image/webp'})});
+ assert.equal(r.data.success,true,r.data.message);assert.equal((await loadPage(env,'linked')).content_md,'photo.webp');
+ assert.deepEqual(JSON.parse(env.sqlite.prepare("SELECT value FROM settings WHERE key='static_publication'").get().value).paths,['/media/photo.png','/page.html']);
+ const uploadAttempt=await multipart(env,auth,{save_action:'upload_media',image:new File([image],'photo.png',{type:'image/png'})});assert.equal(uploadAttempt.data.success,false);assert.match(uploadAttempt.data.message,/公開中|still published/);
+});

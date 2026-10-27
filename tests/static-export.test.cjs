@@ -60,6 +60,19 @@ test('export includes referenced original images, scoped component JS, and publi
   const html=decode.decode(files.get('nested/page/index.html'));assert.match(html,/src="\.\.\/\.\.\/media\/one.png"/);assert.match(html,/\.\.\/\.\.\/component-js\/card.js/);assert.doesNotMatch(html,/<base|DESIGN\.md/);
   assert.match(decode.decode(files.get('mikanbox/site.css')),/\.\.\/media\/one.png/);
 });
+test('split-site export includes images from the public origin without treating other origins as local',async()=>{
+  const env=environment(),image=new Uint8Array([137,80,78,71,13,10,26,10,0]);env.PUBLIC_SITE_URL='https://public.test';
+  await uploadMedia(env,'one.png',image.buffer,'image/png');await uploadMedia(env,'two.png',image.buffer,'image/png');
+  await snapshot(env,'index','<img src="https://public.test/media/one.png"><img src="/media/two.png"><img src="https://other.test/media/external.png"><style>p{background:url(https://public.test/media/two.png)}</style>');
+  const files=unzip(await buildStaticExportZip(env,request,{structure:'flat'})),html=decode.decode(files.get('index.html'));
+  assert.ok(files.has('media/one.png'));assert.ok(files.has('media/two.png'));assert.match(html,/src="media\/one.png"/);assert.match(html,/url\(media\/two.png\)/);assert.match(html,/https:\/\/other.test\/media\/external.png/);
+});
+test('export follows image references inside uploaded CSS files',async()=>{
+  const env=environment(),image=new Uint8Array([137,80,78,71,13,10,26,10,0]);env.PUBLIC_SITE_URL='https://public.test';
+  await uploadMedia(env,'style.css',new TextEncoder().encode('body{background:url(https://public.test/media/one.png)}').buffer,'text/css');
+  await uploadMedia(env,'one.png',image.buffer,'image/png');await snapshot(env,'index','<link rel="stylesheet" href="https://public.test/media/style.css">');
+  const files=unzip(await buildStaticExportZip(env,request,{structure:'flat'}));assert.ok(files.has('media/one.png'));assert.match(decode.decode(files.get('media/style.css')),/url\(one.png\)/);
+});
 test('static export disables Cloud WebMCP and replaces AI controls with a live public-help link',async()=>{
   const env=environment();
   await snapshot(env,'index','<div data-mikanbox-ai-question data-section="one"></div><script src="/mikanbox/ai-question.js" data-mcp-endpoint="/public-mcp" defer></script><script>window.authored=true;</script>');

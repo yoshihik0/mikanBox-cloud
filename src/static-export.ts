@@ -20,11 +20,12 @@ interface MediaRow {key:string;size:number;upload_id:string|null;chunk_count:num
 /** Export already-built public snapshots; this operation never renders private content or writes data. */
 export async function buildStaticExportZip(env:Env,request:Request,options:StaticExportOptions):Promise<Uint8Array> {
   if(!['flat','directory'].includes(options.structure))throw new Error('Invalid export structure.');
-  const live=new URL(options.siteUrl||new URL(request.url).origin);
+  const live=new URL(options.siteUrl||env.PUBLIC_SITE_URL||new URL(request.url).origin);
   if(!['https:','http:'].includes(live.protocol))throw new Error('Invalid site URL.');
   const basePath=live.pathname.replace(/\/$/,'');
   const siteOrigin=new URL(request.url).origin;
   const localOrigins=new Set([live.origin,siteOrigin]);
+  if(env.PUBLIC_SITE_URL){const publicUrl=new URL(env.PUBLIC_SITE_URL);if(['https:','http:'].includes(publicUrl.protocol))localOrigins.add(publicUrl.origin);}
   const rows=(await env.DB.prepare("SELECT p.id,p.status,CASE WHEN p.status='public_static' THEN s.html ELSE NULL END html FROM posts p LEFT JOIN static_pages s ON s.id=p.id ORDER BY p.id").all<PageRow>()).results;
   const exactIds=new Set(rows.map(row=>row.id));
   const snapshots=rows.filter(row=>row.status==='public_static'&&row.html!==null&&validId(row.id));
@@ -116,19 +117,26 @@ export async function buildStaticExportZip(env:Env,request:Request,options:Stati
   if(media.size>39)throw new Error('Static export has too many image reads. Reduce included images.');
   const metadata=media.size?(await env.DB.prepare(`SELECT key,size,upload_id,chunk_count,object_key FROM media WHERE key IN (${[...media].map(()=>'?').join(',')})`).bind(...media).all<MediaRow>()).results:[];
   let queries=2+(media.size?1:0),predictedBytes=bytes;
-  for(const key of media) {
-    const row=metadata.find(row=>row.key===key);
-    if(!row)throw new Error('Missing image: '+key);
-    // A fallback metadata lookup and each streamed chunk are real D1 queries.
-    queries+=row?(row.object_key?1:row.upload_id?1+(row.chunk_count||Math.ceil(row.size/MEDIA_CHUNK_SIZE)):2):1;
+  const accounted=new Set<string>();
+  function account(key:string,row:MediaRow) {
+    queries+=row.object_key?1:row.upload_id?1+(row.chunk_count||Math.ceil(row.size/MEDIA_CHUNK_SIZE)):2;
     if(queries>42)throw new Error('Static export exceeds the 42-query image budget. Reduce included images.');
-    if(row)predictedBytes+=row.size+76+2*encode.encode('media/'+key).length;
+    predictedBytes+=row.size+76+2*encode.encode('media/'+key).length;
     if(predictedBytes>MEDIA_ZIP_LIMIT)throw new Error('Static export ZIP exceeds 20 MB. Reduce images or page size.');
+    accounted.add(key);
   }
+  for(const key of media){const row=metadata.find(row=>row.key===key);if(!row)throw new Error('Missing image: '+key);account(key,row);}
   for(const key of media) {
+    let row=metadata.find(row=>row.key===key);
+    if(!row){queries++;row=await env.DB.prepare('SELECT key,size,upload_id,chunk_count,object_key FROM media WHERE key=?').bind(key).first<MediaRow>()||undefined;}
+    if(!row)throw new Error('Missing image: '+key);
+    if(!accounted.has(key))account(key,row);
     const object=await getMediaObject(env,key);if(!object)throw new Error('Missing image: '+key);
     if(bytes+object.size+76+2*encode.encode('media/'+key).length>MEDIA_ZIP_LIMIT)throw new Error('Static export ZIP exceeds 20 MB. Reduce images or page size.');
-    add('media/'+key,new Uint8Array(await object.arrayBuffer()));
+    const data=new Uint8Array(await object.arrayBuffer());
+    // Uploaded stylesheets can themselves reference media; processing the Set
+    // while iterating also discovers nested local CSS imports via url(...).
+    add('media/'+key,key.toLowerCase().endsWith('.css')?encode.encode(css(new TextDecoder().decode(data),'media/'+key,new URL('/media/'+key,live.origin))):data);
   }
   return createZip(files);
 }

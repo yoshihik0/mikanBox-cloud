@@ -4,7 +4,7 @@ import {cleanMediaObjects} from '../r2-media';
 import {importContentPackage,importWordPressContent} from '../content-import';
 import {latestCloudRelease} from '../cloud-release';
 import {exportBackupManifest,exportBackupMediaPart,validateExportSnapshot,createBackupRestore,stageBackupMediaPart,commitBackupRestore,abortBackupRestore} from '../backup-restore';
-import {cloudConfigured,saveCloudToken,cloudTarget,beginD1Export,pollD1Export,d1Restore,cloudToken} from '../cloudflare-api';
+import {cloudConfigured,saveCloudToken,cloudTarget,beginD1Export,pollD1Export,prepareD1Download,openD1Download,d1Restore,cloudToken} from '../cloudflare-api';
 import {beginPublication,hashPublicationFiles,preparePublication,uploadPublicationFile,finishPublication,cancelPublication} from '../publication-service';
 import {replaceMediaImage} from '../media-transform';
 import {trackingIdValid,trackingLegacyHtml,trackingSnippets} from '../tracking';
@@ -14,12 +14,15 @@ import { verifyCsrf } from '../auth';
 import { authenticatedUser, getUser, listUsers, addInitialUser, rateLimit } from '../accounts';
 import { onProbation, PROBATION_DAYS, createDevice, claimCode, codeKind, issueCode, cancelCode, revokeDevice, setExpiryDays, setupTokenUsable, consumeSetupToken, clearDeviceCookie, listDevices, listCodes, unseenDevices, expiryFrom } from '../devices';
 import { renderAccountsSection } from './accounts-view';
+import { MikanBoxRenderer } from '../renderer';
+import { previewMediaUrls } from '../preview-media';
+import { PREVIEW_SANDBOX } from '../site-split';
 import { publicationStatus } from '../publish-status';
 import { pageId, componentId, pageStatus } from '../validation';
 import { revisions, saveWithRevision } from '../revisions';
 import { buildStatic } from '../ssg';
 import { installDefaults } from '../defaults';
-import {mediaReferenceCount,renameMediaReferences,removeCategory} from '../content-operations';
+import {mediaReferenceCount,mediaHasLockedReferences,renameMediaReferences,removeCategory} from '../content-operations';
 import {assertNotPublished,checkPublicationLock,isPublished} from '../publication-state';
 import {publicationManifest,readPublicationEntry} from '../static-publication';
 import {buildStaticExportZip} from '../static-export';
@@ -30,6 +33,11 @@ const html = (body: string, status = 200) => new Response(body, {status, headers
 const json = (body: unknown, status = 200) => Response.json(body,{status,headers:{'Cache-Control':'no-store'}});
 const val = (f: FormData, key: string) => String(f.get(key) || '');
 const help = (lang: string) => `/public-help.html?language=${lang}`;
+function editorPage(form:FormData,current:PageData|null):PageData {
+  return {title:val(form,'title'),status:pageStatus(val(form,'status')||'draft'),category:val(form,'category').trim(),sort_order:Number(val(form,'sort_order'))||0,
+    updated_at:val(form,'updated_at')||new Date().toISOString().slice(0,19).replace('T',' '),wrapper_comp:val(form,'wrapper_comp')||'_layout',memo:val(form,'memo'),
+    description:val(form,'description'),keywords:val(form,'keywords'),ogp_image:val(form,'ogp_image'),content_md:val(form,'content_md'),css:val(form,'css'),js:val(form,'js'),is_html:form.has('is_html'),exclude_tracking:form.has('tracking_option_present')?form.has('exclude_tracking'):!!current?.exclude_tracking,preview_token:current?.preview_token};
+}
 function redirect(location: string, cookie?: string) {
   const headers: Record<string,string> = {Location:location,'Cache-Control':'no-store'};
   if (cookie) headers['Set-Cookie']=cookie;
@@ -41,7 +49,7 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
   const url=new URL(request.url);
   if(request.method==='POST'&&url.searchParams.has('d1_export_poll')){
     if(request.headers.get('Origin')!==url.origin)return json({success:false,message:'Invalid origin.'},403);
-    try{const data=await request.json() as {capability:string};return json({success:true,export:await pollD1Export(env,data.capability,url.origin)});}catch{return json({success:false,message:'Export polling failed or expired.'},400);}
+    try{const data=await request.json() as {capability:string};return json({success:true,...await prepareD1Download(env,await pollD1Export(env,data.capability,url.origin),url.origin)});}catch{return json({success:false,message:'Export polling failed or expired.'},400);}
   }
   const settings=await loadSettings(env);
   const lang=getSystemLanguage(settings,request.headers.get('Accept-Language')||''), t=createTranslator(lang);
@@ -105,10 +113,22 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
   }
   let editId=url.searchParams.get('edit'), view=url.searchParams.get('view')||'pages';
   if(view==='design') view='components';
-  let message=url.searchParams.get('saved')==='1'?t('msg_update_success'):'',success=true,statusCode=200,issuedCode='',newApiKey='';
+  let message=!form&&url.searchParams.get('saved')==='1'?t('msg_update_success'):'',success=true,statusCode=200,issuedCode='',newApiKey='',uploadedName='';
   if(form) {
     if(!verifyCsrf(val(form,'csrf_token'),csrf)) return json({success:false,message:t('err_csrf')},403);
     const action=val(form,'save_action');
+    if(action==='preview_page' && url.searchParams.has('editor_preview')) {
+      try {
+        const id=pageId(val(form,'id').trim()||'preview');
+        const oldId=val(form,'old_id');
+        const current=oldId?await loadPage(env,pageId(oldId)):null;
+        const data=editorPage(form,current);
+        const renderer=new MikanBoxRenderer(env,settings,request);
+        const rendered=await renderer.render(id,true,data);
+        const content=await previewMediaUrls(rendered.html,env,request,renderer.getSiteUrl());
+        return new Response(content,{status:rendered.status,headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','Referrer-Policy':'no-referrer','Content-Security-Policy':PREVIEW_SANDBOX}});
+      } catch(error) {return html(error instanceof Error?error.message:'Preview failed.',400);}
+    }
     try {
       await checkPublicationLock(env,val(form,'publication_lease'));
       // A device added within the probation period cannot take access away from others,
@@ -117,7 +137,7 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
       if(lockout&&onProbation(auth.device))throw new Error(`追加から${PROBATION_DAYS}日間の端末では、この操作はできません。 / A device added within ${PROBATION_DAYS} days cannot do this.`);
       if(settings.demo_mode) throw new Error(t('msg_demo_mode'));
       switch(action) {
-        case 'publication_begin': return json({success:true,...await beginPublication(env,request,auth.user.username,val(form,'rebuild')==='1',JSON.parse(val(form,'excluded')||'[]'))});
+        case 'publication_begin': return json({success:true,...await beginPublication(env,request,auth.user.username,val(form,'rebuild')==='1',JSON.parse(val(form,'excluded')||'[]'),val(form,'media_only'))});
         case 'publication_hashes': await hashPublicationFiles(env,val(form,'publication_lease'),auth.user.username,JSON.parse(val(form,'items')));return json({success:true});
         case 'publication_prepare': return json({success:true,...await preparePublication(env,val(form,'publication_lease'),auth.user.username)});
         case 'publication_upload': {const file=form.get('asset_data');if(!(file instanceof File))throw new Error('Missing upload.');return json({success:true,...await uploadPublicationFile(env,val(form,'publication_lease'),auth.user.username,val(form,'hash'),file)});}
@@ -143,7 +163,13 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
           const target=cloudTarget(env);if(val(form,'cloud_account_id')!==target.account||val(form,'cloud_worker_name')!==target.worker)throw new Error('Cloudflare target must match this installation.');
           if(val(form,'cloud_api_token'))await saveCloudToken(env,val(form,'cloud_api_token'));break;
         }
-        case 'begin_d1_export': return json({success:true,...await beginD1Export(env,url.origin)});
+        case 'begin_d1_export': {const started=await beginD1Export(env,url.origin);return json({success:true,capability:started.capability,...await prepareD1Download(env,started.export,url.origin)});}
+        case 'download_d1_export': {
+          const downloadUrl=await openD1Download(env,val(form,'capability'),url.origin);
+          const upstream=await fetch(downloadUrl,{redirect:'manual'});
+          if(!upstream.ok||!upstream.body)throw new Error('D1 export download failed.');
+          return new Response(upstream.body,{headers:{'Content-Type':'application/sql','Content-Disposition':'attachment; filename="mikanbox-d1.sql"','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}});
+        }
         case 'restore_d1_time': {return json({success:true,restore:await d1Restore(env,val(form,'restore_at'))});}
         case 'begin_publication': {
           const lease=crypto.randomUUID(),value=JSON.stringify({lease,expires:Date.now()+30*60*1000});
@@ -173,9 +199,7 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
           const current=oldId?await loadPage(env,oldId):null;
           const lock=await env.DB.prepare('SELECT owner FROM edit_locks WHERE post_id=? AND expires_at>?').bind(oldId||id,Date.now()).first<{owner:string}>();
           if(lock&&lock.owner!==auth.user.username) throw new Error('他のユーザーが編集中です。 / Another user is editing this page.');
-          const data:PageData={title:val(form,'title'),status:pageStatus(val(form,'status')),category:val(form,'category').trim(),sort_order:Number(val(form,'sort_order'))||0,
-            updated_at:val(form,'updated_at')||new Date().toISOString().slice(0,19).replace('T',' '),wrapper_comp:val(form,'wrapper_comp')||'_layout',memo:val(form,'memo'),
-            description:val(form,'description'),keywords:val(form,'keywords'),ogp_image:val(form,'ogp_image'),content_md:val(form,'content_md'),css:val(form,'css'),js:val(form,'js'),is_html:form.has('is_html'),exclude_tracking:form.has('tracking_option_present')?form.has('exclude_tracking'):!!current?.exclude_tracking,preview_token:current?.preview_token||crypto.randomUUID()};
+          const data:PageData=editorPage(form,current);data.preview_token||=crypto.randomUUID();
           if(!Number.isFinite(data.sort_order)||Math.abs(data.sort_order||0)>2147483647) throw new Error('Invalid sort order.');
           await saveWithRevision(env,id,oldId,data,auth.user.username,val(form,'expected_revision')); editId=id;message=t('msg_page_saved',id);
           if(form.has('save_and_preview')) return redirect(`/preview/${id}`);
@@ -269,7 +293,7 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
           const file=form.get('image'),old=val(form,'source_file')||val(form,'file');
           const target=val(form,'new_filename')||old;if(!validMediaName(old)||!validMediaName(target))throw new Error('Check the filename.');
 
-          if(target!==old)await assertNotPublished(env,['/media/'+old]);
+          if(target!==old&&await isPublished(env,'/media/'+target))throw new Error(lang==='ja'?'変更先の名前は公開中です。サイトをビルドしてから再度お試しください。':'The target name is still published. Build the site before reusing it.');
           if(!(file instanceof File)){if(action!=='edit_media'||target===old)throw new Error('No changes to save.');await renameMediaReferences(env,old,target,auth.user.username);break;}
           const bytes=new Uint8Array(await file.arrayBuffer());
           if(action==='convert_media_webp'&&(!/\.(?:jpe?g|png)$/i.test(old)||!target.endsWith('.webp')||imageType(bytes,'webp')!=='image/webp')) throw new Error('Invalid WebP conversion.');
@@ -283,11 +307,12 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
           if(!isCodeMedia(name)&&category&&!/^[A-Za-z0-9]+_/.test(name))name=category+'_'+name;
           const ext=name.split('.').pop()?.toLowerCase()||'';
           if(!validMediaName(name))throw new Error(lang==='ja'?'ファイル名を確認してください。':'Check the filename.');
+          if(await isPublished(env,'/media/'+name))throw new Error(lang==='ja'?'このファイル名は公開中です。別の名前を使うか、サイトをビルドしてからお試しください。':'This filename is still published. Choose another name or build the site first.');
           const bytes=await file.arrayBuffer();
           const type=mediaType(new Uint8Array(bytes),ext);
           if(!type)throw new Error(lang==='ja'?'JPEG・PNG・GIF・WebP・SVG、またはUTF-8のJS・CSSを選んでください。':'Choose a JPEG, PNG, GIF, WebP, SVG, or UTF-8 JS/CSS file.');
           if(await getMediaObject(env,name))throw new Error(lang==='ja'?'同名のファイルがあります。名前を変えてください。':'A file with this name exists. Choose another name.');
-          if(!await uploadMedia(env,name,bytes,type))throw new Error(lang==='ja'?'保存できませんでした。空き容量と同名ファイルを確認してください。':'Save failed. Check available storage and duplicate filenames.');break;
+          if(!await uploadMedia(env,name,bytes,type))throw new Error(lang==='ja'?'保存できませんでした。空き容量と同名ファイルを確認してください。':'Save failed. Check available storage and duplicate filenames.');uploadedName=name;break;
         }
         case 'delete_media': {const name=val(form,'file');if(!/^[A-Za-z0-9_.-]+$/.test(name)||name.includes('..')) throw new Error('Invalid media name.');await assertNotPublished(env,['/media/'+name]);if(!await deleteMedia(env,name)) throw new Error(t('err_save_failed'));break;}
         case 'begin_media_migration': {
@@ -300,10 +325,12 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
         case 'media_reference_status': {
           const name=val(form,'file');if(!validMediaName(name)||!await getMediaObject(env,name))throw new Error('Image not found.');
           const count=await mediaReferenceCount(env,name);
-          return json({success:true,count,published:await isPublished(env,'/media/'+name),message:t('media_rename_in_use_confirm',count)});
+          const target=val(form,'target');
+          if(target && !validMediaName(target))throw new Error('Invalid target filename.');
+          return json({success:true,count,published:await isPublished(env,'/media/'+name),locked:await mediaHasLockedReferences(env,name),target_exists:!!target&&target!==name&&(!!await getMediaObject(env,target)||await isPublished(env,'/media/'+target)),message:t('media_rename_in_use_confirm',count)});
         }
         case 'rename_media': {
-          await assertNotPublished(env,['/media/'+val(form,'file')]);
+          if(await isPublished(env,'/media/'+val(form,'new_name')))throw new Error(lang==='ja'?'変更先の名前は公開中です。サイトをビルドしてから再度お試しください。':'The target name is still published. Build the site before reusing it.');
           const count=await mediaReferenceCount(env,val(form,'file'));
           if(count&& !form.has('confirmed'))return json({success:false,require_confirm:true,message:t('media_rename_in_use_confirm',count)});
 
@@ -315,14 +342,14 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
         }
         case 'download_static_zip': {
           const structure=val(form,'structure');if(!['flat','directory'].includes(structure))throw new Error('Invalid export structure.');
-          const zip=await buildStaticExportZip(env,request,{structure:structure as 'flat'|'directory',siteUrl:settings.ssg_root_url||undefined});
+          const zip=await buildStaticExportZip(env,request,{structure:structure as 'flat'|'directory',siteUrl:settings.ssg_root_url||env.PUBLIC_SITE_URL||undefined});
           return new Response(zip.buffer as ArrayBuffer,{headers:{'Content-Type':'application/zip','Content-Disposition':'attachment; filename="mikanbox_static.zip"','Cache-Control':'no-store'}});
         }
         default: throw new Error('未対応の操作です。 / Unsupported action.');
       }
       message||=t('msg_update_success');
-    } catch(e) {success=false;statusCode=400;message=e instanceof Error&&!/D1_|SQLITE_|constraint|UNIQUE/.test(e.message)?e.message:t('err_save_failed');}
-    if(form.has('ajax_request')) return json({success,message,editId,...(issuedCode?{issued_code:issuedCode}:{}),...(newApiKey?{mcp_api_key:newApiKey}:{})},statusCode);
+    } catch(e) {success=false;statusCode=400;message=e instanceof Error&&(e.message.startsWith('Cloudflare operation failed')||!/D1_|SQLITE_|constraint|UNIQUE/.test(e.message))?e.message:t('err_save_failed');}
+    if(form.has('ajax_request')) return json({success,message,editId,...(issuedCode?{issued_code:issuedCode}:{}),...(newApiKey?{mcp_api_key:newApiKey}:{}),...(uploadedName?{uploaded_name:uploadedName}:{})},statusCode);
     // A new device code is shown once on this response, never put in a URL.
     if(success&&action==='device_code_create')view='site';
     else if(success) {
@@ -346,7 +373,7 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
   const pageEditorHtml=view==='pages'&&(editId||hasNew)?renderPageEditor({t,editId,editData:editData as PageData|null,csrf,helpFile,wrapperComponents:components.filter(c=>c.data.is_wrapper),allCategories,settings:{...settings,_site_base:url.origin},revisions:pageRevisions,selectedRevision:pageRevisions.find(r=>r.id===Number(url.searchParams.get('rev')))}):'';
   const designEditorHtml=view==='components'&&(editId||hasNew)?renderDesignEditor({t,editId,editData:editData as ComponentData|null,csrf,helpFile}):'';
   const cloudReady=await cloudConfigured(env);
-  const pagesHtml=renderPagesView({t,pages:filtered.slice((pageNumber-1)*perPage,pageNumber*perPage),view,editId,hasNew,csrf,helpFile,settings,query,category,pageNumber,totalPages,lang,publication:await publicationStatus(env,url.origin,pages),cloudReady});
+  const pagesHtml=renderPagesView({t,pages:filtered.slice((pageNumber-1)*perPage,pageNumber*perPage),view,editId,hasNew,csrf,helpFile,settings,query,category,pageNumber,totalPages,lang,publication:await publicationStatus(env,url.origin,pages),cloudReady,publicUrl:env.CLOUDFLARE_PUBLIC_WORKER_NAME ? env.PUBLIC_SITE_URL || '' : ''});
   const mediaQuery=url.searchParams.get('q_media')||'',mediaCategory=category,ignoreMediaCategory=url.searchParams.get('media_all')==='1';
   const mediaTypeFilter=['image','audio','video','js','css'].includes(url.searchParams.get('media_type')||'')?url.searchParams.get('media_type')!:'';
   const extensions:Record<string,string[]>={image:['jpg','jpeg','png','gif','webp','svg'],audio:['mp3','m4a'],video:['mp4'],js:['js'],css:['css']};
@@ -363,9 +390,9 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
   const d1Bytes=typeof databaseProbe.meta.size_after==='number'?databaseProbe.meta.size_after:null;
   const storageMode=await mediaStorageMode(env),migration=await migrationStatus(env);
   const target=cloudTarget(env),displaySettings={...settings,storage_migrated:url.searchParams.get('storage_migrated')==='1',media_storage:storageMode,r2_configured:!!env.MEDIA,d1_bytes:d1Bytes,media_migration:migration,r2_bytes:(await env.DB.prepare('SELECT COALESCE(SUM(size),0) bytes FROM r2_objects').first<{bytes:number}>())?.bytes||0,cloud_connection_ready:cloudReady,cloud_account_id:target.account,cloud_worker_name:target.worker};
-  const siteHtml=view==='import'?renderImportView({t,csrf,lang,stats:{pages:pages.length,components:components.length,users:users.length,media:files.length,mediaBytes:files.reduce((sum,file)=>sum+file.size,0)}}):renderSiteView({t,trackingLegacy:(()=>{const id=String(settings.tracking_component||''),data=components.find(c=>c.id===id)?.data;return{id,html:trackingLegacyHtml(data),exists:!!data&&!data.is_ai_doc&&!data.is_wrapper};})(),settings:displaySettings,csrf,helpFile,users,username:auth.user.username,accountsHtml:renderAccountsSection({lang,csrf,users,me:auth.device,devices:await listDevices(env),codes:await listCodes(env),expiryDays:expiryFrom(settings),issuedCode}),lang,release:await latestCloudRelease(env,url.searchParams.has('refresh_updates'))});
+  const siteHtml=view==='import'?renderImportView({t,csrf,lang,stats:{pages:pages.length,components:components.length,users:users.length,media:files.length,mediaBytes:files.reduce((sum,file)=>sum+file.size,0)},cloudReady}):renderSiteView({t,trackingLegacy:(()=>{const id=String(settings.tracking_component||''),data=components.find(c=>c.id===id)?.data;return{id,html:trackingLegacyHtml(data),exists:!!data&&!data.is_ai_doc&&!data.is_wrapper};})(),settings:displaySettings,csrf,helpFile,users,username:auth.user.username,accountsHtml:renderAccountsSection({lang,csrf,users,me:auth.device,devices:await listDevices(env),codes:await listCodes(env),expiryDays:expiryFrom(settings),issuedCode}),lang,release:await latestCloudRelease(env,url.searchParams.has('refresh_updates'))});
   const unseen=await unseenDevices(env,auth.device);
   if(unseen.length)message=(message?message+' ':'')+(lang==='ja'?'新しい端末が登録されました: ':'New device registered: ')+unseen.map(d=>`${d.name} (${d.username})`).join(', ')+(lang==='ja'?'。心当たりがなければ「端末とユーザー」で止めてください。':'. If you do not recognise it, stop it under Devices and users.');
-  return html(renderAdminShell({lang,t,view,editId,hasNew,helpFile,message,csrf,settings:{...settings,_public_url:env.PUBLIC_SITE_URL||''},pagesHtml,pageEditorHtml,siteHtml,designHtml,designEditorHtml,mediaHtml,
+  return html(renderAdminShell({lang,t,view,editId,hasNew,helpFile,message,csrf,settings:{...settings,_public_url:env.CLOUDFLARE_PUBLIC_WORKER_NAME ? env.PUBLIC_SITE_URL||'' : ''},pagesHtml,pageEditorHtml,siteHtml,designHtml,designEditorHtml,mediaHtml,
     mediaEnabled:true,aiPromptJson:JSON.stringify(settings.ai_prompt||'').replace(/</g,'\\u003c'),allCategories,category}),statusCode);
 }

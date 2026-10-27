@@ -47,11 +47,12 @@ export class MikanBoxRenderer {
   private currentPageId = '';
   private currentPageData: Record<string, string> = {};
   private request: Request;
+  private previewPage?:{id:string,data:PageData};
   private navigationPages?:Promise<Array<{id:string,data:PageData}>>;
   private snapshot?:{pages:Array<{id:string,data:PageData}>,components:Array<{id:string,data:ComponentData}>};
   private componentCache=new Map<string,Promise<ComponentData|null>>();
   private publicPages() {return this.navigationPages??=Promise.resolve(this.snapshot?.pages||listPages(this.env)).then(pages=>pages.filter(p=>isPublicStatus(p.data.status)));}
-  private readPage(id:string) {return this.snapshot?Promise.resolve(this.snapshot.pages.find(p=>p.id===id)?.data||this.snapshot.pages.find(p=>p.id===id+'/index')?.data||null):loadPage(this.env,id);}
+  private readPage(id:string) {if(this.previewPage?.id===id)return Promise.resolve(this.previewPage.data);return this.snapshot?Promise.resolve(this.snapshot.pages.find(p=>p.id===id)?.data||this.snapshot.pages.find(p=>p.id===id+'/index')?.data||null):loadPage(this.env,id);}
   private readComponent(id:string) {
     if(!this.componentCache.has(id))this.componentCache.set(id,this.snapshot?Promise.resolve(this.snapshot.components.find(c=>c.id===id)?.data||null):loadComponent(this.env,id));
     return this.componentCache.get(id)!;
@@ -139,7 +140,8 @@ export class MikanBoxRenderer {
   }
 
   // ---- Main render ----
-  async render(pageId: string, allowPrivate = false): Promise<{ html: string; status: number }> {
+  async render(pageId: string, allowPrivate = false, previewData?: PageData): Promise<{ html: string; status: number }> {
+    this.previewPage = previewData ? {id:pageId,data:previewData} : undefined;
     this.currentPageId = pageId;
     this.globalCssBuffer = [];
     this.javascriptBuffer.clear();

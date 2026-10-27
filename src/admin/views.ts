@@ -19,7 +19,7 @@ function getIcon(name: string): string {
     view: 'visibility', upload: 'upload', video: 'videocam', audio: 'music_note',
     cloud: 'cloud_upload', logout: 'logout', globe: 'language', sparkles: 'auto_awesome',
     edit: 'edit', delete: 'delete', download: 'download', arrow_back: 'arrow_back',
-    add: 'add', copy: 'content_copy', open_in_new: 'open_in_new', history: 'history', warning: 'warning', search: 'search', close: 'close',
+    add: 'add', copy: 'content_copy', open_in_new: 'open_in_new', history: 'history', warning: 'warning', search: 'search', close: 'close', database: 'database', archive: 'archive',
   };
   const iconName = icons[name] || '';
   return iconName ? `<span class="material-symbols-outlined icon">${iconName}</span>` : '';
@@ -50,7 +50,7 @@ export function renderLoginPage(opts: {lang:string; initial:boolean; noDevices?:
   const hidden=(action:string)=>`<input type="hidden" name="login_action" value="${action}"><input type="hidden" name="csrf_token" value="${h(csrf)}">`;
   const deviceField=`<div class="form-group"><label>${ja?'この端末の名前（例: 仕事用PC）':'Name for this device (e.g. Work laptop)'}</label><input type="text" name="device_name" maxlength="60" required></div>`;
   const setupFields=`<div class="form-group"><label>${ja?'初期設定トークン（SETUP_TOKEN）':'Setup token (SETUP_TOKEN)'}</label><input type="password" name="setup_token" autocomplete="off" required></div><div class="form-group"><label>${t('label_username')}</label><input type="text" name="username" autocomplete="off" required></div>`;
-  return `<!DOCTYPE html><html lang="${h(lang)}"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>🍊mikanBox</title><link rel="stylesheet" href="/mikanbox/admin.css?v=${h(CLOUD_VERSION)}"></head>
+  return `<!DOCTYPE html><html lang="${h(lang)}"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>🍊mikanBox</title><link rel="stylesheet" href="/mikanbox/admin.css?v=${h(CLOUD_VERSION)}-8"></head>
   <body class="login-body"><div class="login-box"><div class="login-title"><span>🍊</span><span>mikanBox</span></div>
   ${error?`<div class="error" role="alert">${h(error)}</div>`:''}
   ${inviteStep&&!initial?`<p><strong>${t('device_invite_intro')}</strong></p>
@@ -76,14 +76,15 @@ function globeLink(state: PublicState | undefined, ja: boolean): string {
 }
 // The build is how pages reach the public site, so it sits with the page list and
 // reports there rather than in the toast at the top of the screen.
-function publishBox(csrf: string, t: (key: string, ...args: (string | number)[]) => string, publication: PublicationStatus | undefined, ja: boolean, cloudReady: boolean): string {
+function publishBox(csrf: string, t: (key: string, ...args: (string | number)[]) => string, publication: PublicationStatus | undefined, ja: boolean, cloudReady: boolean, publicUrl: string): string {
   const when = publication?.publishedAt ? new Date(publication.publishedAt).toLocaleString(ja ? 'ja-JP' : 'en-US', { dateStyle: 'short', timeStyle: 'short' }) : '';
   const summary = !publication ? '' : publication.stale
     ? (ja ? `公開側に反映していない変更があります（${publication.stale}ページ）。` : `${publication.stale} page(s) have changes not on the public site.`)
     : (ja ? '公開側は最新です。' : 'The public site is up to date.');
-  // Publishing needs the Cloudflare API token from Site → Cloud publication connection; say so here, where the button is.
-  const setup = cloudReady ? '' : `<p class="publish-setup" role="note">${ja ? '公開するには、Cloudflare APIトークンの設定が必要です。' : 'Publishing needs a Cloudflare API token.'} <a href="/admin?view=site#cloud-connection" data-open-cloud-connection>${ja ? 'サイト →「Cloud公開接続」で設定する（取得方法も書いてあります）' : 'Set it up under Site → Cloud publication connection (the steps are explained there)'}</a></p>`;
-  return `<form method="post" class="publish-box mt-10" id="publish-box">${csrfField(csrf)}<input type="hidden" name="save_action" value="build_ssg"><button class="btn btn-blue btn-small">${getIcon('cloud')} <span data-publish-label>${t('btn_ssg_build')}</span></button><span class="publish-status" data-publish-status role="status">${h(summary)}${when ? ` ${ja ? '最後の公開' : 'Last published'}: ${h(when)}` : ''}</span>${setup}</form>`;
+  // Publishing needs the Cloudflare API token from Site → Cloudflare publication settings; say so here, where the button is.
+  const setup = cloudReady ? '' : `<p class="publish-setup" role="note">${ja ? '公開するには、Cloudflare APIトークンの設定が必要です。' : 'Publishing needs a Cloudflare API token.'} <a href="/admin?view=site#cloud-connection" data-open-cloud-connection>${ja ? 'サイト →「Cloudflare公開設定」で設定する（取得方法も書いてあります）' : 'Set it up under Site → Cloudflare publication settings (the steps are explained there)'}</a></p>`;
+  const destination = publicUrl ? `<span class="publish-status">${ja ? '公開先' : 'Public site'}: <a href="${h(publicUrl)}" target="_blank" rel="noopener noreferrer">${h(publicUrl)}</a></span>` : '';
+  return `<form method="post" class="publish-box mt-10" id="publish-box">${csrfField(csrf)}<input type="hidden" name="save_action" value="build_ssg"><button class="btn btn-blue btn-small">${getIcon('cloud')} <span data-publish-label>${t('btn_ssg_build')}</span></button><span class="publish-status" data-publish-status role="status">${h(summary)}${when ? ` ${ja ? '最後の公開' : 'Last published'}: ${h(when)}` : ''}</span>${destination}${setup}</form>`;
 }
 
 // ===== 管理画面メインシェル =====
@@ -120,7 +121,12 @@ export function renderAdminShell(opts: {
     <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
     <title>${t('admin_site_title')} - mikanBox</title>
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0&display=block" rel="stylesheet">
-    <link rel="stylesheet" href="/mikanbox/admin.css?v=${h(CLOUD_VERSION)}">
+    <link rel="stylesheet" href="/mikanbox/admin.css?v=${h(CLOUD_VERSION)}-8">
+    <style>
+    #admin-toast { position:fixed; bottom:30px; right:30px; max-width:calc(100vw - 60px); box-sizing:border-box; background:rgba(0,0,0,.8); color:white; padding:12px 24px; border-radius:8px; z-index:10000; transition:opacity .3s; opacity:0; visibility:hidden; pointer-events:none; }
+    #admin-toast.toast-show { opacity:1; visibility:visible; }
+    #admin-toast.toast-error { background:rgba(220,53,69,.9); }
+    </style>
 </head>
 <body>
 <script>(function(){
@@ -172,9 +178,9 @@ ${opts.mediaEnabled?`<div id="drop-zone">${getIcon('cloud')} ${t('hint_drop_uplo
     </a>
 </nav>
 <div class="main">
-    <div class="page-top-links">
+    ${settings._public_url ? '' : `<div class="page-top-links">
         <a href="${h(ssgRootUrl)}" target="_blank">${t('admin_view_site')}</a>
-    </div>
+    </div>`}
 
     ${message ? `<div id="admin-toast" class="toast toast-show">${h(message)}</div>` : ''}
 
@@ -197,6 +203,12 @@ ${opts.mediaEnabled?`<div id="drop-zone">${getIcon('cloud')} ${t('hint_drop_uplo
 
     <script src="/mikanbox/ai-question.js?v=${h(CLOUD_VERSION)}" data-mcp-endpoint="/public-mcp" data-public-mcp="/public-mcp" data-help-ja="/public-help.html?language=ja" data-help-en="/public-help.html?language=en" defer></script>
     <script>
+    // The save marker is a one-time notification, not part of navigation state.
+    const currentUrl = new URL(window.location.href);
+    if (currentUrl.searchParams.get('saved') === '1') {
+        currentUrl.searchParams.delete('saved');
+        history.replaceState(history.state, '', currentUrl.href);
+    }
     window.CSRF_TOKEN = ${JSON.stringify(csrf)};
     window.AI_PROMPT = ${aiPromptJson};
     window.HELP_FILE = ${JSON.stringify(helpFile)};
@@ -264,6 +276,26 @@ ${opts.mediaEnabled?`<div id="drop-zone">${getIcon('cloud')} ${t('hint_drop_uplo
         });
     }
 
+    const uploadPublicationStatus = document.getElementById('upload-publication-status');
+    const uploadRetry = document.getElementById('upload-publication-retry');
+    let unpublishedUpload = '';
+    async function publishUploadedImage(name) {
+        if (uploadRetry) { uploadRetry.hidden = true; uploadRetry.style.display = 'none'; }
+        if (uploadPublicationStatus) uploadPublicationStatus.textContent = ${JSON.stringify(opts.lang==='ja'?'画像を公開しています…':'Publishing image…')};
+        try {
+            await window.cloudPublish(false, [], name);
+            unpublishedUpload = '';
+            if (uploadPublicationStatus) uploadPublicationStatus.textContent = ${JSON.stringify(opts.lang==='ja'?'画像を公開しました。':'Image published.')};
+        } catch (error) {
+            unpublishedUpload = name;
+            const message = ${JSON.stringify(opts.lang==='ja'?'画像は保存しましたが、公開に失敗しました。':'Image saved, but publication failed.')} + ' ' + (error.message || '');
+            if (uploadPublicationStatus) uploadPublicationStatus.textContent = message;
+            if (uploadRetry) { uploadRetry.hidden = false; uploadRetry.style.display = ''; }
+            showToast(message, true);
+        }
+    }
+    if (uploadRetry) uploadRetry.addEventListener('click', () => { if (unpublishedUpload) publishUploadedImage(unpublishedUpload); });
+
     async function doMediaUpload(formData) {
         const btn = document.getElementById('upload-btn');
         const origHtml = btn ? btn.innerHTML : '';
@@ -277,12 +309,38 @@ ${opts.mediaEnabled?`<div id="drop-zone">${getIcon('cloud')} ${t('hint_drop_uplo
             if (json.success) {
                 if (fileInput) fileInput.value = '';
                 await refreshMediaGrid();
+                if (json.uploaded_name && /\.(?:jpe?g|png|gif|webp|svg)$/i.test(json.uploaded_name) && window.cloudPublish) {
+                    await publishUploadedImage(json.uploaded_name);
+                }
             }
         } catch(err) {
             showToast(err.message || ${JSON.stringify(opts.t('err_upload_failed'))}, true);
         } finally {
             if (btn) { btn.innerHTML = origHtml; btn.disabled = false; }
         }
+    }
+
+    // Keep the viewport stable while a refreshed list replaces its old DOM.
+    let listRefreshCount = 0, savedOverflowAnchor = '';
+    function replaceListPreservingScroll(oldList, newList) {
+        if (!oldList || !newList) return;
+        const y = window.scrollY;
+        const root = document.documentElement;
+        if (listRefreshCount++ === 0) {
+            savedOverflowAnchor = root.style.overflowAnchor;
+            root.style.overflowAnchor = 'none';
+        }
+        // Reserve the old height until the replacement has been laid out.
+        newList.style.minHeight = oldList.getBoundingClientRect().height + 'px';
+        oldList.replaceWith(newList);
+        window.scrollTo({top: y, behavior: 'instant'});
+        requestAnimationFrame(() => {
+            newList.style.minHeight = '';
+            window.scrollTo({top: y, behavior: 'instant'});
+            requestAnimationFrame(() => {
+                if (--listRefreshCount === 0) root.style.overflowAnchor = savedOverflowAnchor;
+            });
+        });
     }
 
     async function refreshMediaGrid() {
@@ -294,7 +352,7 @@ ${opts.mediaEnabled?`<div id="drop-zone">${getIcon('cloud')} ${t('hint_drop_uplo
             temp.innerHTML = html;
             const newGrid = temp.querySelector('.media-grid');
             const oldGrid = document.querySelector('.media-grid');
-            if (newGrid && oldGrid) oldGrid.outerHTML = newGrid.outerHTML;
+            replaceListPreservingScroll(oldGrid, newGrid);
             const newUsage = temp.querySelector('#media-usage');
             const oldUsage = document.querySelector('#media-usage');
             if (newUsage && oldUsage) oldUsage.textContent = newUsage.textContent;
@@ -506,6 +564,7 @@ ${opts.mediaEnabled?`<div id="drop-zone">${getIcon('cloud')} ${t('hint_drop_uplo
         });
     });
     window.addEventListener('scroll', updateScrollPos, { passive: true });
+    let toastTimer;
     document.addEventListener('DOMContentLoaded', () => {
         updateScrollPos();
         setTimeout(() => {
@@ -514,7 +573,7 @@ ${opts.mediaEnabled?`<div id="drop-zone">${getIcon('cloud')} ${t('hint_drop_uplo
         }, 100);
 
         const toast = document.getElementById('admin-toast');
-        if (toast) { setTimeout(() => toast.classList.remove('toast-show'), 3000); }
+        if (toast) { toastTimer = setTimeout(() => toast.classList.remove('toast-show'), 3000); }
     });
     function showToast(msg, isError = false) {
         let toast = document.getElementById('admin-toast');
@@ -525,14 +584,16 @@ ${opts.mediaEnabled?`<div id="drop-zone">${getIcon('cloud')} ${t('hint_drop_uplo
         }
         toast.textContent = msg;
         toast.className = 'toast toast-show' + (isError ? ' toast-error' : '');
-        setTimeout(() => toast.classList.remove('toast-show'), 3000);
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => toast.classList.remove('toast-show'), 3000);
     }
     </script>
     <dialog id="rename-confirm-dialog" class="custom-dialog"><h3 class="dialog-title" style="margin-top:0;margin-bottom:12px;font-size:1.05rem;display:flex;align-items:center;gap:8px">${getIcon('warning')} ${t('media_rename_confirm_title')}</h3><p id="rename-dialog-message" style="font-size:.9rem;line-height:1.5;margin-bottom:20px;color:#475569"></p><div class="dialog-buttons" style="display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap"><button type="button" data-rename-choice="cancel" class="btn btn-small btn-gray">${t('btn_rename_cancel')}</button><button type="button" data-rename-choice="only" class="btn btn-small btn-gray">${t('btn_rename_only')}</button><button type="button" data-rename-choice="update" class="btn btn-small btn-blue">${t('btn_rename_update')}</button></div></dialog>
 
-    <script src="/mikanbox/cloud-admin.js?v=${h(CLOUD_VERSION)}" defer></script>
+    <script src="/mikanbox/preview-editor.js?v=${h(CLOUD_VERSION)}" defer></script>
+    <script src="/mikanbox/cloud-admin.js?v=${h(CLOUD_VERSION)}-3" defer></script>
     <script src="/mikanbox/cloud-media.js?v=${h(CLOUD_VERSION)}" defer></script>
-    <script src="/mikanbox/cloud-backup.js?v=${h(CLOUD_VERSION)}" defer></script><script src="/mikanbox/cloud-publish.js?v=${h(CLOUD_VERSION)}" defer></script><script src="/mikanbox/cloud-storage.js?v=${h(CLOUD_VERSION)}" defer></script>
+    <script src="/mikanbox/cloud-backup.js?v=${h(CLOUD_VERSION)}-2" defer></script><script src="/mikanbox/cloud-publish.js?v=${h(CLOUD_VERSION)}-7" defer></script><script src="/mikanbox/cloud-storage.js?v=${h(CLOUD_VERSION)}-2" defer></script>
 </div>
 </body>
 </html>`;
@@ -549,7 +610,7 @@ export function renderPagesView(opts: {
   helpFile: string;
   settings: Settings;
   query?: string; category?:string; pageNumber?:number; totalPages?:number;
-  lang?: string; publication?: PublicationStatus; cloudReady?: boolean;
+  lang?: string; publication?: PublicationStatus; cloudReady?: boolean; publicUrl?: string;
 }): string {
   const { t, pages, view, editId, hasNew, csrf, helpFile } = opts;
   const ja = opts.lang !== 'en', publication = opts.publication;
@@ -617,7 +678,7 @@ export function renderPagesView(opts: {
         </form>
         </div>
         ${(opts.totalPages||1)>1?`<div class="pagination">${Array.from({length:opts.totalPages||1},(_,i)=>`<a class="pagination-link ${opts.pageNumber===i+1?'active':''}" href="?view=pages&amp;p_pages=${i+1}&amp;q=${encodeURIComponent(opts.query||'')}&amp;cat=${encodeURIComponent(opts.category||'')}#pages">${i+1}</a>`).join('')}</div>`:''}
-        ${publishBox(csrf, t, publication, ja, opts.cloudReady !== false)}
+        ${publishBox(csrf, t, publication, ja, opts.cloudReady !== false, opts.publicUrl || '')}
         </div>
     </div>
 
@@ -641,7 +702,6 @@ export function renderPageEditor(opts: {
   const { t, editId, editData, csrf, helpFile, wrapperComponents, allCategories } = opts;
   const d = editData || {} as PageData;
   const status=['public','public_dynamic'].includes(d.status) ? 'public_static' : d.status||'draft';
-  const previewUrl = editId ? `/preview/${editId}` : '/';
 
   const wrapperOptions = wrapperComponents.map(c =>
     `<option value="${h(c.id)}" ${(d.wrapper_comp || '_layout') === c.id ? 'selected' : ''}>${h(c.id)}</option>`
@@ -736,7 +796,7 @@ export function renderPageEditor(opts: {
                     <div class="flex-row flex-between mt-10">
                         <div class="flex-row">
                             <button type="submit" form="page-form" name="save_action" value="save_page" class="btn btn-blue">${getIcon('save')} ${t('btn_save')}</button>
-                            ${editId ? `<a href="${h(previewUrl)}" target="_blank" class="btn btn-blue">${getIcon('view')} ${opts.settings.system_lang==='en'?'Preview':'プレビュー'}</a>` : ''}
+                            <button type="button" class="btn btn-blue" data-editor-preview="/admin?editor_preview=1">${getIcon('view')} ${t('btn_preview')}</button>
                             <a href="/admin#pages" class="btn btn-gray">${getIcon('arrow_back')} ${t('btn_back_to_list')}</a>
                         </div>
                         ${(editId && editId !== 'index') ? `
@@ -1049,6 +1109,8 @@ export function renderMediaView(opts: {
                         <input type="file" name="image" id="file-input" accept=".jpg,.jpeg,.png,.gif,.webp,.svg,.js,.css" required>
                         <button type="submit" class="btn btn-blue" id="upload-btn">${getIcon('upload')} ${t('btn_upload')}</button>
                     </div>
+                    <div id="upload-publication-status" role="status" class="sub-text"></div>
+                    <button type="button" id="upload-publication-retry" class="btn btn-gray btn-small" hidden style="display:none">${opts.lang==='ja'?'画像の公開を再試行':'Retry image publication'}</button>
                     <details class="resize-details upload-options" id="upload-options"><summary class="resize-summary">${t('upload_options')}<span class="resize-arrow">▼</span></summary><div class="upload-options-body"><label class="upload-option"><input type="checkbox" name="opt_resize" value="1" id="opt-resize" checked> ${t('upload_opt_resize')} <input type="text" name="opt_max_dim" id="opt-max-dim" value="2000" class="resize-input" inputmode="numeric" pattern="[0-9]*"> px</label><label class="upload-option"><input type="checkbox" name="opt_webp" id="opt-webp" value="1"> ${t('upload_opt_webp')}</label></div></details>
                     <div class="upload-info">
                         ${t('media_support_types')}: JPEG, PNG, GIF, WebP, SVG, JS, CSS<br>
@@ -1160,9 +1222,7 @@ export function renderSiteView(opts: {
         <form method="post" class="mt-10" data-mcp-key-form>${csrfField(csrf)}<input type="hidden" name="save_action" value="generate_api_key"><button class="btn btn-gray btn-small">${getIcon('sparkles')} ${t('btn_regenerate_mcp_key')}</button></form>
       </div>
       <form method="post" class="mt-10" id="mcp-key-generate" data-mcp-key-form${settings.api_key?' style="display:none;"':''}>${csrfField(csrf)}<input type="hidden" name="save_action" value="generate_api_key"><button class="btn btn-blue btn-small">${getIcon('sparkles')} ${t('btn_generate_mcp_key')}</button></form>
-      <p class="sub-text">${settings.system_lang==='en'?'Administration: the Connection URL above, with this key in Authorization: Bearer. First call get_site_info, then get_ai_context. Public read-only help: /public-mcp (no key).':'管理用：上の接続URLに、このキーを Authorization: Bearer で指定します。最初に get_site_info、次に get_ai_context を呼びます。公開ヘルプ用：/public-mcp（キー不要・読み取り専用）。'}</p></div></details></div></div>
-
-    <div id="csv-import"><div class="section-container section-tight"><details class="section-accordion"><summary class="header section-header accordion-summary"><h2 class="accordion-title">${t('csv_head')} <span class="accordion-arrow">▼</span></h2></summary><div class="editor-container editor-container-sub"><small class="sub-text sub-text-intro">${t('csv_hint')}</small><div class="mt-10"><input type="file" id="csv-file-input" accept=".csv,text/csv"></div><div class="mt-10"><button type="button" class="btn btn-gray btn-small" onclick="csvConvertAndCopy()" id="csv-copy-btn">${getIcon('copy')} ${t('btn_csv_convert')}</button></div></div></details></div></div>
+      </div></details></div></div>
 
     <div id="backup">
         <div class="section-container section-tight">
@@ -1180,13 +1240,12 @@ export function renderSiteView(opts: {
                         <a class="btn btn-orange btn-small" href="/admin?view=import">${getIcon('upload')} ${t('btn_data_tool')}</a>
                     </div>
                     
-                    ${settings.cloud_connection_ready?`<div class="header section-header mt-10"><h3>${lang==='en'?'D1 database backup':'D1データベースバックアップ'}</h3></div><div class="flex-row gap-10"><form method="post" data-cloudbackup="d1-export">${csrfField(csrf)}<input type="hidden" name="save_action" value="begin_d1_export"><button class="btn btn-gray btn-small">${getIcon('download')} ${lang==='en'?'Export D1 snapshot':'D1スナップショットを保存'}</button><span data-transfer-status role="status"></span></form><form method="post" data-cloudbackup="d1-restore" onsubmit="return confirm('${lang==='en'?'Restore this D1 snapshot?':'このD1スナップショットを復元しますか？'}')">${csrfField(csrf)}<input type="hidden" name="save_action" value="restore_d1_time"><label>${lang==='en'?'Snapshot time':'復元する時刻'} <input type="datetime-local" name="restore_at" required></label><button class="btn btn-orange btn-small">${lang==='en'?'Restore D1 snapshot':'D1スナップショットを復元'}</button><span data-transfer-status role="status"></span></form></div>`:''}
+
 
                 </div>
             </details>
         </div>
     </div>
-    ${renderStorageView(settings,csrf,lang)}
     <div id="settings">
         <div class="section-container section-tight">
             <details class="section-accordion">
@@ -1236,8 +1295,8 @@ export function renderSiteView(opts: {
                             <input type="text" name="tracking_id" id="tracking-id" value="${h(settings.tracking_id||'')}" placeholder="G-XXXXXXXXXX / GTM-XXXXXXX" pattern="([Gg][Tt][Mm]|[Gg])-[A-Za-z0-9]{4,}" ${inUse?'readonly':''}>
                             <small class="sub-text sub-text-block" id="tracking-id-hint">${t(inUse?'tracking_id_overridden':'tracking_id_hint')}</small>
                             ${legacyNotice?`<small class="sub-text sub-text-block">${t('tracking_legacy_notice',h(legacyNotice))}</small>`:''}
-                            <details class="mt-10" ${inUse?'open':''}>
-                                <summary>${t('label_tracking_code')}</summary>
+                            <details class="mt-10 js-accordion tracking-code-details" ${inUse?'open':''}>
+                                <summary>${t('label_tracking_code')} <span class="accordion-arrow">▼</span></summary>
                                 <label class="sub-label">${t('label_tracking_head_code')}</label>
                                 <textarea name="tracking_head_code" class="tracking-code" rows="5" spellcheck="false">${h(headCode)}</textarea>
                                 <label class="sub-label">${t('label_tracking_body_code')}</label>
@@ -1267,13 +1326,14 @@ export function renderSiteView(opts: {
     </div>
 
     ${opts.accountsHtml||''}
-    <div id="cloud-connection" class="section-large-bottom"><div class="section-container section-tight"><details class="section-accordion"><summary class="header section-header accordion-summary"><h2 class="accordion-title">${lang==='en'?'Cloud publication connection':'Cloud公開接続'} <span class="accordion-arrow">▼</span></h2></summary><div class="editor-container editor-container-sub">
+    <div id="cloud-connection"><div class="section-container section-tight"><details class="section-accordion"><summary class="header section-header accordion-summary"><h2 class="accordion-title">${lang==='en'?'Cloudflare publication settings':'Cloudflare公開設定'} <span class="accordion-arrow">▼</span></h2></summary><div class="editor-container editor-container-sub">
                     <p>${lang==='en'?'Configure the Cloudflare account and Worker used for publication. The token is stored securely and is never shown again.':'公開に使うCloudflareアカウントとWorkerを設定します。トークンは安全に保存され、再表示されません。'}</p>
                     <div class="token-guide-box"><h3>${lang==='en'?'How to get a Cloudflare API token':'Cloudflare APIトークンの取得方法'}</h3>
                     ${lang==='en'?`<ol class="token-guide"><li>Sign in to Cloudflare with the account that hosts this site, and open <a href="https://dash.cloudflare.com/profile/api-tokens" target="_blank" rel="noopener">My Profile → API Tokens</a>.</li><li>Press <b>Create Token</b>, then <b>Get started</b> next to <b>Create Custom Token</b>.</li><li>Give it a name, such as “mikanBox publishing”.</li><li>Under <b>Permissions</b>, choose <b>Account</b> → <b>Workers Scripts</b> → <b>Edit</b>. To use the D1 backup and Time Travel features as well, add a second row: <b>Account</b> → <b>D1</b> → <b>Edit</b>.</li><li>Under <b>Account Resources</b>, choose <b>Include</b> → the account that hosts this site.</li><li>Press <b>Continue to summary</b>, then <b>Create Token</b>. Copy the long string that is shown. <b>It is shown only once.</b></li><li>Paste it into “Cloudflare API token” below and press Save. The account ID and Worker name are already filled in; leave them as they are.</li></ol><p class="sub-text">You create the token once. The site stores it encrypted and never shows it again. You only need a new one if it is deleted or revoked in Cloudflare, its permissions change, or the site’s secret key (JWT_SECRET) changes.</p>`:`<ol class="token-guide"><li>このサイトを置いているCloudflareのアカウントでログインし、<a href="https://dash.cloudflare.com/profile/api-tokens" target="_blank" rel="noopener">プロフィール → APIトークン</a>を開きます。</li><li>「トークンを作成する」を押し、「カスタムトークンを作成する」の「開始する」を押します。</li><li>トークン名を付けます。例：「mikanBox公開用」。</li><li>「権限」で、<b>アカウント</b> → <b>Workers スクリプト</b> → <b>編集</b> を選びます（英語表示では Account → Workers Scripts → Edit）。D1のバックアップとTime Travelも使う場合は、もう1行、<b>アカウント</b> → <b>D1</b> → <b>編集</b> を追加します。</li><li>「アカウントリソース」で、<b>含める</b> → このサイトを置いているアカウントを選びます。</li><li>「概要に進む」→「トークンを作成する」を押し、表示された長い文字列をコピーします。<b>表示されるのは1回だけです。</b></li><li>下の「Cloudflare APIトークン」欄に貼り付けて「保存」を押します。アカウントIDとWorker名は最初から入っているので、そのままにしてください。</li></ol><p class="sub-text">トークンは最初に1回作るだけです。サイトが暗号化して保存し、再表示しません。作り直すのは、Cloudflareで削除・失効させたとき、権限を変えたとき、サイトの秘密鍵（JWT_SECRET）を変えたときだけです。</p>`}
                     </div>
                     <form method="post" class="grid-2col"><input type="hidden" name="save_action" value="save_cloud_connection">${csrfField(csrf)}<div class="form-group"><label>${lang==='en'?'Cloudflare account ID':'CloudflareアカウントID'}</label><input type="text" name="cloud_account_id" value="${h(settings.cloud_account_id||'')}" required></div><div class="form-group"><label>${lang==='en'?'Worker name':'Worker名'}</label><input type="text" name="cloud_worker_name" value="${h(settings.cloud_worker_name||'')}" required></div><div class="form-group"><label>${lang==='en'?'Cloudflare API token':'Cloudflare APIトークン'}</label><input type="password" name="cloud_api_token" autocomplete="new-password" ${settings.cloud_connection_ready?'placeholder="•••••••• (set)"':'required'}></div><div class="form-actions"><button class="btn btn-gray btn-small">${t('btn_save')}</button> <span role="status">${settings.cloud_connection_ready?(lang==='en'?'Connection configured':'接続設定済み'):(lang==='en'?'Not configured':'未設定')}</span></div></form>
     </div></details></div></div>
+    ${renderStorageView(settings,csrf,lang)}
 
 
 `;
@@ -1284,7 +1344,7 @@ function renderStorageView(settings:Settings,csrf:string,lang:string):string {
  const migration=settings.media_migration as {id:string;total:number;copied:number}|null;
  const d1Bytes=settings.d1_bytes as number|null, r2Bytes=Number(settings.r2_bytes||0);
  const warning=(d1Bytes!==null&&d1Bytes>=400_000_000)||r2Bytes>=8_000_000_000;
- return `<div id="image-storage"><div class="section-container section-tight"><details class="section-accordion" ${migration||settings.storage_migrated?'open':''}>
+ return `<div id="image-storage" class="section-large-bottom"><div class="section-container section-tight"><details class="section-accordion" ${migration||settings.storage_migrated?'open':''}>
  <summary class="header section-header accordion-summary"><h2 class="accordion-title">${en?'Media storage':'メディアの保存先'} <span class="accordion-arrow">▼</span></h2></summary>
  <div class="editor-container editor-container-sub">
  ${settings.storage_migrated&&r2?`<p role="status">${en?'Media migrated to R2.':'メディアをR2へ移行しました。'}</p>`:''}
@@ -1388,13 +1448,20 @@ function buildTagGuide(
     </details>`;
 }
 
-export function renderImportView(opts: {t:(key:string,...args:(string|number)[])=>string;csrf:string;lang:string;stats?:{pages:number;components:number;users:number;media:number;mediaBytes:number}}):string {
+export function renderImportView(opts: {t:(key:string,...args:(string|number)[])=>string;csrf:string;lang:string;stats?:{pages:number;components:number;users:number;media:number;mediaBytes:number};cloudReady?:boolean}):string {
   const {t,csrf,lang}=opts;
-  const cloudBackupHtml=`<section id="cloud-json-backup" class="data-tool-card">                    <div class="header section-header"><h3>${lang==='en'?'Full backup for recovery (JSON)':'完全バックアップ（復元用・JSON）'}</h3></div>
-                    <p>${lang==='en'?'Unlike the separate data and media downloads, this backup includes images, accounts and revision history together. Use it to recover the complete site; restoration replaces current data.':'データ・メディアの個別ダウンロードと異なり、画像・アカウント・編集履歴までまとめて保存します。サイト全体を元の状態へ戻すためのバックアップで、復元すると現在のデータを置き換えます。'}</p>
-                    <p>${lang==='en'?'Backups contain private content, API keys and password hashes. Keep them private. For D1 storage, images are limited to 400 MB; existing and temporary restore images must fit within 450 MB. With R2, current and temporary restore images both count toward storage usage.':'非公開内容・APIキー・パスワードのハッシュを含むため、バックアップは公開しないでください。D1では画像は400 MBまで、現在の画像と復元用の一時画像の合計は450 MBまでです。R2では、現在の画像と復元用の一時画像の両方が使用量に含まれます。'}</p><div class="grid-2col"><form method="post" data-cloudbackup="export">${csrfField(csrf)}<input type="hidden" name="save_action" value="download_backup_json"><button type="submit" class="btn btn-gray btn-small">${getIcon('download')} ${lang==='en'?'Download JSON backup':'JSONバックアップを保存'}</button><span data-transfer-status role="status"></span></form>
-                      <form method="post" enctype="multipart/form-data" data-cloudbackup="restore" onsubmit="return confirm('${lang==='en'?'Replace all current site data with this backup?':'現在のサイトデータをすべてバックアップ内容で置き換えます。続けますか？'}')">${csrfField(csrf)}<input type="hidden" name="save_action" value="restore_backup_json"><label class="form-group backup-field">${lang==='en'?'Backup JSON file':'バックアップJSONファイル'} <input type="file" name="backup_file" accept="application/json,.json" required></label><label class="form-group backup-field"><input type="checkbox" name="restore_users" value="1"> ${lang==='en'?'Also restore user accounts (signs everyone out)':'ユーザーも復元（全員ログアウト）'}</label><button type="submit" class="btn btn-orange btn-small">${lang==='en'?'Restore and replace':'復元して置き換え'}</button><span data-transfer-status role="status"></span></form>
-                    </div>
-</section>`;
-  return renderDataImportView({t,csrf,lang,stats:opts.stats||{pages:0,components:0,users:0,media:0,mediaBytes:0},cloudBackupHtml:cloudBackupHtml+`<section id="static-zip" class="data-tool-card"><div class="header section-header"><h3>${lang==='en'?'Static HTML (ZIP)':'静的HTML（ZIP）'}</h3></div><form method="post">${csrfField(csrf)}<input type="hidden" name="save_action" value="download_static_zip"><label>${lang==='en'?'HTML file structure':'HTMLファイルの構造'} <select name="structure"><option value="flat">ID.html</option><option value="directory">ID/index.html</option></select></label><button class="btn btn-gray btn-small">${getIcon('download')} ${lang==='en'?'Download static ZIP':'静的ZIPを保存'}</button><p class="ssg-mode-hint">${lang==='en'?'Exports already-built static pages and their images, up to 20 MB. Dynamic pages remain links to the live site.':'ビルド済みの静的ページと使用画像を、合計20 MBまで保存します。動的ページは公開サイトへのリンクになります。'}</p></form></section>`});
+  const d1BackupHtml=`<div class="data-tool-grid data-backup-grid"><section id="cloud-d1-backup" class="data-tool-card"><h2>${getIcon('database')} ${lang==='en'?'Export D1 database as SQL':'D1データベースのSQL書き出し'}</h2>
+    <p>${lang==='en'?'Save the current D1 database as an SQL file. Importing it requires a compatible database tool; this screen cannot restore the file. R2 image files are not included.':'現在のD1データベースをSQLファイルとして保存します。利用には対応するデータベースのツールが必要で、この画面からSQLファイルを復元することはできません。R2の画像ファイルは含まれません。'}</p>
+    <p>${lang==='en'?'The unencrypted file contains sensitive information. Store it securely. The database may be temporarily unavailable during export.':'暗号化されないファイルには認証情報などが含まれます。安全に保管してください。書き出し中はD1が一時的に利用できなくなる場合があります。'}</p>
+    ${opts.cloudReady?`<form method="post" data-cloudbackup="d1-export">${csrfField(csrf)}<input type="hidden" name="save_action" value="begin_d1_export"><button class="btn btn-gray btn-small">${getIcon('download')} ${lang==='en'?'Export D1 as SQL':'D1のSQLを書き出す'}</button><span data-transfer-status role="status"></span></form>`:`<p>${lang==='en'?'Configure Cloudflare publication settings with D1 edit permission.':'D1編集権限を持つトークンをCloudflare公開設定に登録してください。'}</p>`}</section>
+    <section id="cloud-d1-restore" class="data-tool-card"><h2>${getIcon('history')} ${lang==='en'?'Restore D1 to a past time':'D1の指定時刻への復元'}</h2><p>${lang==='en'?'Cloudflare Time Travel returns the database to a time within its retention period. This does not use the downloaded SQL file. R2 images and published files are not restored; rebuild the public site afterward.':'CloudflareのTime Travelで、保持期間内の指定時刻にデータベースを戻します。保存したSQLファイルは使いません。R2の画像と公開済みファイルは復元されないため、復元後に公開サイトをビルドしてください。'}</p>
+    ${opts.cloudReady?`<form method="post" data-cloudbackup="d1-restore">${csrfField(csrf)}<input type="hidden" name="save_action" value="restore_d1_time"><label class="form-group backup-field">${lang==='en'?'Restore to time':'復元する時刻'} <input type="datetime-local" name="restore_at" required></label><button class="btn btn-orange btn-small">${lang==='en'?'Restore D1 to this time':'D1を指定時刻に戻す'}</button><p class="data-action-hint">${lang==='en'?'This replaces the current database with its past state.':'現在のデータベースを指定時刻の状態に置き換えます。'}</p><span data-transfer-status role="status"></span></form>`:`<p>${lang==='en'?'Configure Cloudflare publication settings with D1 edit permission.':'D1編集権限を持つトークンをCloudflare公開設定に登録してください。'}</p>`}</section></div>`;
+  const cloudBackupHtml=`<div class="data-tool-grid data-backup-grid"><section id="cloud-json-backup" class="data-tool-card"><h2>${getIcon('download')} ${lang==='en'?'JSON backup':'JSONバックアップ'}</h2>
+    <p>${lang==='en'?'Save pages, components, images, accounts and revision history together. The unencrypted file contains private content, API keys and password hashes. Restrict access and store it securely, preferably encrypted.':'ページ・コンポーネント・画像・アカウント・編集履歴をまとめて保存します。ファイルは暗号化されず、非公開内容・APIキー・パスワードのハッシュを含みます。アクセスを制限し、できれば暗号化して保管してください。'}</p>
+    <form method="post" data-cloudbackup="export">${csrfField(csrf)}<input type="hidden" name="save_action" value="download_backup_json"><button type="submit" class="btn btn-gray btn-small">${getIcon('download')} ${lang==='en'?'Download JSON backup':'JSONバックアップを保存'}</button><span data-transfer-status role="status"></span></form></section>
+    <section id="cloud-json-restore" class="data-tool-card"><h2>${getIcon('upload')} ${lang==='en'?'Restore a JSON backup':'バックアップJSONファイルの復元'}</h2>
+    <p>${lang==='en'?'Restoring replaces current site data. Accounts are restored only if selected. Current site identity, API key and Cloud connection are kept.':'復元すると、現在のサイトの内容がバックアップの内容に置き換わります。ユーザーは選択した場合のみ復元され、現在のサイトID・APIキー・Cloud接続は維持されます。'}</p>
+    <p>${lang==='en'?'For D1, existing and temporary restore images must fit within 450 MB. R2 also needs space for both sets.':'D1では現在の画像と復元用の一時画像の合計が450 MB以内である必要があります。R2でも両方の保存領域が必要です。'}</p>
+    <form method="post" enctype="multipart/form-data" data-cloudbackup="restore" onsubmit="return confirm('${lang==='en'?'Replace all current site data with this backup?':'現在のサイトデータをすべてバックアップ内容で置き換えます。続けますか？'}')">${csrfField(csrf)}<input type="hidden" name="save_action" value="restore_backup_json"><label class="form-group backup-field">${lang==='en'?'Backup JSON file':'バックアップJSONファイル'} <input type="file" name="backup_file" accept="application/json,.json" required></label><label class="form-group backup-field"><input type="checkbox" name="restore_users" value="1"> ${lang==='en'?'Also restore user accounts (signs everyone out)':'ユーザーも復元（全員ログアウト）'}</label><button type="submit" class="btn btn-orange btn-small">${lang==='en'?'Restore and replace':'復元して置き換え'}</button><span data-transfer-status role="status"></span></form></section></div>`;
+  return renderDataImportView({t,csrf,lang,stats:opts.stats||{pages:0,components:0,users:0,media:0,mediaBytes:0},cloudBackupHtml:d1BackupHtml+cloudBackupHtml+`<section id="static-zip" class="data-tool-card"><h2>${getIcon('archive')} ${lang==='en'?'Static HTML (ZIP)':'静的HTML（ZIP）'}</h2><form method="post">${csrfField(csrf)}<input type="hidden" name="save_action" value="download_static_zip"><div class="data-tool-form-row"><label>${lang==='en'?'HTML file structure':'HTMLファイルの構造'} <select name="structure"><option value="flat">ID.html</option><option value="directory">ID/index.html</option></select></label><button class="btn btn-gray btn-small">${getIcon('download')} ${lang==='en'?'Download static ZIP':'静的ZIPを保存'}</button></div><p class="data-action-hint">${lang==='en'?'Exports already-built static pages and referenced local images, up to 20 MB. Dynamic pages and external images remain live links; images loaded dynamically by JavaScript are not collected.':'ビルド済みの静的ページと参照するサイト内画像を、合計20 MBまで保存します。動的ページと外部画像は元のURLのままです。JavaScriptが動的に読み込む画像は収集しません。'}</p></form></section>`});
 }

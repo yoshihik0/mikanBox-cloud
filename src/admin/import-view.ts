@@ -1,3 +1,5 @@
+import {CLOUD_VERSION} from '../version';
+
 type Translator = (key: string, ...args: (string | number)[]) => string;
 
 function escapeHtml(value: unknown): string {
@@ -45,6 +47,17 @@ export function renderImportView(opts: {
         <form data-content-import="package" enctype="multipart/form-data"><input type="hidden" name="csrf_token" value="${escapeHtml(csrf)}"><input type="hidden" name="save_action" value="content_import_package">
           <div class="flex-row flex-row-wrap items-center"><input type="file" name="package_zip" accept=".zip,application/zip" required><button class="btn btn-orange btn-small">${icon('publish')} ${en?'Upload and import':'アップロードしてインポート'}</button></div><span role="status" data-import-status></span>
         </form>
+        <details class="package-layout-guide">
+          <summary>${t('package_layout_title')} <span class="accordion-arrow" aria-hidden="true">▼</span></summary>
+          <p>${t('package_layout_intro')}</p>
+          <pre>posts/
+  coffee/
+    index.json  → coffee/index
+    menu.json   → coffee/menu
+components/
+  coffee_layout.json</pre>
+          <p>${t('package_layout_notes')}</p>
+        </details>
       </section>
       <section id="wp-import" class="data-tool-card">
         <h2>${icon('description')} ${en?'WordPress content migration (XML import)':'WordPressデータ移行（XMLインポート）'}</h2>
@@ -54,10 +67,10 @@ export function renderImportView(opts: {
         </form>
       </section>
       <section id="import-log" class="data-tool-card"><h2>${icon('receipt_long')} ${en?'Execution log':'実行ログ'}</h2><div class="data-tool-log" aria-live="polite" data-import-log>${en?'Choose an import file to begin.':'インポートするファイルを選択してください。'}</div></section>
-      <div id="csv-import"><div class="section-container section-tight"><details class="section-accordion"><summary class="header section-header accordion-summary"><h2 class="accordion-title">${t('csv_head')} <span class="accordion-arrow">▼</span></h2></summary><div class="editor-container editor-container-sub"><small class="sub-text sub-text-intro">${t('csv_hint')}</small><div class="mt-10"><input type="file" id="csv-file-input" accept=".csv,text/csv"></div><div class="mt-10"><button type="button" class="btn btn-gray btn-small" onclick="csvConvertAndCopy()" id="csv-copy-btn">${icon('content_copy')} ${t('btn_csv_convert')}</button></div></div></details></div></div>
+      <section id="csv-import" class="data-tool-card"><h2>${icon('table_chart')} ${t('csv_head')}</h2><p>${t('csv_hint')}</p><div class="data-tool-form-row"><input type="file" id="csv-file-input" accept=".csv,text/csv"><button type="button" class="btn btn-gray btn-small" onclick="csvConvertAndCopy()" id="csv-copy-btn">${icon('content_copy')} ${t('btn_csv_convert')}</button></div></section>
       ${cloudBackupHtml}
       </div>
       <footer class="data-tool-footer"><a href="/admin">${icon('arrow_back')} ${en?'Back to administration':'管理画面へ戻る'}</a><span>© ${new Date().getFullYear()} mikanBox Cloud</span></footer>
     </main>
-  </div><script src="/mikanbox/cloud-import.js" defer></script>`;
+  </div><script src="/mikanbox/cloud-import.js?v=${escapeHtml(CLOUD_VERSION)}-2" defer></script>`;
 }

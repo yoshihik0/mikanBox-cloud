@@ -20,7 +20,8 @@
       "/search",
       "/search/*",
       "/search.html",
-      "/preview/*"
+      "/preview/*",
+      "/preview-media/*"
     ],
     "html_handling": "none"
   },

@@ -4,6 +4,8 @@
 
 This edition is under development. It targets the SQLite edition's UI and features, but full compatibility has not been reached. Changes to existing editions are limited to the explicitly requested common settings correction; existing data and the official server are unchanged.
 
+The Data migration and import screen contains CSV conversion, D1 export and time-based recovery, JSON backup and restore, and static HTML ZIP export. D1 SQL export and time-based recovery are separate: the saved SQL file cannot be restored from this screen. Time-based recovery does not restore R2 images or published files; rebuild after restoring. Both D1 actions require D1 edit permission in the Cloudflare API token. SQL and JSON files contain sensitive information and are not encrypted, so restrict access and store them securely. JSON restore keeps the current site ID, API key and Cloud connection; accounts are restored only when selected.
+
 The admin operations below describe v0.4.3. Automatic admin publication and D1 operations require a dedicated Cloudflare token and cannot run where it is unconfigured. Verification using that token and complete UI parity remain pending.
 
 The user's explicit 2026-10-04 request authorizes common settings layout, input styling, explanatory text, SSG hint weight and site URL fallback changes in all three editions. The original protected hashes remain intact; reviewed changes are recorded separately. Site environment is advisory metadata, not an access or write restriction. Site URL identifies the site to AI and defaults to the index page location independently of SSG output.
@@ -11,6 +13,24 @@ The user's explicit 2026-10-04 request authorizes common settings layout, input 
 The admin version comparison uses Cloud versions, not PHP releases. This deployment reads its dedicated `/mikanbox/cloud-release.json` feed. Other installations without `CLOUD_RELEASE_MANIFEST_URL` show that release information is unpublished. The HTTPS JSON document contains `edition: "cloud"`, `version: "0.5.0"` and an optional HTTPS `url`. One-click code updates are not implemented. Updates deploy a new Worker and any required D1 migrations; this differs from rebuilding static assets.
 
 Media omits the image conversion note and maximum-file-size line, and explains using files on a page: a bare filename in Markdown and `media/filename` in HTML. Existing `images/filename` references for images remain supported.
+
+
+Save and other notifications appear at the lower right and disappear after about three seconds.
+
+
+macOS metadata files inside `__MACOSX` or starting with `._` are ignored automatically.
+
+
+Open “How to arrange files in the ZIP” on the import screen to see the folder layout and resulting page IDs.
+
+
+Admin previews can display images before publication. Each referenced image receives a short-lived preview URL while the preview remains sandboxed.
+
+
+The page-list preview shows saved content. The page editor preview renders the current unsaved form without saving or publishing it.
+
+
+When renaming or converting to WebP, an existing target filename stops the operation before the original or published image is withdrawn. If a page whose references would change is being edited, save and close its editor first. Errors remain visible beside the image action.
 
 ## Delivery and withdrawal
 
@@ -28,12 +48,12 @@ Files placed on the delivery target bypass the Worker, so deleting the source le
 
 Pages are withdrawn by a build. Pages made private and pages deleted are removed from the delivery target then, along with their URL aliases. **They stay readable until you build.** After unpublishing, build as well.
 
-Images are withdrawn automatically by the Media screen; see "Static image delivery" below.
+The Media screen withdraws deleted images automatically. Renamed or converted images keep their old public version until the next build; see "Static image delivery" below.
 
 
 ## Separate public and admin Workers (prototype)
 
-Setting `CLOUDFLARE_PUBLIC_WORKER_NAME` (the public Worker's name) and `PUBLIC_SITE_URL` (the public site's URL) publishes pages to a separate Worker. The public Worker holds static files only and runs no code. The admin screen and MCP stay on the current Worker. Without these settings, everything runs on one Worker as before.
+Setting `CLOUDFLARE_PUBLIC_WORKER_NAME` (the public Worker's name) and `PUBLIC_SITE_URL` (the public site's URL) publishes pages to a separate Worker. The public Worker holds static files only and runs no code. The admin screen and MCP stay on the current Worker. Without these settings, everything runs on one Worker as before. The public site URL appears next to the build controls on the page list and links to the public site.
 
 - On the admin address, visitors without a session get no pages, images, component scripts or sitemaps, and search engines are told not to index it (`X-Robots-Tag: noindex`).
 - A signed-in device opening `/about` on the admin address is sent to the preview (`/preview/about`). Previews carry a CSP `sandbox`, so page scripts cannot reach the admin screen. Inside a preview, page scripts cannot use cookies or `localStorage`.
@@ -48,11 +68,11 @@ Setting `CLOUDFLARE_PUBLIC_WORKER_NAME` (the public Worker's name) and `PUBLIC_S
 
 Publication includes images. Every stored file is published, including files no page references, because dynamic pages read the same `/media/filename` paths as static pages.
 
-Published images are served from Static Assets and reach neither the Worker nor D1 nor R2, so viewing them consumes no daily Worker requests and no D1 row reads. Images not yet published have no static file, so the request falls through to the Worker, which serves them from D1/R2. An uploaded image therefore appears at once in draft previews and on dynamic pages, without waiting for a publication.
+Published images are served from Static Assets. Admin previews can show images before publication. Uploading an image in Media automatically adds that image to the delivery target without rebuilding pages. This needs the Cloudflare publication settings and the last publication state; if the target was changed elsewhere, build the site once. If publication fails, the image remains saved and the admin screen reports that it was not published. MCP uploads do not publish automatically.
 
 The delivery target allows 20,000 files per version and 25 MiB per file. Images are limited to 10 MB each and 10,000 files, so pages and components fit within that budget alongside them.
 
-Static files bypass the Worker, so a published image must leave the delivery target before its source can be deleted or renamed. Deleting or renaming in Media withdraws the file first — a publication that excludes that path — and then performs the requested operation. It is one action and it does not rebuild pages. If the withdrawal fails, the original file is kept and the operation stops.
+Renaming or converting a published image keeps the old public image and HTML until the next build. The new image and references are saved in the admin, and the next build switches the public site. The old public filename cannot be reused until the build removes it. Deleting a published image still withdraws it from the delivery target first.
 
 Replacing a file under the same name needs no withdrawal, because its public URL does not change. The delivery target keeps the previous content until the next publication.
 
@@ -93,13 +113,13 @@ References: [D1 limits](https://developers.cloudflare.com/d1/platform/limits/), 
 
 ## v0.4.3 admin operations
 
-Rebuild generates public HTML and updates static delivery together, removing unpublished or deleted pages. Previously published files remain until rebuilding. Images are delivered through the Worker and changes take effect directly. Keep the admin screen open while the browser performs these steps. Configure a dedicated token with Workers edit permission in Site settings. The installation target is fixed. The token is encrypted using a key derived from JWT_SECRET, never displayed again, and excluded from portable backups. Create it once: you only need a new one if the token is deleted or revoked in Cloudflare, its permissions change, JWT_SECRET changes, or the database is restored to a different state by a backup or Time Travel. While no token is set, a notice under “Build static site” in the page list says so. Expiring Wrangler login credentials are never copied into the Worker. The existing MCP build_ssg generates HTML only; delivery still requires the admin screen or the publication command.
+Rebuild generates public HTML and updates static delivery together, removing unpublished or deleted pages. Previously published files remain until rebuilding. Images are delivered through the Worker and changes take effect directly. Keep the admin screen open while the browser performs these steps. Configure a dedicated token with Workers edit permission in Site settings. The installation target is fixed. The token is encrypted using a key derived from JWT_SECRET, never displayed again, and excluded from portable backups. Create it once: you only need a new one if the token is deleted or revoked in Cloudflare, its permissions change, JWT_SECRET changes, or the database is restored to a different state by a backup or Time Travel. While no token is set, a notice under “Build static site” in the page list says so. Expiring Wrangler login credentials are never copied into the Worker. The existing MCP build_ssg generates HTML only; delivery still requires the admin screen or the publication command. When Cloudflare returns error details, the error code and message are displayed. Publication requires the latest uploaded Worker version to match the deployed version. If they differ, deploy the intended version first. In split mode, saving the connection checks access to the public Worker; write permission is exercised during publication.
 
 JPEG, PNG and WebP images can be resized and converted to WebP in the browser. Uploads default to a 2,000px maximum side. Existing conversion replaces the image and updates references with page history. GIF and SVG uploads preserve original bytes. Browser processing accepts dimensions up to 16,000px and 40 million pixels.
 
 ### Device authentication (prototype)
 
-There are no passwords. Only registered devices (browsers) can open the admin screen. Each device keeps a random token in a cookie; D1 stores only its hash.
+There are no passwords. The Devices and users section is normally closed, and changing the device expiry shows the result in place. Only registered devices (browsers) can open the admin screen. Each device keeps a random token in a cookie; D1 stores only its hash.
 
 - **First device**: on the sign-in screen, enter `SETUP_TOKEN`, a username, a display name and a name for the device. A used `SETUP_TOKEN` never works again.
 - **Adding a device**: on a registered device, open Site → Devices and users → Add a device, issue a code, and enter it on the new device's sign-in screen. That device is registered as the same user as whoever issued the code. Codes are valid for 3 hours and work once. To invite someone, issue an invite code under Invite someone and hand it over; the invited person chooses their own user ID and display name on the sign-in screen. After five wrong codes, entry is blocked for 15 minutes.
@@ -277,13 +297,13 @@ In v0.3.0, the admin build saved HTML snapshots and `npm run publish:static` in 
 
 Publication downloads files individually. Drafts, pending pages, settings, credentials and AI documents are excluded. HTML and image changes are applied together by switching deployments. Editing is temporarily blocked during publication.
 
-Published pages are withdrawn by site generation, and deleting or renaming a published image withdraws it automatically from the Media screen. Component JS withdrawal requires a publication. Previously cached browser copies cannot be recalled. See "Delivery and withdrawal" above.
+Published pages are withdrawn by site generation, and deleting a published image withdraws it automatically from the Media screen. Renaming or conversion keeps the old public image until the next build. Component JS withdrawal requires a publication. Previously cached browser copies cannot be recalled. See "Delivery and withdrawal" above.
 
 Workers Free supports 20,000 static files and 25 MiB per file, with 2,000 URL aliases. Images now count toward static publication files (up to 10,000 of them). Images, administration, search, dynamic pages and publication consume Worker/D1/R2 allowances. Use the publication command for code updates to retain deployed HTML.
 
 ### Media editing and categories
 
-Image actions match PHP: “Resize▼”, “Rename▼”, then “Convert to WebP”. WebP conversion appears only for JPEG/PNG; renaming preserves the extension. Conversion uses `.webp` and updates page, component and common OGP references. The top category selection also filters media by filename prefix, while shared `g_` images remain visible; this does not mean only used images. Uploads receive the selected category prefix unless an alphanumeric prefix is already present.
+The media list retains its scroll position where possible after an operation. Image actions match PHP: “Resize▼”, “Rename▼”, then “Convert to WebP”. WebP conversion appears only for JPEG/PNG; renaming preserves the extension. Conversion uses `.webp` and updates page, component and common OGP references. The top category selection also filters media by filename prefix, while shared `g_` images remain visible; this does not mean only used images. Uploads receive the selected category prefix unless an alphanumeric prefix is already present.
 
 ### Component list
 
@@ -298,4 +318,4 @@ Supports the None wrapper option, missing head metadata completion, a shared tra
 
 The import/export screen follows SQLite’s status cards, ZIP import, WordPress XML import and execution log, followed by CSV and Cloud-specific complete JSON backup/restore. ZIP/XML add content while retaining existing IDs; images, accounts and site settings are not imported. Limits: 20 MB files, 15 MB ZIP expansion, 1 MB imported content and 300 records. Settings fields and category add-button alignment use the shared PHP CSS.
 
-Changing an unpublished image needs no Cloud publication connection. Deleting or renaming a published image publishes a withdrawal, so it does require the connection. Renaming uses the reference confirmation dialog. See the v0.5.0 section for storage limits, migration and complete backup behavior.
+Changing an unpublished image needs no Cloudflare publication settings. Deleting or renaming a published image publishes a withdrawal, so it does require the connection. Renaming uses the reference confirmation dialog. See the v0.5.0 section for storage limits, migration and complete backup behavior.

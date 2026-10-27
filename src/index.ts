@@ -8,6 +8,7 @@ import { validId } from './validation';
 import { handleMcp } from './mcp';
 import { handlePublicHelp } from './public-help';
 import { splitMode, PREVIEW_SANDBOX } from './site-split';
+import { previewMediaUrls, verifyPreviewMedia } from './preview-media';
 
 async function route(request: Request, env: Env): Promise<Response> {
   const url=new URL(request.url),pathname=url.pathname;
@@ -19,6 +20,15 @@ async function route(request: Request, env: Env): Promise<Response> {
     if(!env.ASSETS) return new Response('Not Found',{status:404});
     const target=new URL(request.url);if(pathname==='/admin.css') target.pathname='/mikanbox/admin.css';
     return env.ASSETS.fetch(new Request(target,request));
+  }
+  if (pathname.startsWith('/preview-media/')) {
+    const name = pathname.slice('/preview-media/'.length);
+    if (!await verifyPreviewMedia(env.JWT_SECRET,name,url.searchParams.get('expires')||'',url.searchParams.get('sig')||'')) return new Response('Not Found',{status:404,headers:{'Cache-Control':'no-store'}});
+    const object = await getMediaObject(env,name);
+    if (!object) return new Response('Not Found',{status:404,headers:{'Cache-Control':'no-store'}});
+    const headers:Record<string,string> = {'Content-Type':object.httpMetadata?.contentType||'application/octet-stream','Content-Length':String(object.size),'Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer'};
+    if(name.toLowerCase().endsWith('.svg')) headers['Content-Security-Policy']="sandbox; default-src 'none'; style-src 'unsafe-inline'";
+    return new Response(object.body,{headers});
   }
   if(splitMode(env)) {
     // The public site lives on its own Worker. Here, nothing of the site is served
@@ -61,7 +71,8 @@ async function route(request: Request, env: Env): Promise<Response> {
   // Public pages are served only as published static files; the Worker never renders them for visitors.
   if(data&&isPublicStatus(data.status)&&!auth)return new Response('Not Found',{status:404,headers:{'Cache-Control':'no-store'}});
   const result=await renderer.render(id,!!auth);
-  return new Response(result.html,{status:result.status,headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','Referrer-Policy':'same-origin'}});
+  const html = preview && result.status === 200 ? await previewMediaUrls(result.html,env,request,renderer.getSiteUrl()) : result.html;
+  return new Response(html,{status:result.status,headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','Referrer-Policy':preview?'no-referrer':'same-origin'}});
 }
 export default {
   async fetch(request: Request,env: Env):Promise<Response> {
@@ -71,7 +82,7 @@ export default {
       response.headers.set('X-Content-Type-Options','nosniff');
       response.headers.set('X-Mikanbox-Delivery','worker');
       const admin=['/admin','/admin/','/mikanBox/admin.php'].includes(new URL(request.url).pathname);
-      if(admin)response.headers.set('Content-Security-Policy',"frame-ancestors 'none'; base-uri 'self'; form-action 'self'");
+      if(admin && !response.headers.has('Content-Security-Policy'))response.headers.set('Content-Security-Policy',"frame-ancestors 'none'; base-uri 'self'; form-action 'self'");
       if(splitMode(env)) {
         response.headers.set('X-Robots-Tag','noindex, nofollow');
         if(new URL(request.url).pathname.startsWith('/preview/'))response.headers.set('Content-Security-Policy',PREVIEW_SANDBOX);

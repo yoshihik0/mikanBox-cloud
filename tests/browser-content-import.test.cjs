@@ -41,3 +41,18 @@ test('browser package parser rejects malformed content records instead of partia
   const api=parser();
   assert.throws(()=>api.parsePackageFiles(new Map([['posts/page.json',new TextEncoder().encode('{broken')]])),/Could not parse package JSON/);
 });
+
+
+test('macOS ZIP metadata is ignored while real content is imported', async () => {
+  const api=parser();
+  const zip=storedZip([
+    ['coffee/posts/gallery3.json','{"title":"Gallery"}'],
+    ['__MACOSX/coffee/posts/._gallery3.json','not JSON'],
+    ['coffee/posts/._gallery3.json','not JSON'],
+    ['coffee/components/header.json','{"html":"Hello"}'],
+    ['__MACOSX/coffee/components/._header.json','not JSON']
+  ]);
+  const files=await api.unzip({arrayBuffer:async()=>zip.buffer.slice(zip.byteOffset,zip.byteOffset+zip.byteLength)});
+  const payload=api.parsePackageFiles(files);
+  assert.deepEqual(JSON.parse(JSON.stringify(payload)),{pages:[{id:'gallery3',data:{title:'Gallery'}}],components:[{id:'header',data:{html:'Hello'}}]});
+});

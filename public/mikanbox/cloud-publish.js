@@ -14,10 +14,10 @@
  async function read(path){const response=await fetch('/admin?publication_file='+encodeURIComponent(path),{credentials:'same-origin'});if(!response.ok)throw new Error('Publication source is unavailable.');return {bytes:new Uint8Array(await response.arrayBuffer()),type:response.headers.get('Content-Type')||'application/octet-stream'};}
  async function digest(bytes){return [...new Uint8Array(await crypto.subtle.digest('SHA-256',bytes))].map(b=>b.toString(16).padStart(2,'0')).join('').slice(0,32);}
  function base64(bytes){let binary='';for(let i=0;i<bytes.length;i+=32768)binary+=String.fromCharCode(...bytes.subarray(i,i+32768));return btoa(binary);}
- window.cloudPublish=async(rebuild=true,excluded=[])=>{
+ window.cloudPublish=async(rebuild=true,excluded=[],mediaOnly='')=>{
   if(publishing)throw new Error(ja?'配信更新中です。':'Publication is already running.');publishing=true;let lease='';
   try {
-   status(ja?'公開ファイルを準備しています…':'Preparing publication…');const begin=await action('publication_begin',{rebuild:rebuild?'1':'0',excluded});lease=begin.job;
+   status(ja?'公開ファイルを準備しています…':'Preparing publication…');const begin=await action('publication_begin',{rebuild:rebuild?'1':'0',excluded,media_only:mediaOnly});lease=begin.job;
    const unprepared=begin.entries.filter(item=>!item.hash),items=[];
    for(let i=0;i<unprepared.length;i++){
     const item=unprepared[i],file=await read(item.path);items.push({path:item.path,hash:await digest(file.bytes),size:file.bytes.length,contentType:file.type});
@@ -30,7 +30,7 @@
     const form=new FormData();form.set('hash',item.hash);form.set('asset_data',new File([base64(file.bytes)],item.hash,{type:file.type}));await action('publication_upload',form,lease);
     status((ja?'配信更新 ':'Uploading ')+(i+1)+'/'+upload.uploads.length);
    }
-   const result=await action('publication_finish',{},lease);lease='';status(ja?'再構築・配信更新が完了しました。':'Build and publication completed.');return result;
+   const result=await action('publication_finish',{},lease);lease='';status(mediaOnly?(ja?'画像を公開しました。':'Image published.'):(ja?'再構築・配信更新が完了しました。':'Build and publication completed.'));return result;
   }catch(error){status(error.message,true);throw error;}finally{if(lease)await action('publication_cancel',{},lease).catch(()=>{});publishing=false;}
  };
  async function renameChoice(message){
@@ -57,27 +57,38 @@
   const form=event.target,name=form.querySelector('[name="save_action"]')?.value;
   if(!['build_ssg','delete_media','rename_media','resize_media','edit_media','convert_media_webp','begin_d1_export','restore_d1_time'].includes(name))return;
   event.preventDefault();event.stopImmediatePropagation();const buttons=[...form.querySelectorAll('button')];buttons.forEach(b=>b.disabled=true);const label=form.querySelector('[data-publish-label]'),labelText=label?.textContent;if(label)label.textContent=ja?'公開中…':'Publishing…';form.classList?.add('is-busy');
+  form.parentElement?.querySelector('[data-media-action-error]')?.remove();
   try{
    let data=new FormData(form);
    // Reload afterwards so the globe icons and the last-published time are current.
    if(name==='build_ssg'){statusTarget=form.querySelector('[data-publish-status]');await window.cloudPublish(true);setTimeout(()=>location.reload(),1500);return;}
    if(name==='begin_d1_export'){
-    let result=await action(name);for(let i=0;i<600&&result.export.status!=='complete';i++){if(result.export.status==='error')throw new Error(result.export.error||'Export failed.');await new Promise(resolve=>setTimeout(resolve,1000));const response=await fetch('/admin?d1_export_poll=1',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({capability:result.capability}),credentials:'same-origin'}),next=await response.json();if(!response.ok||!next.success)throw new Error(next.message||'Export polling failed.');result={...result,export:next.export};}
-    if(result.export.status!=='complete'||!result.export.result?.signed_url)throw new Error('Export did not finish. Try again.');const link=document.createElement('a');link.href=result.export.result.signed_url;link.download=result.export.result.filename||'mikanbox.sql';link.click();status(ja?'D1の書き出しが完了しました。':'D1 export completed.');return;
+    let result=await action(name);for(let i=0;i<600&&result.export.status!=='complete';i++){if(result.export.status==='error')throw new Error(result.export.error||'Export failed.');await new Promise(resolve=>setTimeout(resolve,1000));const response=await fetch('/admin?d1_export_poll=1',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({capability:result.capability}),credentials:'same-origin'}),next=await response.json();if(!response.ok||!next.success)throw new Error(next.message||'Export polling failed.');result={...result,export:next.export,download_capability:next.download_capability};}
+    if(result.export.status!=='complete'||!result.download_capability)throw new Error('Export did not finish. Try again.');
+    const download=document.createElement('form');download.method='post';download.action='/admin';download.hidden=true;
+    for(const [key,value] of Object.entries({save_action:'download_d1_export',csrf_token:window.CSRF_TOKEN,capability:result.download_capability})){const input=document.createElement('input');input.type='hidden';input.name=key;input.value=value;download.append(input);}
+    document.body.append(download);download.submit();download.remove();status(ja?'D1のダウンロードを開始しました。':'D1 download started.');return;
    }
    if(name==='restore_d1_time'){if(!confirm(ja?'DB全体を指定時刻に戻します。現在の変更が失われます。実行しますか？':'Restore the whole database? Changes after that time will be lost.'))return;data.set('restore_at',new Date(data.get('restore_at')).toISOString());await action(name,data);location.reload();return;}
    const info=await action('media_reference_status',{file:data.get('file')});
    if(name==='rename_media'&&info.count){const choice=await renameChoice(info.message);if(choice==='cancel')return;data.set('confirmed',choice==='update'?'1':'0');}
    if(name==='rename_media'&&!info.count)data.set('confirmed','1');
    if(name==='resize_media'||name==='edit_media'||name==='convert_media_webp')data=await window.cloudPrepareMediaForm(data);
-   // Static files bypass the Worker, so a published image must leave the delivery
-   // target before its source is deleted or renamed. One button, two steps.
-   if(info.published&&pathDropped(name,data)){
+   const target=name==='rename_media'?data.get('new_name'):data.get('new_filename');
+   if(target&&target!==data.get('file')){
+    const check=await action('media_reference_status',{file:data.get('file'),target});
+    if(check.target_exists)throw new Error(ja?'変更先のファイル名はすでに存在します。元のファイルと公開画像は変更していません。':'The target filename already exists. The original and published image were not changed.');
+    if(check.locked&&(name!=='rename_media'||data.get('confirmed')!=='0'))throw new Error(ja?'この画像を使うページが編集中です。ページを保存して編集を終了してから、もう一度お試しください。':'A page using this image is being edited. Save and close the page editor, then try again.');
+   }
+   // Keep the existing public image and HTML when renaming or converting.
+   // A later explicit build switches both together. Deletion still withdraws it.
+   if(name==='delete_media'&&info.published&&pathDropped(name,data)){
     status(ja?'配信先から取り下げています…':'Withdrawing from the delivery target…');
     await window.cloudPublish(true,['/media/'+data.get('file')]);
    }
-   await action(name,data);
-   location.reload();
-  }catch(error){status(error.message,true);}finally{statusTarget=null;buttons.forEach(b=>b.disabled=false);if(label)label.textContent=labelText;form.classList?.remove('is-busy');}
+   const result=await action(name,data);
+   await window.refreshMediaGrid();
+   status(result.message || (ja?'変更しました。':'Updated.'));
+  }catch(error){status(error.message,true);if(['delete_media','rename_media','resize_media','edit_media','convert_media_webp'].includes(name)&&form.parentElement){const message=document.createElement('p');message.dataset.mediaActionError='';message.setAttribute('role','alert');message.style.cssText='color:#b91c1c;font-size:0.85em;margin:8px 0;';message.textContent=error.message;form.insertAdjacentElement('afterend',message);}}finally{statusTarget=null;buttons.forEach(b=>b.disabled=false);if(label)label.textContent=labelText;form.classList?.remove('is-busy');}
  },true);
 })();

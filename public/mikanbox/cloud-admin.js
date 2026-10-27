@@ -48,6 +48,23 @@
     const category=prompt(ja?'追加するカテゴリ':'New category');if(!category)return;
     try{await action('add_category',{category});location.reload();}catch(error){alert(error.message);}
   });
+  // Preserve the site section and viewport across ordinary settings submissions.
+  try {
+    const saved=JSON.parse(sessionStorage.getItem('cloud-site-position')||'null');
+    if(saved){sessionStorage.removeItem('cloud-site-position');const details=document.querySelectorAll('#site details');for(const i of saved.open)if(details[i])details[i].open=true;requestAnimationFrame(()=>window.scrollTo(0,saved.y));}
+  } catch {}
+  document.addEventListener('submit',async event=>{
+    const form=event.target;if(!form.closest?.('#site'))return;
+    if(form.matches('[data-device-expiry]')){
+      event.preventDefault();const button=form.querySelector('button'),status=form.querySelector('[data-device-expiry-status]');button.disabled=true;
+      try{await action('device_expiry',{days:form.querySelector('[name="days"]').value});status.textContent=ja?'変更しました。':'Updated.';}
+      catch(error){status.textContent=error.message;}
+      finally{button.disabled=false;}return;
+    }
+    const name=form.querySelector('[name="save_action"]')?.value;
+    if(event.defaultPrevented||form.matches('[data-mcp-key-form],[data-cloudbackup]')||['begin_d1_export','restore_d1_time'].includes(name))return;
+    try{const details=[...document.querySelectorAll('#site details')];sessionStorage.setItem('cloud-site-position',JSON.stringify({y:window.scrollY,open:details.flatMap((d,i)=>d.open?[i]:[])}));}catch{}
+  });
   // Generating or regenerating the MCP API key: show it in place. A reload would close the accordion it lives in.
   document.addEventListener('submit',async event=>{
     const form=event.target;if(!form.matches?.('[data-mcp-key-form]'))return;

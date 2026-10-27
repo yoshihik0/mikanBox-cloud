@@ -551,3 +551,33 @@ test('the search page only forwards legacy page links within the site',async()=>
   for(const evil of ['?page=/evil.example','?page=//evil.example','?page=%2F%2Fevil.example'])assert.equal(run(evil),undefined,evil);
   assert.match(run('?page=search&q=needle'),/^https:\/\/www\.google\.com\/search\?q=needle&as_sitesearch=/);
 });
+
+test('save notification is dismissible and does not persist in navigation state',async()=>{
+  const env=environment(),auth=await login(env);
+  const body=await(await call(env,'/admin?view=site&saved=1',undefined,auth.cookie)).text();
+  assert.match(body, /id="admin-toast" class="toast toast-show"/);
+  assert.match(body, /#admin-toast \{[^}]*opacity:0; visibility:hidden/);
+  const cleanup=body.match(/const currentUrl = new URL\(window\.location\.href\);[\s\S]*?history\.replaceState\(history\.state, '', currentUrl\.href\);\s*}/)?.[0];
+  assert.ok(cleanup);
+  let replaced='';const history={state:{marker:1},replaceState(state,unused,url){replaced=url;assert.equal(state.marker,1);}};
+  vm.runInNewContext(cleanup,{URL,window:{location:{href:'https://cloud.test/admin?view=site&saved=1&cat=news#site'}},history});
+  assert.equal(replaced,'https://cloud.test/admin?view=site&cat=news#site');
+});
+
+test('package import screen explains directory layout and page IDs in both languages', async()=>{
+  const env=environment(),auth=await login(env);
+  for (const [lang,label] of [['ja','ZIP内のファイルの置き方'],['en','How to arrange files in the ZIP']]) {
+    await saveSettings(env,{system_lang:lang});
+    const body=await(await call(env,'/admin?view=import',undefined,auth.cookie)).text();
+    assert.ok(body.includes(label));assert.match(body,/posts\/\s+coffee\/\s+index\.json\s+→ coffee\/index/);
+  }
+});
+
+test('media upload publishes the stored image and offers retry on publication failure',async()=>{
+ const env=environment(),auth=await login(env),body=await(await call(env,'/admin',undefined,auth.cookie)).text();
+ const start=body.indexOf("    const uploadPublicationStatus = document.getElementById('upload-publication-status');"),end=body.indexOf('    // Keep the viewport stable',start);assert.ok(start>=0&&end>start);
+ const script=body.slice(start,end),calls=[],status={textContent:''},retry={hidden:true,style:{display:'none'},addEventListener(name,fn){this.click=fn;}},button={innerHTML:'Upload',disabled:false},fileInput={value:'file'};
+ let fail=true;const context={document:{getElementById:id=>({'upload-publication-status':status,'upload-publication-retry':retry,'upload-btn':button}[id]||null)},window:{location:{href:'https://cloud.test/admin'},cloudPublish:async(...args)=>{calls.push(args);if(fail)throw new Error('Unavailable');}},fileInput,FormData,fetch:async()=>({json:async()=>({success:true,uploaded_name:'photo.png',message:'Saved'})}),refreshMediaGrid:async()=>{},showToast:()=>{}};
+ vm.runInNewContext(script,context);await context.doMediaUpload(new FormData());assert.equal(calls.length,1);assert.equal(calls[0][0],false);assert.equal(calls[0][2],'photo.png');assert.equal(retry.hidden,false);assert.match(status.textContent,/Unavailable/);
+ fail=false;await retry.click();await new Promise(resolve=>setImmediate(resolve));assert.equal(retry.hidden,true);assert.equal(calls.length,2);assert.match(status.textContent,/公開しました|published/i);
+});

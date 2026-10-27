@@ -10,7 +10,7 @@ import { splitMode, publicRequest } from './site-split';
 // published static assets, falling through to the Worker when no file exists.
 // /media/* is absent on purpose: published images are static files, and images
 // not yet published still reach the Worker through that fall-through.
-export const WORKER_FIRST_ROUTES=['/admin','/admin/*','/mikanBox/*','/mcp','/public-mcp','/public-help.html','/api/*','/preview/*'];
+export const WORKER_FIRST_ROUTES=['/admin','/admin/*','/mikanBox/*','/mcp','/public-mcp','/public-help.html','/api/*','/preview/*','/preview-media/*'];
 export const PUBLICATION_FILE_LIMIT=20_000;
 export const PUBLICATION_FILE_BYTES=25*1024*1024;
 export const PUBLICATION_MAP_BYTES=32*1024*1024;
@@ -22,7 +22,7 @@ export async function publicationHash(bytes:Uint8Array):Promise<string> {
 }
 export interface PublicationManifest {entries:PublicationItem[];count:number;totalKnownBytes:number}
 // These are public source assets only. Never enumerate the workspace or include runtime files.
-export const PUBLICATION_PUBLIC_ASSETS=['/mikanbox/ai-question.js','/mikanbox/admin.css','/mikanbox/cloud-admin.js','/mikanbox/cloud-publish.js','/mikanbox/cloud-media.js','/mikanbox/cloud-backup.js','/mikanbox/cloud-storage.js','/mikanbox/cloud-import.js','/mikanbox/cloud-release.json'] as const;
+export const PUBLICATION_PUBLIC_ASSETS=['/mikanbox/ai-question.js','/mikanbox/preview-editor.js','/mikanbox/admin.css','/mikanbox/cloud-admin.js','/mikanbox/cloud-publish.js','/mikanbox/cloud-media.js','/mikanbox/cloud-backup.js','/mikanbox/cloud-storage.js','/mikanbox/cloud-import.js','/mikanbox/cloud-release.json'] as const;
 const assetTypes=new Map<string,string>(PUBLICATION_PUBLIC_ASSETS.map(path=>[path,path.endsWith('.css')?'text/css; charset=utf-8':path.endsWith('.json')?'application/json; charset=utf-8':'text/javascript; charset=utf-8']));
 const imageTypes:Record<string,string>={jpg:'image/jpeg',jpeg:'image/jpeg',png:'image/png',gif:'image/gif',webp:'image/webp',svg:'image/svg+xml',...CODE_MEDIA_TYPES};
 const blockedRoots=new Set(['preview','admin','api','mcp','public-mcp','public-help','media','mikanbox','component-js','sitemap.xml','rss.xml','podcast.xml']);
