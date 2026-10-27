@@ -105,7 +105,7 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
   }
   let editId=url.searchParams.get('edit'), view=url.searchParams.get('view')||'pages';
   if(view==='design') view='components';
-  let message=url.searchParams.get('saved')==='1'?t('msg_update_success'):'',success=true,statusCode=200,issuedCode='';
+  let message=url.searchParams.get('saved')==='1'?t('msg_update_success'):'',success=true,statusCode=200,issuedCode='',newApiKey='';
   if(form) {
     if(!verifyCsrf(val(form,'csrf_token'),csrf)) return json({success:false,message:t('err_csrf')},403);
     const action=val(form,'save_action');
@@ -158,7 +158,7 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
           if(form.has('stage')){const old=await env.DB.prepare("SELECT value FROM settings WHERE key='static_publication'").first<{value:string}>();paths=[...new Set([...paths,...(old?JSON.parse(old.value).paths||[]:[])])];}
           await env.DB.prepare("INSERT INTO settings(key,value) VALUES('static_publication',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").bind(JSON.stringify({paths,published_at:new Date().toISOString()})).run();return json({success:true});
         }
-        case 'generate_api_key': settings.api_key=crypto.randomUUID().replace(/-/g,'')+crypto.randomUUID().replace(/-/g,'');if(!await saveSettings(env,settings))throw new Error(t('err_save_failed'));break;
+        case 'generate_api_key': settings.api_key=crypto.randomUUID().replace(/-/g,'')+crypto.randomUUID().replace(/-/g,'');if(!await saveSettings(env,settings))throw new Error(t('err_save_failed'));newApiKey=String(settings.api_key);message=t('msg_mcp_key_generated');break;
         case 'build_ssg': await buildStatic(env,request);break;
         case 'logout': await revokeDevice(env,auth.device,auth.device.id);return redirect(url.pathname,clearDeviceCookie());
         case 'content_import_package': case 'content_import_wordpress': {
@@ -322,7 +322,7 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
       }
       message||=t('msg_update_success');
     } catch(e) {success=false;statusCode=400;message=e instanceof Error&&!/D1_|SQLITE_|constraint|UNIQUE/.test(e.message)?e.message:t('err_save_failed');}
-    if(form.has('ajax_request')) return json({success,message,editId,...(issuedCode?{issued_code:issuedCode}:{})},statusCode);
+    if(form.has('ajax_request')) return json({success,message,editId,...(issuedCode?{issued_code:issuedCode}:{}),...(newApiKey?{mcp_api_key:newApiKey}:{})},statusCode);
     // A new device code is shown once on this response, never put in a URL.
     if(success&&action==='device_code_create')view='site';
     else if(success) {

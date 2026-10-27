@@ -48,4 +48,18 @@
     const category=prompt(ja?'追加するカテゴリ':'New category');if(!category)return;
     try{await action('add_category',{category});location.reload();}catch(error){alert(error.message);}
   });
+  // Generating or regenerating the MCP API key: show it in place. A reload would close the accordion it lives in.
+  document.addEventListener('submit',async event=>{
+    const form=event.target;if(!form.matches?.('[data-mcp-key-form]'))return;
+    event.preventDefault();
+    const button=form.querySelector('button'),label=button.innerHTML;button.disabled=true;
+    try{
+      const result=await action('generate_api_key');
+      const field=document.getElementById('mcp-key-display');if(field)field.value=result.mcp_api_key;
+      const issued=document.getElementById('mcp-key-issued'),generate=document.getElementById('mcp-key-generate');
+      if(issued)issued.style.display='';if(generate)generate.style.display='none';
+      if(typeof window.showToast==='function')window.showToast(result.message);
+    }catch(error){if(typeof window.showToast==='function')window.showToast(error.message,true);}
+    finally{button.disabled=false;button.innerHTML=label;}
+  });
 })();
