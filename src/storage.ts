@@ -166,6 +166,16 @@ export async function getMediaObject(env:Env,key:string):Promise<{body:ReadableS
  const stream=()=>{let index=0;return new ReadableStream<Uint8Array>({async pull(controller){if(index>=row.chunk_count){controller.close();return;}const part=await env.DB.prepare('SELECT data FROM media_chunks WHERE upload_id=? AND chunk_index=?').bind(row.upload_id,index++).first<{data:number[]|ArrayBuffer|Uint8Array}>();if(!part){controller.error(new Error('Media chunk missing.'));return;}controller.enqueue(part.data instanceof Uint8Array?part.data:new Uint8Array(part.data as ArrayBuffer));}},{highWaterMark:0});};
  return {body:stream(),size:row.size,httpMetadata:{contentType:row.content_type},httpEtag:'"'+row.etag+'"',arrayBuffer:()=>new Response(stream()).arrayBuffer()};
 }
+/** The first bytes of an image: enough to read its size without loading the whole file. */
+export async function getMediaHeader(env:Env,key:string):Promise<Uint8Array|null> {
+ if(!validMediaName(key))return null;
+ const row=await env.DB.prepare(`SELECT m.object_key,m.upload_id,c.data AS chunk,CASE WHEN m.upload_id IS NULL AND m.object_key IS NULL THEN m.data END AS legacy FROM media m LEFT JOIN media_chunks c ON c.upload_id=m.upload_id AND c.chunk_index=0 WHERE m.key=?`).bind(key).first<{object_key:string|null;upload_id:string|null;chunk:ArrayBuffer|Uint8Array|number[]|null;legacy:string|null}>();
+ if(!row)return null;
+ if(row.object_key){const object=await mediaBucket(env).get(row.object_key,{range:{offset:0,length:131072}});return object?new Uint8Array(await object.arrayBuffer()):null;}
+ if(row.chunk)return row.chunk instanceof Uint8Array?row.chunk:new Uint8Array(row.chunk as ArrayBuffer);
+ if(row.legacy)return Uint8Array.from(atob(row.legacy),c=>c.charCodeAt(0));
+ return null;
+}
 export async function uploadMedia(env:Env,key:string,body:ArrayBuffer,contentType:string,metadata?:Record<string,string>):Promise<boolean>{
  if(!validMediaName(key)||!body.byteLength||body.byteLength>MEDIA_FILE_LIMIT)return false;
  await assertMediaUnlocked(env);

@@ -2,7 +2,40 @@
 // mikanBox Markdown Parser (functions.php::MikanBoxMarkdown の移植)
 // ==========================================
 
+const NAMED_ENTITIES: Record<string, string> = {
+  amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', colon: ':', Tab: '\t', NewLine: '\n',
+  lpar: '(', rpar: ')', sol: '/', lsqb: '[', rsqb: ']', period: '.', comma: ',', semi: ';', num: '#',
+  percnt: '%', plus: '+', equals: '=', quest: '?', excl: '!', commat: '@', dollar: '$',
+};
+
+/** HTML character references (numeric and the common named ones) back to characters. */
+function decodeAttribute(value: string): string {
+  return String(value).replace(/&(?:#(\d+)|#[xX]([0-9a-fA-F]+)|([A-Za-z][A-Za-z0-9]*));/g, (whole, dec, hex, name) => {
+    if (name !== undefined) return NAMED_ENTITIES[name] ?? whole;
+    const code = dec !== undefined ? Number(dec) : parseInt(hex, 16);
+    return code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : whole;
+  });
+}
+
+function encodeAttribute(value: string): string {
+  return String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+}
+
+/**
+ * The URL of a Markdown link, decoded. A scheme other than http, https, mailto or tel
+ * (javascript:, data:, vbscript:, ...) becomes "#". Browsers ignore tabs, line breaks and
+ * leading control characters inside a scheme, so "java<TAB>script:" is checked as "javascript:".
+ */
+function markdownLinkUrl(raw: string): string {
+  const url = decodeAttribute(raw);
+  const probe = url.replace(/[\t\n\r\0]/g, '').replace(/^[\x00-\x20]+/, '');
+  const scheme = probe.match(/^([a-zA-Z][a-zA-Z0-9+.\-]*):/);
+  return scheme && !['http', 'https', 'mailto', 'tel'].includes(scheme[1].toLowerCase()) ? '#' : url;
+}
+
 export class MikanBoxMarkdown {
+  /** Extra attributes for an image URL (set by the renderer; empty when it adds none). */
+  imageAttributes: (url: string) => string = () => '';
   text(text: string): string {
     if (!text) return '';
 
@@ -51,19 +84,21 @@ export class MikanBoxMarkdown {
           });
           tbody += '</tr>';
         }
-        return `<table><thead>${thead}</thead><tbody>${tbody}</tbody></table>`;
+        return `<table><thead>${thead}</thead><tbody>${tbody}</tbody></table>${bodyRows.endsWith('\n') ? '\n' : ''}`;
       }
     );
 
     const lines = text.split('\n');
     const result: string[] = [];
     let currentParagraph: string[] = [];
-    let inCodeBlock = false;
+    let inHtmlBlock = false;
+    let prevWasBlank = true;               // the start of the content counts as "after a blank line"
+    let paragraphStartedAfterBlank = true; // decides whether a paragraph gets <p>
 
-    const applyAttributes = (content: string, tag: string | null): string | [string, string, string] => {
+    // {.class #id} at the end of a block becomes its attributes
+    const applyAttributes = (content: string, tag: string): string => {
       let idAttr = '';
       let classAttr = '';
-
       const attrMatch = content.match(/\s*\{([.#][^{}]+)\}\s*$/);
       if (attrMatch) {
         const attrString = attrMatch[1];
@@ -73,101 +108,108 @@ export class MikanBoxMarkdown {
         const idMatch = attrString.match(/#([\w-]+)/);
         if (idMatch) idAttr = ` id="${idMatch[1]}"`;
       }
-
-      if (tag === null) return [content.trim(), idAttr, classAttr];
       return `<${tag}${idAttr}${classAttr}>${content.trim()}</${tag}>`;
     };
 
-    const closeParagraph = () => {
+    // followedByBlank=false means an HTML block follows without a blank line: no <p> then.
+    const closeParagraph = (followedByBlank = true) => {
       if (currentParagraph.length === 0) return;
       let content = currentParagraph.join('\n');
-      content = this.parseInline(content);
       if (content.includes('\n')) {
-        content = content.replace(/\n/g, '<br>\n');
+        // a last line that only holds {.class} is an attribute list: join it to the line before
+        content = content.replace(/\n(\s*\{[.#][^{}]+\}\s*)$/, ' $1');
+        // no <br> right next to an HTML tag
+        content = content.replace(/(?<!>)\n(?!<)/g, '<br>\n');
       }
-      result.push(applyAttributes(content, 'p') as string);
+      content = this.parseInline(content);
+      // A paragraph that is only a protected {{TAG}} may expand to a block element; <p> around it is invalid HTML.
+      const isTagOnly = /^\s*​?<!--MKNTG[a-zA-Z0-9+/=]+-->​?\s*$/.test(content);
+      if (paragraphStartedAfterBlank && followedByBlank && !isTagOnly) result.push(applyAttributes(content, 'p'));
+      else result.push(content.trim());
       currentParagraph = [];
     };
 
+    const htmlBlockTags = 'a|address|article|aside|blockquote|body|button|canvas|caption|col|colgroup|dd|details|dialog|div|dl|dt|fieldset|figcaption|figure|footer|form|h[1-6]|head|header|hr|html|iframe|legend|li|link|main|menu|meta|nav|noscript|ol|optgroup|option|p|pre|script|section|select|source|span|style|summary|table|tbody|td|tfoot|th|thead|title|tr|ul|video|audio';
+    const htmlBlockStart = new RegExp('^\\s*(<\\/?(?:' + htmlBlockTags + '|!--|!DOCTYPE)[\\s\\/>])', 'i');
+    const htmlBlockEnd = new RegExp('^\\s*<\\/(?:' + htmlBlockTags + ')\\s*>\\s*$', 'i');
+    const selfContainedA = new RegExp('(?:<\\/(?:' + htmlBlockTags + ')\\s*>|\\/>|-->)\\s*$', 'i');
+    const selfContainedB = /^\s*<(?:hr|link|meta|source|col)\b[^>]*>\s*$/i;
+
     for (const line of lines) {
-      if (/^```/.test(line)) {
-        closeParagraph();
-        if (inCodeBlock) {
-          result.push('</code></pre>');
-          inCodeBlock = false;
-        } else {
-          result.push('<pre><code>');
-          inCodeBlock = true;
-        }
+      // A protected code fence is a block of its own.
+      if (/^\x05FENCE\d+\x05$/.test(line)) {
+        closeParagraph(true);
+        result.push(line);
+        prevWasBlank = true;
         continue;
       }
-      if (inCodeBlock) {
-        result.push(this.escapeHtml(line));
+
+      // Inside an HTML block the lines are left alone until a blank line or a lone closing tag.
+      if (inHtmlBlock) {
+        if (line.trim() === '') {
+          inHtmlBlock = false;
+          prevWasBlank = true;
+        } else {
+          result.push(line);
+          if (htmlBlockEnd.test(line)) {
+            inHtmlBlock = false;
+            prevWasBlank = false;
+          }
+        }
         continue;
       }
 
       if (line.trim() === '') {
-        closeParagraph();
+        closeParagraph(true);
+        prevWasBlank = true;
         continue;
       }
 
-      const isHtmlBlockLine = /^\s*(<\/?(!|html|head|body|link|meta|script|style|div|section|article|aside|header|footer|p|h[1-6]|ul|ol|li|table|blockquote|pre|form|!--))/i.test(line);
-
-      if (isHtmlBlockLine) {
-        closeParagraph();
-        const [content, id, cls] = applyAttributes(this.parseInline(line), null) as [string, string, string];
-        if (cls || id) {
-          result.push(`<p${id}${cls}>${content}</p>`);
-        } else {
-          result.push(content);
-        }
+      if (htmlBlockStart.test(line)) {
+        closeParagraph(false);
+        result.push(line);
+        // HTML that is complete on its own line does not open a block
+        if (!(selfContainedA.test(line) || selfContainedB.test(line))) inHtmlBlock = true;
+        prevWasBlank = false;
         continue;
       }
 
-      const blockquoteMatch = line.match(/^\s*>(?:\s|　)?(.*)/);
-      if (blockquoteMatch) {
-        closeParagraph();
-        result.push(`<blockquote>${this.parseInline(blockquoteMatch[1])}</blockquote>`);
-        continue;
-      }
-
-      const headingMatch = line.match(/^\s*(#{1,6})(?:\s|　)+(.*)/);
-      if (headingMatch) {
-        closeParagraph();
-        const level = headingMatch[1].length;
-        result.push(applyAttributes(this.parseInline(headingMatch[2]), `h${level}`) as string);
-        continue;
-      }
-
-      if (/^(\-{3,}|\*{3,}|_{3,})$/.test(line)) {
-        closeParagraph();
+      let matches: RegExpMatchArray | null;
+      if ((matches = line.match(/^\s*>(?:\s|　)?(.*)/))) {
+        closeParagraph(true);
+        result.push(applyAttributes(this.parseInline(matches[1]), 'blockquote'));
+        prevWasBlank = true;
+      } else if ((matches = line.match(/^\s*(#{1,6})(?:\s|　)+(.*)/))) {
+        closeParagraph(true);
+        result.push(applyAttributes(this.parseInline(matches[2]), `h${matches[1].length}`));
+        prevWasBlank = true;
+      } else if (/^(\-{3,}|\*{3,}|_{3,})$/.test(line)) {
+        closeParagraph(true);
         result.push('<hr>');
-        continue;
+        prevWasBlank = true;
+      } else if ((matches = line.match(/^\s*[\*\-\+](?:\s|　)+(.*)/))) {
+        closeParagraph(true);
+        result.push('<ul>' + applyAttributes(this.parseInline(matches[1]), 'li') + '</ul>');
+        prevWasBlank = true;
+      } else if ((matches = line.match(/^\s*\d+\.(?:\s|　)+(.*)/))) {
+        closeParagraph(true);
+        result.push('<ol>' + applyAttributes(this.parseInline(matches[1]), 'li') + '</ol>');
+        prevWasBlank = true;
+      } else {
+        if (currentParagraph.length === 0) paragraphStartedAfterBlank = prevWasBlank;
+        currentParagraph.push(line);
+        prevWasBlank = false;
       }
-
-      const ulMatch = line.match(/^\s*[\*\-\+](?:\s|　)+(.*)/);
-      if (ulMatch) {
-        closeParagraph();
-        result.push(`<ul><li>${this.parseInline(ulMatch[1])}</li></ul>`);
-        continue;
-      }
-
-      const olMatch = line.match(/^\s*\d+\.(?:\s|　)+(.*)/);
-      if (olMatch) {
-        closeParagraph();
-        result.push(`<ol><li>${this.parseInline(olMatch[1])}</li></ol>`);
-        continue;
-      }
-
-      currentParagraph.push(line);
     }
 
-    closeParagraph();
+    closeParagraph(true);
 
     let output = result.join('\n');
     output = output.replace(/<\/ul>\n<ul>/g, '\n');
     output = output.replace(/<\/ol>\n<ol>/g, '\n');
-    output=output.replace(/<p>\x05FENCE(\d+)\x05<\/p>/g,(_,index)=>fences[Number(index)] || '');
+    // consecutive quote lines become one blockquote, joined by <br> like lines inside a paragraph
+    output = output.replace(/<\/blockquote>\n<blockquote>/g, '<br>\n');
+    output = output.replace(/\x05FENCE(\d+)\x05/g, (_, index) => fences[Number(index)] || '');
     return output;
   }
 
@@ -175,50 +217,55 @@ export class MikanBoxMarkdown {
     const map: Record<string, string> = {};
     let count = 0;
 
-    // 1. インラインコードを保護
+    // 1. protect inline code
     text = text.replace(/`(.*?)`/g, (_, inner) => {
       const ph = `\x02CODE${count++}\x03`;
       map[ph] = `<code>${this.escapeHtml(inner)}</code>`;
       return ph;
     });
 
-    // 2. 画像・リンク構文を保護
-    text = text.replace(/!\[(.*?)\]\((.*?)\)/g, (_, alt, url) => {
+    // 2. protect image and link syntax so _ inside a URL is not read as italic.
+    // URLs and alt text go into attributes: decode, check, then encode.
+    text = text.replace(/!\[(.*?)\]\((.*?)\)/g, (_, alt, rawUrl) => {
+      let url = decodeAttribute(rawUrl);
       if (!/^(?:https?:\/\/|\/|media\/)/.test(url)) url = 'media/' + url;
       const ph = `\x02LINK${count++}\x03`;
-      if (/^[a-z][a-z0-9+.-]*:/i.test(url) && !/^https?:/i.test(url)) url = '#';
-      map[ph] = `<img src="${this.escapeHtml(url).replace(/"/g, '&quot;')}" alt="${this.escapeHtml(alt).replace(/"/g, '&quot;')}">`;
+      map[ph] = `<img src="${encodeAttribute(url)}" alt="${encodeAttribute(decodeAttribute(alt))}"${this.imageAttributes(url)}>`;
       return ph;
     });
-    text = text.replace(/\[(.*?)\]\((.*?)\)/g, (_, label, url) => {
+    text = text.replace(/\[(.*?)\]\((.*?)\)/g, (_, label, rawUrl) => {
       const ph = `\x02LINK${count++}\x03`;
-      if (/^[a-z][a-z0-9+.-]*:/i.test(url.replace(/[\u0000-\u0020]/g,'')) && !/^(https?:|mailto:|tel:)/i.test(url)) url = '#';
-      map[ph] = `<a href="${this.escapeHtml(url).replace(/"/g, '&quot;')}">${label}</a>`;
+      map[ph] = `<a href="${encodeAttribute(markdownLinkUrl(rawUrl))}">${label}</a>`;
       return ph;
     });
 
-    // 3. 太字・斜体・打ち消し
+    // 3. bold, italic, strikethrough
     text = text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
     text = text.replace(/\*(.*?)\*/g, '<em>$1</em>');
     text = text.replace(/~~(.*?)~~/g, '<del>$1</del>');
 
-    // 3.5 インラインspan: [text]{.class #id}
-    text = text.replace(/\[([^\]]+)\]\{([^}]+)\}/g, (_, content, attrs) => {
-      let classAttr = '';
-      let idAttr = '';
-      const classMatches = [...attrs.matchAll(/\.([\w-]+)/g)];
-      if (classMatches.length) classAttr = ` class="${classMatches.map((m: RegExpMatchArray) => m[1]).join(' ')}"`;
-      const idMatch = attrs.match(/#([\w-]+)/);
-      if (idMatch) idAttr = ` id="${idMatch[1]}"`;
-      const ph = `\x02SPAN${count++}\x03`;
-      map[ph] = `<span${idAttr}${classAttr}>${content}</span>`;
-      return ph;
-    });
-
-    // 4. プレースホルダーを復元
-    for (const [ph, html] of Object.entries(map)) {
-      text = text.replace(ph, html);
+    // 3.5 inline span with class/id: [text]{.class #id}
+    // Nested spans work: the innermost ones (no [ ] inside) become placeholders first and the
+    // loop repeats until nothing changes, so [[save]{.icon} Save]{.btn} is read from the inside out.
+    let previous: string | null = null;
+    let guard = 0;
+    while (previous !== text && guard++ < 10) {
+      previous = text;
+      text = text.replace(/\[([^\[\]]+)\]\{([^}]+)\}/g, (_, content, attrs) => {
+        let classAttr = '';
+        let idAttr = '';
+        const classMatches = [...attrs.matchAll(/\.([\w-]+)/g)];
+        if (classMatches.length) classAttr = ` class="${classMatches.map((m: RegExpMatchArray) => m[1]).join(' ')}"`;
+        const idMatch = attrs.match(/#([\w-]+)/);
+        if (idMatch) idAttr = ` id="${idMatch[1]}"`;
+        const ph = `\x02SPAN${count++}\x03`;
+        map[ph] = `<span${idAttr}${classAttr}>${content}</span>`;
+        return ph;
+      });
     }
+
+    // 4. restore placeholders, newest first: an outer span's HTML may hold earlier placeholders
+    for (const [ph, html] of Object.entries(map).reverse()) text = text.split(ph).join(html);
 
     return text;
   }
@@ -228,6 +275,7 @@ export class MikanBoxMarkdown {
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;');
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
   }
 }

@@ -12,7 +12,7 @@ import type { Env, PageData, ComponentData } from '../types';
 import { loadSettings, saveSettings, loadPage, getSortedPageIds, loadComponent, saveComponent, deleteComponent, listComponentIds, listPages, listComponents, listMediaFiles, uploadMedia, deleteMedia, renameMedia, mediaUsage, getMediaObject, buildDataBackupZip, buildMediaBackupZip } from '../storage';
 import { verifyCsrf } from '../auth';
 import { authenticatedUser, getUser, listUsers, addInitialUser, rateLimit } from '../accounts';
-import { onProbation, PROBATION_DAYS, createDevice, claimCode, issueCode, cancelCode, revokeDevice, setExpiryDays, setupTokenUsable, consumeSetupToken, clearDeviceCookie, listDevices, listCodes, unseenDevices, expiryFrom } from '../devices';
+import { onProbation, PROBATION_DAYS, createDevice, claimCode, codeKind, issueCode, cancelCode, revokeDevice, setExpiryDays, setupTokenUsable, consumeSetupToken, clearDeviceCookie, listDevices, listCodes, unseenDevices, expiryFrom } from '../devices';
 import { renderAccountsSection } from './accounts-view';
 import { publicationStatus } from '../publish-status';
 import { pageId, componentId, pageStatus } from '../validation';
@@ -50,10 +50,11 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
   if (request.method==='POST' && (!form || (request.headers.get('Origin') && request.headers.get('Origin')!==url.origin))) return html(t('err_csrf'),403);
   // Before sign-in there is no session, so these forms carry a double-submit token.
   const loginCsrf=request.headers.get('Cookie')?.match(/(?:^|;\s*)login_csrf=([A-Za-z0-9-]+)/)?.[1]||crypto.randomUUID();
-  const loginResponse=(error='',status=200)=>{const response=html(renderLoginPage({lang,initial,error,t,csrf:loginCsrf}),status);response.headers.append('Set-Cookie',`login_csrf=${loginCsrf}; Secure; SameSite=Strict; HttpOnly; Path=/; Max-Age=900`);return response;};
+  const loginResponse=(error='',status=200,inviteStep?:{code:string;device_name:string;username?:string;display_name?:string})=>{const response=html(renderLoginPage({lang,initial,error,t,csrf:loginCsrf,inviteStep}),status);response.headers.append('Set-Cookie',`login_csrf=${loginCsrf}; Secure; SameSite=Strict; HttpOnly; Path=/; Max-Age=900`);return response;};
   if (form?.has('login_action')) {
     if(!verifyCsrf(val(form,'csrf_token'),loginCsrf))return html(t('err_csrf'),403);
     let error='';
+    let inviteStep:{code:string;device_name:string;username?:string;display_name?:string}|undefined;
     try {
       const key=`${request.headers.get('CF-Connecting-IP')||'local'}|device`;
       if (await rateLimit(env,key)) throw new Error('しばらく待ってから再試行してください。 / Try again later.');
@@ -75,13 +76,18 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
         await consumeSetupToken(env,!initial);
         device=await createDevice(env,username,deviceName,request,'setup');
       } else if (action==='claim' && !initial) {
-        device=await claimCode(env,val(form,'code'),deviceName,request);
+        const code=val(form,'code'),kind=await codeKind(env,code);
+        if (!kind) {await rateLimit(env,key,true);throw new Error('コードを確認してください。期限切れや使用済みのコードは使えません。 / Check the code. Expired or used codes do not work.');}
+        // A valid invite: the invited person now chooses their own user ID and display name.
+        if (kind==='invite' && !form.has('username')) return loginResponse('',200,{code,device_name:deviceName});
+        if (kind==='invite') inviteStep={code,device_name:deviceName,username:val(form,'username'),display_name:val(form,'display_name')};
+        device=await claimCode(env,code,deviceName,request,kind==='invite'?{username:val(form,'username'),display_name:val(form,'display_name')}:undefined);
         if (!device) {await rateLimit(env,key,true);throw new Error('コードを確認してください。期限切れや使用済みのコードは使えません。 / Check the code. Expired or used codes do not work.');}
       } else throw new Error('Invalid login action.');
       await env.DB.prepare('DELETE FROM login_attempts WHERE id=?').bind(key).run();
       return redirect(url.pathname,device.cookie);
     } catch(e) {error=e instanceof Error && !/D1_|SQLITE_|constraint|UNIQUE/.test(e.message)?e.message:t('err_save_failed');}
-    return loginResponse(error,400);
+    return loginResponse(error,400,inviteStep);
   }
   if (!auth) return loginResponse();
   const csrf=auth.session.csrf;
@@ -97,7 +103,7 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
   }
   let editId=url.searchParams.get('edit'), view=url.searchParams.get('view')||'pages';
   if(view==='design') view='components';
-  let message=url.searchParams.get('saved')==='1'?t('msg_update_success'):'',success=true,statusCode=200;
+  let message=url.searchParams.get('saved')==='1'?t('msg_update_success'):'',success=true,statusCode=200,issuedCode='';
   if(form) {
     if(!verifyCsrf(val(form,'csrf_token'),csrf)) return json({success:false,message:t('err_csrf')},403);
     const action=val(form,'save_action');
@@ -216,8 +222,9 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
         }
         case 'save_memo': case 'save_prompt': {const field=action==='save_memo'?'memo':'ai_prompt';settings[field]=val(form,field);if(!await saveSettings(env,settings)) throw new Error(t('err_save_failed'));break;}
         case 'device_code_create': {
-          const invite=val(form,'invite')==='1'?{username:val(form,'username').trim(),display_name:val(form,'display_name')}:undefined;
-          message=(lang==='ja'?'コード（3時間有効・1回限り）: ':'Code (valid 3 hours, once): ')+await issueCode(env,auth.device,invite);break;
+          // Shown in the section itself: a toast would vanish before the code could be copied.
+          issuedCode=await issueCode(env,auth.device,val(form,'invite')==='1');
+          message=lang==='ja'?'追加用のコードを発行しました。「端末とユーザー」の上部に表示しています。':'A device code was issued. It is shown at the top of Devices and users.';break;
         }
         case 'device_code_cancel': await cancelCode(env,val(form,'code_hash'));break;
         case 'device_revoke': {
@@ -313,7 +320,7 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
       }
       message||=t('msg_update_success');
     } catch(e) {success=false;statusCode=400;message=e instanceof Error&&!/D1_|SQLITE_|constraint|UNIQUE/.test(e.message)?e.message:t('err_save_failed');}
-    if(form.has('ajax_request')) return json({success,message,editId},statusCode);
+    if(form.has('ajax_request')) return json({success,message,editId,...(issuedCode?{issued_code:issuedCode}:{})},statusCode);
     // A new device code is shown once on this response, never put in a URL.
     if(success&&action==='device_code_create')view='site';
     else if(success) {
@@ -353,7 +360,7 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
   const d1Bytes=typeof databaseProbe.meta.size_after==='number'?databaseProbe.meta.size_after:null;
   const storageMode=await mediaStorageMode(env),migration=await migrationStatus(env);
   const target=cloudTarget(env),displaySettings={...settings,storage_migrated:url.searchParams.get('storage_migrated')==='1',media_storage:storageMode,r2_configured:!!env.MEDIA,d1_bytes:d1Bytes,media_migration:migration,r2_bytes:(await env.DB.prepare('SELECT COALESCE(SUM(size),0) bytes FROM r2_objects').first<{bytes:number}>())?.bytes||0,cloud_connection_ready:await cloudConfigured(env),cloud_account_id:target.account,cloud_worker_name:target.worker};
-  const siteHtml=view==='import'?renderImportView({t,csrf,lang,stats:{pages:pages.length,components:components.length,users:users.length,media:files.length,mediaBytes:files.reduce((sum,file)=>sum+file.size,0)}}):renderSiteView({t,trackingLegacy:(()=>{const id=String(settings.tracking_component||''),data=components.find(c=>c.id===id)?.data;return{id,html:trackingLegacyHtml(data),exists:!!data&&!data.is_ai_doc&&!data.is_wrapper};})(),settings:displaySettings,csrf,helpFile,users,username:auth.user.username,accountsHtml:renderAccountsSection({lang,csrf,users,me:auth.device,devices:await listDevices(env),codes:await listCodes(env),expiryDays:expiryFrom(settings)}),lang,release:await latestCloudRelease(env,url.searchParams.has('refresh_updates'))});
+  const siteHtml=view==='import'?renderImportView({t,csrf,lang,stats:{pages:pages.length,components:components.length,users:users.length,media:files.length,mediaBytes:files.reduce((sum,file)=>sum+file.size,0)}}):renderSiteView({t,trackingLegacy:(()=>{const id=String(settings.tracking_component||''),data=components.find(c=>c.id===id)?.data;return{id,html:trackingLegacyHtml(data),exists:!!data&&!data.is_ai_doc&&!data.is_wrapper};})(),settings:displaySettings,csrf,helpFile,users,username:auth.user.username,accountsHtml:renderAccountsSection({lang,csrf,users,me:auth.device,devices:await listDevices(env),codes:await listCodes(env),expiryDays:expiryFrom(settings),issuedCode}),lang,release:await latestCloudRelease(env,url.searchParams.has('refresh_updates'))});
   const unseen=await unseenDevices(env,auth.device);
   if(unseen.length)message=(message?message+' ':'')+(lang==='ja'?'新しい端末が登録されました: ':'New device registered: ')+unseen.map(d=>`${d.name} (${d.username})`).join(', ')+(lang==='ja'?'。心当たりがなければ「端末とユーザー」で止めてください。':'. If you do not recognise it, stop it under Devices and users.');
   return html(renderAdminShell({lang,t,view,editId,hasNew,helpFile,message,csrf,settings:{...settings,_public_url:env.PUBLIC_SITE_URL||''},pagesHtml,pageEditorHtml,siteHtml,designHtml,designEditorHtml,mediaHtml,

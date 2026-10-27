@@ -1,15 +1,16 @@
 import type { Env } from './types';
 import { loadSettings, listPages, listComponents } from './storage';
-import { MikanBoxRenderer } from './renderer';
+import { MikanBoxRenderer, type ImageSizeCache } from './renderer';
 import { publicationHash } from './static-publication';
 import { sourceHash } from './publish-status';
 export async function buildStatic(env: Env, request: Request) {
   const settings=await loadSettings(env),statements:D1PreparedStatement[]=[],snapshot={pages:await listPages(env),components:await listComponents(env)};
+  const imageCache:ImageSizeCache=new Map();
   const output:Array<{id:string,html:string,built_at:string,hash:string,source_hash:string}>=[];
   for(const {id,data} of snapshot.pages) {
     if(data.status!=='public_static')continue;
     const url=new URL(request.url);url.pathname=id==='index'?'/':`/${id}`;url.search='';
-    const result=await new MikanBoxRenderer(env,settings,new Request(url),snapshot).render(id);
+    const result=await new MikanBoxRenderer(env,settings,new Request(url),snapshot,{imageCache}).render(id);
     if(result.status!==200)throw new Error(`Static render failed: ${id}`);
     output.push({id,html:result.html,built_at:new Date().toISOString(),hash:await publicationHash(new TextEncoder().encode(result.html)),source_hash:await sourceHash(data)});
   }

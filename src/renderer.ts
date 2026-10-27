@@ -5,12 +5,14 @@
 
 import type { Env, PageData, ComponentData, Settings } from './types';
 import { MikanBoxMarkdown } from './markdown';
+import { imageSize } from './image-size';
 import { scopeCss } from './cssScope';
 import { createTranslator } from './i18n';
 import { trackingSnippets } from './tracking';
 import {
-  loadPage, loadComponent, getSortedPageIds, isPublicStatus, listPages,
+  loadPage, loadComponent, getSortedPageIds, isPublicStatus, listPages, getMediaHeader,
 } from './storage';
+import { validMediaName } from './media-policy';
 
 function resolveMediaPath(url: string): string {
   if (!url) return '';
@@ -27,7 +29,13 @@ function escapeHtml(str: string): string {
     .replace(/"/g, '&quot;');
 }
 
+export type ImageSizeCache = Map<string, { width: number; height: number } | null>;
+
 export class MikanBoxRenderer {
+  // Image sizes: markers are put in while rendering and filled in at the end (see applyImageSizes).
+  private imageSizes = false;
+  private imageCache: ImageSizeCache = new Map();
+  private imageSeq = 0;
   private env: Env;
   private siteSettings: Settings;
   private markdown: MikanBoxMarkdown;
@@ -49,8 +57,11 @@ export class MikanBoxRenderer {
     return this.componentCache.get(id)!;
   }
 
-  constructor(env: Env, settings: Settings, request: Request, snapshot?:{pages:Array<{id:string,data:PageData}>,components:Array<{id:string,data:ComponentData}>}) {
+  constructor(env: Env, settings: Settings, request: Request, snapshot?:{pages:Array<{id:string,data:PageData}>,components:Array<{id:string,data:ComponentData}>},options?:{imageSizes?:boolean,imageCache?:ImageSizeCache}) {
     this.env = env;
+    // Reading image headers costs a query each, so it is on for static builds (a snapshot) and off for live rendering unless asked.
+    this.imageSizes = options?.imageSizes ?? !!snapshot;
+    if (options?.imageCache) this.imageCache = options.imageCache;
     this.siteSettings = {
       site_name: 'mikanBox',
       description: '',
@@ -60,6 +71,7 @@ export class MikanBoxRenderer {
       ...settings,
     };
     this.markdown = new MikanBoxMarkdown();
+    this.markdown.imageAttributes = (url) => this.imageMarker(url);
     this.request = request;
     this.snapshot=snapshot;
   }
@@ -133,6 +145,7 @@ export class MikanBoxRenderer {
     this.javascriptBuffer.clear();
     this.includedComponentIds.clear();
     this.expansionCount = 0;
+    this.imageSeq = 0;
     this.currentPageData = {};
 
     let pageData = await this.readPage( pageId);
@@ -175,11 +188,13 @@ export class MikanBoxRenderer {
       contentHtml = contentMd;
     } else {
       // テンプレートタグをbase64エンコードして保護
+      // A zero-width space on both sides keeps a line that starts or ends with a tag from looking
+      // adjacent to an HTML tag to the Markdown parser's <br> logic (same as the PHP renderer).
       const protectedMd = contentMd.replace(/\{\{[^}]+\}\}/g, (m) =>
-        '<!--MKNTG' + btoa(unescape(encodeURIComponent(m))) + '-->'
+        '\u200B<!--MKNTG' + btoa(unescape(encodeURIComponent(m))) + '-->\u200B'
       );
       contentHtml = this.markdown.text(protectedMd);
-      contentHtml = contentHtml.replace(/<!--MKNTG([a-zA-Z0-9+/=]+)-->/g, (_, b64) => {
+      contentHtml = contentHtml.replace(/\u200B?<!--MKNTG([a-zA-Z0-9+/=]+)-->\u200B?/g, (_, b64) => {
         try { return decodeURIComponent(escape(atob(b64))); } catch { return ''; }
       });
     }
@@ -252,7 +267,7 @@ export class MikanBoxRenderer {
     html = await this.applyPathCompletion(html);
 
     // 7.5 コードブロック内のエスケープされたプレースホルダーを復元
-    html = html.replace(/&lt;!--MKNTG([a-zA-Z0-9+/=]+)--&gt;/g, (_, b64) => {
+    html = html.replace(/\u200B?&lt;!--MKNTG([a-zA-Z0-9+/=]+)--&gt;\u200B?/g, (_, b64) => {
       try { return escapeHtml(decodeURIComponent(escape(atob(b64)))); } catch { return ''; }
     });
 
@@ -266,7 +281,9 @@ export class MikanBoxRenderer {
     // 8. CSSバッファを処理してHEAD_CSSに差し込む
     const processedCss = this.globalCssBuffer.map(cssLine => {
       cssLine = this.replaceBasicTags(cssLine, pageData!, pageTitle, pageDesc, pageKeywords, ogpImage);
-      cssLine = cssLine.replace(/images\//g, this.getSiteBasePath() + 'media/');
+      // url(media/x.png) and url(images/x.png) point at the site's media folder from any page (as in the PHP edition)
+      const cssMediaBase = this.getSiteBasePath() + 'media/';
+      cssLine = cssLine.replace(/url\(\s*(["']?)(?:images|media)\/([^)"']+)\1\s*\)/gi, (_m, quote, path) => `url(${quote}${cssMediaBase}${path}${quote})`);
       return cssLine;
     });
 
@@ -274,6 +291,7 @@ export class MikanBoxRenderer {
     const cssTag = `<style>\n${uniqueCss.join('\n')}\n</style>`;
     html = this.embedCss(html, cssTag, uniqueCss.length > 0);
 
+    html = this.enforceStandardMode(html);
     if (pageData.js) this.javascriptBuffer.set('page:'+pageId, pageData.js);
     const jsTags = [...this.javascriptBuffer.values()].map(js=>`<script>${js.replace(/<\/script/gi, '<\\/script')}</script>`).join('\n');
     if (/\{\{\s*HEAD_JS\s*\}\}/i.test(html)) html=html.replace(/\{\{\s*HEAD_JS\s*\}\}/gi,()=>jsTags);
@@ -282,8 +300,42 @@ export class MikanBoxRenderer {
     const aiScript=`<script src="/mikanbox/ai-question.js" data-mcp-endpoint="/public-mcp" data-public-mcp="${escapeHtml(origin)}/public-mcp" data-help-ja="${escapeHtml(origin)}/public-help.html?language=ja" data-help-en="${escapeHtml(origin)}/public-help.html?language=en" defer></script>`;
     html=html.includes('</body>')?html.replace('</body>',()=>aiScript+'</body>'):html+aiScript;
     html = html.replace(/\x04COMMENT(\d+)\x04/g,(_,index)=>comments[Number(index)] || '');
+    html = await this.applyImageSizes(html);
     return { html, status: responseStatus };
   }
+
+  /** A placeholder attribute for a local raster image, in generation order; empty for anything else. */
+  private imageMarker(url: string): string {
+    if (!this.imageSizes || /^(?:https?:)?\/\//i.test(url)) return '';
+    const name = url.split(/[?#]/)[0].split('/').pop() || '';
+    if (!validMediaName(name) || /\.svg$/i.test(name)) return '';
+    return ` data-mkn-dim="${this.imageSeq++}:${name}"`;
+  }
+
+  /** Replace the markers with width/height and the loading hints, as PHP's mediaImgAttrs() does. */
+  private async applyImageSizes(html: string): Promise<string> {
+    const markers = [...html.matchAll(/ data-mkn-dim="(\d+):([^"]+)"/g)];
+    if (!markers.length) return html;
+    for (const name of new Set(markers.map(m => m[2]))) {
+      if (this.imageCache.has(name) || this.imageCache.size >= 30) continue;
+      let size = null;
+      try { const header = await getMediaHeader(this.env, name); size = header ? imageSize(header) : null; } catch { size = null; }
+      this.imageCache.set(name, size);
+    }
+    const attributes = new Map<string, string>();
+    let largeSeen = false;
+    for (const m of [...markers].sort((a, b) => Number(a[1]) - Number(b[1]))) {
+      const size = this.imageCache.get(m[2]);
+      if (!size) { attributes.set(m[1], ''); continue; }
+      let attrs = ` width="${size.width}" height="${size.height}"`;
+      if (size.width >= 200 || size.height >= 200) {
+        if (!largeSeen) { largeSeen = true; attrs += ' fetchpriority="high"'; } else attrs += ' loading="lazy" decoding="async"';
+      }
+      attributes.set(m[1], attrs);
+    }
+    return html.replace(/ data-mkn-dim="(\d+):[^"]+"/g, (_m, seq) => attributes.get(seq) || '');
+  }
+
 
   private insertBodyStart(html: string, code: string): string {
     if (!code) return html;
@@ -417,23 +469,23 @@ export class MikanBoxRenderer {
     const pageFullUrl = this.buildFullUrl(siteUrl, rootLink);
 
     const replacements: Array<[RegExp, string]> = [
-      [/\{\{\s*SITE_NAME\s*\}\}/gi,        escapeHtml(this.siteSettings.site_name || '')],
-      [/\{\{\s*SITE_DESCRIPTION\s*\}\}/gi, escapeHtml(this.siteSettings.description || '')],
-      [/\{\{\s*SITE_KEYWORDS\s*\}\}/gi,    escapeHtml(this.siteSettings.keywords || '')],
-      [/\{\{\s*SITE_OGP_IMAGE\s*\}\}/gi,   this.resolveAbsoluteUrl(resolveMediaPath(this.siteSettings.ogp_image || ''))],
-      [/\{\{\s*PAGE_TITLE\s*\}\}/gi,       escapeHtml(pageData.title || '')],
-      [/\{\{\s*PAGE_DESCRIPTION\s*\}\}/gi, escapeHtml(pageData.description || '')],
-      [/\{\{\s*PAGE_KEYWORDS\s*\}\}/gi,    escapeHtml(pageData.keywords || '')],
-      [/\{\{\s*PAGE_OGP_IMAGE\s*\}\}/gi,   this.resolveAbsoluteUrl(resolveMediaPath(pageData.ogp_image || ''))],
-      [/\{\{\s*TITLE\s*\}\}/gi,            escapeHtml(pageData.title || (this.siteSettings.site_name || ''))],
-      [/\{\{\s*DESCRIPTION\s*\}\}/gi,      escapeHtml(pageDesc)],
-      [/\{\{\s*OGP_IMAGE\s*\}\}/gi,        this.resolveAbsoluteUrl(resolveMediaPath(ogpImage))],
-      [/\{\{\s*FULL_TITLE\s*\}\}/gi,       escapeHtml(pageTitle)],
-      [/\{\{\s*KEYWORDS\s*\}\}/gi,         escapeHtml(pageKeywords)],
-      [/\{\{\s*SITE_URL\s*\}\}/gi,         siteUrl],
-      [/\{\{\s*BASE_URL\s*\}\}/gi,         siteUrl],
-      [/\{\{\s*PAGE_URL\s*\}\}/gi,         pageFullUrl],
-      [/\{\{\s*UPDATE_DATE\s*\}\}/gi,      (pageData.updated_at || new Date().toISOString()).slice(0, 10)],
+      [/\{\{\s*SITE_NAME\s*\}\}/g,        escapeHtml(this.siteSettings.site_name || '')],
+      [/\{\{\s*SITE_DESCRIPTION\s*\}\}/g, escapeHtml(this.siteSettings.description || '')],
+      [/\{\{\s*SITE_KEYWORDS\s*\}\}/g,    escapeHtml(this.siteSettings.keywords || '')],
+      [/\{\{\s*SITE_OGP_IMAGE\s*\}\}/g,   this.resolveAbsoluteUrl(resolveMediaPath(this.siteSettings.ogp_image || ''))],
+      [/\{\{\s*PAGE_TITLE\s*\}\}/g,       escapeHtml(pageData.title || '')],
+      [/\{\{\s*PAGE_DESCRIPTION\s*\}\}/g, escapeHtml(pageData.description || '')],
+      [/\{\{\s*PAGE_KEYWORDS\s*\}\}/g,    escapeHtml(pageData.keywords || '')],
+      [/\{\{\s*PAGE_OGP_IMAGE\s*\}\}/g,   this.resolveAbsoluteUrl(resolveMediaPath(pageData.ogp_image || ''))],
+      [/\{\{\s*TITLE\s*\}\}/g,            escapeHtml(pageData.title || (this.siteSettings.site_name || ''))],
+      [/\{\{\s*DESCRIPTION\s*\}\}/g,      escapeHtml(pageDesc)],
+      [/\{\{\s*OGP_IMAGE\s*\}\}/g,        this.resolveAbsoluteUrl(resolveMediaPath(ogpImage))],
+      [/\{\{\s*FULL_TITLE\s*\}\}/g,       escapeHtml(pageTitle)],
+      [/\{\{\s*KEYWORDS\s*\}\}/g,         escapeHtml(pageKeywords)],
+      [/\{\{\s*SITE_URL\s*\}\}/g,         siteUrl],
+      [/\{\{\s*BASE_URL\s*\}\}/g,         siteUrl],
+      [/\{\{\s*PAGE_URL\s*\}\}/g,         pageFullUrl],
+      [/\{\{\s*UPDATE_DATE\s*\}\}/g,      (pageData.updated_at || new Date().toISOString()).slice(0, 10)],
     ];
 
     for (const [pattern, replacement] of replacements) {
@@ -442,10 +494,10 @@ export class MikanBoxRenderer {
 
     // UPDATE_DATE:JP / UPDATE_DATE:SLASH
     const rawDate = pageData.updated_at || new Date().toISOString();
-    text = text.replace(/\{\{\s*UPDATE_DATE:([A-Z]+)\s*\}\}/gi, (_, fmt) => this.formatDate(rawDate, fmt));
+    text = text.replace(/\{\{\s*UPDATE_DATE:([A-Z]+)\s*\}\}/g, (_, fmt) => this.formatDate(rawDate, fmt));
 
     // IS_NEW:N
-    text = text.replace(/\{\{\s*IS_NEW:(\d+)\s*\}\}/gi, (_, days) =>
+    text = text.replace(/\{\{\s*IS_NEW:(\d+)\s*\}\}/g, (_, days) =>
       this.isNew(rawDate, parseInt(days, 10)) ? 'new' : ''
     );
 
@@ -501,12 +553,12 @@ export class MikanBoxRenderer {
     html = html.replace(/\{\{VIDEO:([a-zA-Z0-9_\-\.]+)\}\}/g,
       `<video src="${mediaBase}$1" controls style="max-width:100%; height:auto;"></video>`);
     html = html.replace(/\{\{IMAGE:([a-zA-Z0-9_\-\.]+)\}\}/g,
-      `<img src="${mediaBase}$1" style="max-width:100%; height:auto;">`);
+      (_m, name) => `<img src="${mediaBase}${name}" style="max-width:100%; height:auto;"${this.imageMarker(name)}>`);
     html = html.replace(/\{\{AUDIO:([a-zA-Z0-9_\-\.]+)\}\}/g,
       `<audio src="${mediaBase}$1" controls style="width:100%; margin:10px 0;"></audio>`);
 
     // External Markdown is disabled until an explicit fetch/sanitization policy is implemented.
-    html = html.replace(/\{\{EXT_MD:[^}]+\}\}/g, '<!-- External Markdown is not yet supported -->');
+    html = html.replace(/\{\{EXT_MD:[^}]+\}\}/g, '<!-- EXT_MD is not available in the Cloud edition -->');
 
     // POST_MD:pageID#rowID:KEY
     const postRowMatches = [...html.matchAll(/\{\{POST_MD:([a-zA-Z0-9_\-/]+)#([a-zA-Z0-9_\-]+):([a-zA-Z][a-zA-Z0-9_]*)\}\}/g)];
@@ -562,10 +614,10 @@ export class MikanBoxRenderer {
         content = this.extractDataBlocks(content, this.currentPageData);
         content = this.restoreCodeSpans(content, cm);
         const protected2 = content.replace(/\{\{[^}]+\}\}/g, (tag) =>
-          '<!--MKNTG' + btoa(unescape(encodeURIComponent(tag))) + '-->'
+          '\u200B<!--MKNTG' + btoa(unescape(encodeURIComponent(tag))) + '-->\u200B'
         );
         let embedded = this.markdown.text(protected2);
-        embedded = embedded.replace(/<!--MKNTG([a-zA-Z0-9+/=]+)-->/g, (_, b64) => {
+        embedded = embedded.replace(/\u200B?<!--MKNTG([a-zA-Z0-9+/=]+)-->\u200B?/g, (_, b64) => {
           try { return decodeURIComponent(escape(atob(b64))); } catch { return ''; }
         });
         const postTitle = postData.title
@@ -636,19 +688,21 @@ export class MikanBoxRenderer {
     html = html.replace(/(<(?:script|link)\b[^>]*\b(?:src|href)\s*=\s*)(["'])(?:\.\/)?media\/([A-Za-z0-9_-][A-Za-z0-9_.-]*\.(?:js|css)(?:[?#][^"']*)?)\2/gi,
       (_match,prefix,quote,path)=>`${prefix}${quote}${siteUrl.replace(/\/$/,'')}/media/${path}${quote}`);
 
-    // 内部リンクを絶対URLに書き換え
-    html = html.replace(/href=["'](\.?\/?)([ ^"']+)["']/gi, (match, prefix, url) => {
-      if (/^(?:https?:\/\/|#|mailto:|\/)/i.test(url) || prefix === '/') return match;
-      let checkId = url;
-      if (checkId.toLowerCase().endsWith('.html')) checkId = checkId.slice(0, -5);
-      checkId = checkId.replace(/^\/|\/$/g, '');
+    // 内部リンクを絶対URLに書き換え (the PHP renderer's rules: page IDs, with ?query and #fragment kept)
+    html = html.replace(/href=["'](\.?\/?)([^"']+)["']/gi, (match, prefix, url) => {
+      const original = prefix + url;
+      // external links, anchors, mail and phone links, and root-relative paths stay as written
+      if (/^(?:https?:\/\/|\/\/|#|mailto:|tel:)/i.test(original) || original.startsWith('/')) return match;
+      const parts = original.match(/^([^?#]*)(\?[^#]*)?(#.*)?$/);
+      const path = parts ? parts[1] : original;
+      const suffix = parts ? (parts[2] || '') + (parts[3] || '') : '';
+      let checkId = path.replace(/^\/+|\/+$/g, '');
+      if (/\/index\.html$/i.test(checkId)) checkId = checkId.slice(0, -11);
+      else if (/\.html$/i.test(checkId)) checkId = checkId.slice(0, -5);
       const found = allPosts.find(pid => pid.toLowerCase() === checkId.toLowerCase());
-      if (found) {
-        return `href="${this.buildFullUrl(siteUrl, this.getPageLink(found))}"`;
-      }
-      if (/^[a-z0-9_\-/]+$/i.test(checkId)) {
-        return `href="${this.buildFullUrl(siteUrl, this.getPageLink(checkId))}"`;
-      }
+      if (found) return `href="${this.buildFullUrl(siteUrl, this.getPageLink(found))}${suffix}"`;
+      // looks like a page ID (letters, digits, - _ /) even if no such page exists yet
+      if (/^[a-z0-9_\-/]+$/i.test(checkId)) return `href="${this.buildFullUrl(siteUrl, this.getPageLink(checkId))}"`;
       return match;
     });
 
@@ -665,6 +719,8 @@ export class MikanBoxRenderer {
         return `<${tag}${attrs}src="${mediaBase}${filename}"`;
       }
     );
+    // the same for url(media/x.png) in inline styles
+    html = html.replace(/url\(\s*(["']?)(?:images|media)\/([^)"']+)\1\s*\)/gi, (_m, quote, path) => `url(${quote}${mediaBase}${path}${quote})`);
 
     return html;
   }
@@ -687,6 +743,12 @@ export class MikanBoxRenderer {
 <script>(function(){var p=new URLSearchParams(location.search),page=p.get('page'),q=p.get('q');
 if(page&&page!=='search'&&/^[A-Za-z0-9_-][A-Za-z0-9_\/-]*$/.test(page)){var to=new URL('/'+page,location.origin);if(to.origin===location.origin){location.replace(to.href);return;}}
 if(q)location.replace('https://www.google.com/search?'+new URLSearchParams({q:q,as_sitesearch:${JSON.stringify(site).replace(/</g,'\\u003c')}}));})();</script>`;
+  }
+
+  /** The document starts with exactly one <!DOCTYPE html> (standards mode), wherever the layout put its own. */
+  private enforceStandardMode(html: string): string {
+    if (!html.includes('<html') && !html.includes('<!DOCTYPE')) return html;
+    return '<!DOCTYPE html>\n' + html.replace(/<!DOCTYPE[^>]*>/gi, '').trim();
   }
 
   // ---- generateNavLinks ----
@@ -795,7 +857,7 @@ if(q)location.replace('https://www.google.com/search?'+new URLSearchParams({q:q,
 
         innerHtml += itemHtml;
       } else {
-        const imgHtml = img ? `<div class="nav-card-img"><img src="${img}" alt=""></div>` : '';
+        const imgHtml = img ? `<div class="nav-card-img"><img src="${img}" alt="" loading="lazy" decoding="async"></div>` : '';
         innerHtml += `<a href="${link}" class="nav-card">${imgHtml}<div class="nav-card-content"><h3 class="nav-card-title">${title}</h3>${desc ? `<p class="nav-card-desc">${desc}</p>` : ''}</div></a>`;
       }
     }

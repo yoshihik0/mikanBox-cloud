@@ -7,7 +7,7 @@ const {MikanBoxRenderer}=require('../.test-build/src/renderer.js');
 const {createTranslator}=require('../.test-build/src/i18n.js');
 async function loginForm(env){const page=await call(env,'/admin'),m=page.headers.get('Set-Cookie').match(/login_csrf=([^;]+)/);return {cookie:m[0],csrf:m[1]};}
 async function setup(env,extra={},forgeCookie=false){const f=await loginForm(env);return require('../.test-build/src/index.js').default.fetch(new Request('https://cloud.test/admin',{method:'POST',headers:{Cookie:forgeCookie?'login_csrf=other':f.cookie},body:new URLSearchParams({login_action:'setup',csrf_token:f.csrf,setup_token:env.SETUP_TOKEN,username:'admin',display_name:'Admin',device_name:'Laptop',...extra})}),env);}
-async function claim(env,code){const f=await loginForm(env);return require('../.test-build/src/index.js').default.fetch(new Request('https://cloud.test/admin',{method:'POST',headers:{Cookie:f.cookie},body:new URLSearchParams({login_action:'claim',csrf_token:f.csrf,code,device_name:'Phone'})}),env);}
+async function claim(env,code,newUser){const f=await loginForm(env);return require('../.test-build/src/index.js').default.fetch(new Request('https://cloud.test/admin',{method:'POST',headers:{Cookie:f.cookie},body:new URLSearchParams({login_action:'claim',csrf_token:f.csrf,code,device_name:'Phone',...(newUser||{})})}),env);}
 const page=(status='draft',content_md='private-content')=>({title:'Test',status,content_md,wrapper_comp:'layout'});
 
 test('initial setup requires its token and a used token never works again',async()=>{
@@ -24,6 +24,14 @@ test('setup registers one device; the same token cannot register another',async(
   const r=await setup(env,{username:'admin'});assert.equal(r.status,400);
   assert.equal(env.sqlite.prepare('SELECT COUNT(*) n FROM device_sessions WHERE revoked_at IS NULL').get().n,1);
 });
+test('a setup token that ever worked stays dead after a later token was used',async()=>{
+  const env=environment();await login(env);
+  const first=env.SETUP_TOKEN;
+  env.SETUP_TOKEN='second-token-that-is-long-enough-123';
+  let r=await setup(env,{username:'admin'});assert.equal(r.status,303,'a new token recovers');
+  env.SETUP_TOKEN=first;
+  r=await setup(env,{username:'admin'});assert.equal(r.status,400,'the first token is still dead');
+});
 test('CSRF and cross-origin writes are rejected; unknown action never succeeds',async()=>{
   const env=environment(),auth=await login(env);
   let result=await post(env,{...auth,csrf_token:'bad'},{save_action:'save_memo',memo:'bad'});assert.equal(result.response.status,403);
@@ -33,24 +41,31 @@ test('CSRF and cross-origin writes are rejected; unknown action never succeeds',
 });
 test('five wrong device codes lock out another attempt',async()=>{
   const env=environment(),auth=await login(env);
-  const code=(await post(env,auth,{save_action:'device_code_create'})).data.message.match(/[0-9A-Z]{5}-[0-9A-Z]{5}/)[0];
+  const code=(await post(env,auth,{save_action:'device_code_create'})).data.issued_code;
   for(let i=0;i<5;i++)assert.equal((await claim(env,'AAAAA-AAAAA')).status,400);
   assert.equal((await claim(env,code)).status,400);
 });
 test('a device code adds a device once, and an invite code creates its user',async()=>{
   const env=environment(),auth=await login(env);
-  const code=(await post(env,auth,{save_action:'device_code_create'})).data.message.match(/[0-9A-Z]{5}-[0-9A-Z]{5}/)[0];
+  const code=(await post(env,auth,{save_action:'device_code_create'})).data.issued_code;
   assert.equal(env.sqlite.prepare('SELECT COUNT(*) n FROM device_codes').get().n,1);assert.doesNotMatch(JSON.stringify(env.sqlite.prepare('SELECT * FROM device_codes').all()),new RegExp(code.replace('-','')));
   let r=await claim(env,code.toLowerCase());assert.equal(r.status,303);const phone=r.headers.get('Set-Cookie').split(';')[0];
   assert.doesNotMatch(await(await call(env,'/admin',undefined,phone)).text(),/name="login_action"/);
   assert.equal((await claim(env,code)).status,400);
-  const invite=(await post(env,auth,{save_action:'device_code_create',invite:'1',username:'second',display_name:'Second'})).data.message.match(/[0-9A-Z]{5}-[0-9A-Z]{5}/)[0];
-  r=await claim(env,invite);assert.equal(r.status,303);assert.equal(env.sqlite.prepare("SELECT display_name FROM users WHERE username='second'").get().display_name,'Second');
-  assert.equal((await post(env,auth,{save_action:'device_code_create',invite:'1',username:'second',display_name:'Again'})).data.success,false);
+  const invite=(await post(env,auth,{save_action:'device_code_create',invite:'1'})).data.issued_code;
+  assert.equal(env.sqlite.prepare("SELECT COUNT(*) n FROM device_codes WHERE username='' AND used_at IS NULL").get().n,1,'an invite names nobody in advance');
+  // The invited person chooses their own ID and name; the first step asks for them and spends nothing.
+  r=await claim(env,invite);assert.equal(r.status,200);assert.match(await r.text(),/name="display_name"/);
+  assert.equal(env.sqlite.prepare("SELECT COUNT(*) n FROM device_codes WHERE username='' AND used_at IS NULL").get().n,1);
+  r=await claim(env,invite,{username:'bad id!',display_name:'Bad'});assert.equal(r.status,400);
+  r=await claim(env,invite,{username:'admin',display_name:'Taken'});assert.equal(r.status,400,'a taken user ID is refused');
+  assert.equal(env.sqlite.prepare("SELECT COUNT(*) n FROM device_codes WHERE username='' AND used_at IS NULL").get().n,1,'refusals keep the code usable');
+  r=await claim(env,invite,{username:'second',display_name:'Second'});assert.equal(r.status,303);assert.equal(env.sqlite.prepare("SELECT display_name FROM users WHERE username='second'").get().display_name,'Second');
+  assert.equal((await claim(env,invite,{username:'third',display_name:'Third'})).status,400,'a used invite is dead');
 });
 test('expired codes and expired devices do not work; use extends a device',async()=>{
   const env=environment(),auth=await login(env);
-  const code=(await post(env,auth,{save_action:'device_code_create'})).data.message.match(/[0-9A-Z]{5}-[0-9A-Z]{5}/)[0];
+  const code=(await post(env,auth,{save_action:'device_code_create'})).data.issued_code;
   env.sqlite.prepare('UPDATE device_codes SET expires_at=?').run(Date.now()-1);assert.equal((await claim(env,code)).status,400);
   env.sqlite.prepare('UPDATE device_sessions SET last_used_at=0').run();await call(env,'/admin',undefined,auth.cookie);
   assert.ok(env.sqlite.prepare('SELECT expires_at FROM device_sessions').get().expires_at>Date.now()+29*86400_000);
@@ -60,7 +75,7 @@ test('expired codes and expired devices do not work; use extends a device',async
 test('a new device cannot stop older devices for three days; older devices can stop it',async()=>{
   const env=environment(),auth=await login(env);
   env.sqlite.prepare('UPDATE device_sessions SET created_at=?').run(Date.now()-4*86400_000);
-  const code=(await post(env,auth,{save_action:'device_code_create'})).data.message.match(/[0-9A-Z]{5}-[0-9A-Z]{5}/)[0];
+  const code=(await post(env,auth,{save_action:'device_code_create'})).data.issued_code;
   const cookie=(await claim(env,code)).headers.get('Set-Cookie').split(';')[0];
   const csrf=(await require('../.test-build/src/devices.js').deviceSession(new Request('https://cloud.test/admin',{headers:{Cookie:cookie}}),env)).csrf,newer={cookie,csrf_token:csrf};
   const [old,fresh]=env.sqlite.prepare('SELECT id FROM device_sessions ORDER BY created_at').all().map(row=>row.id);
@@ -157,7 +172,7 @@ test('HTML comments preserve component tags as literals',async()=>{
 test('external Markdown does not fetch arbitrary URLs',async()=>{
   const env=environment();await savePage(env,'index',page('public_dynamic','{{EXT_MD:https://example.test/private}}'));
   const original=global.fetch;global.fetch=()=>{throw new Error('Must not fetch');};
-  try {assert.match(await(await publicView(env,'/')).text(),/not yet supported/);}finally{global.fetch=original;}
+  try {assert.match(await(await publicView(env,'/')).text(),/EXT_MD is not available in the Cloud edition/);}finally{global.fetch=original;}
 });
 test('generated scripts parse in Japanese and English and escape saved prompts',async()=>{
   const env=environment(),auth=await login(env);await savePage(env,'example',{...page(),memo:'Memo',js:'window.x=1;'});await saveComponent(env,'layout',{html:'{{CONTENT}}',is_wrapper:true});
@@ -219,6 +234,78 @@ test('a second user cannot acquire a held edit lock',async()=>{
   const other=await login(env,'second','Second');
   assert.equal((await post(env,other,{save_action:'acquire_lock',id:'one'})).data.success,false);
   assert.equal((await post(env,other,{save_action:'save_page',id:'one',old_id:'one',status:'draft',title:'Other'})).data.success,false);
+});
+test('Markdown reads nested spans, merged quotes and HTML blocks as the PHP edition does',()=>{
+  const {MikanBoxMarkdown}=require('../.test-build/src/markdown.js');const md=new MikanBoxMarkdown();
+  assert.equal(md.text('[[save]{.icon} 保存]{.m-btn .m-btn-blue}'),'<p><span class="m-btn m-btn-blue"><span class="icon">save</span> 保存</span></p>','a span inside a span is read from the inside out');
+  assert.equal(md.text('> a\n> b'),'<blockquote>a<br>\nb</blockquote>','consecutive quote lines are one blockquote');
+  assert.equal(md.text('<div>**x**</div>'),'<div>**x**</div>','a one-line HTML block is left alone');
+  assert.equal(md.text('text\n\n<div>\n\n**more**\n\n</div>\n\nafter'),'<p>text</p>\n<div>\n<p><strong>more</strong></p>\n</div>\n<p>after</p>','Markdown inside a multi-line HTML block is read, the block itself adds no empty paragraphs');
+  assert.doesNotMatch(md.text('<p>raw</p>\n\n---\n\n<div>x</div>'),/<p>\s*<\/p>/,'raw HTML blocks never leave empty paragraphs');
+  assert.equal(md.text('a\n\n| h |\n|---|\n| c |\nnext line'),'<p>a</p>\n<table><thead><tr><th>h</th></tr></thead><tbody><tr><td>c</td></tr></tbody></table>\nnext line','the line after a table is not glued to it');
+});
+test('Markdown link and image URLs are decoded, checked and encoded (as in the PHP edition)',()=>{
+  const {MikanBoxMarkdown}=require('../.test-build/src/markdown.js');const md=new MikanBoxMarkdown();
+  for(const url of ['javascript:alert(1)','JaVaScRiPt:alert(1)','&#106;avascript:alert(1)','java&Tab;script:alert(1)','data:text/html,x','vbscript:x'])assert.match(md.text(`[x](${url})`),/<a href="#">/,url);
+  for(const url of ['https://e.com/a','mailto:a@b.c','tel:+81','page-id','/abs','#a','//cdn.e.com/x'])assert.match(md.text(`[x](${url})`),new RegExp(`<a href="${url.replace(/[.*+?^${}()|[\]\\/]/g,'\\$&')}">`),url);
+  assert.match(md.text('[x](https://e.com/?a=1&b=2)'),/href="https:\/\/e\.com\/\?a=1&amp;b=2"/);
+  assert.match(md.text('[x](https://e.com/?a=1&amp;b=2)'),/href="https:\/\/e\.com\/\?a=1&amp;b=2"/,'an existing &amp; is not doubled');
+  const image=md.text('![a" onerror="alert(1)](x" onerror="alert(1))');assert.doesNotMatch(image,/ onerror="/,'a quote cannot end the attribute');assert.match(image,/^<p><img src="[^"]*" alt="[^"]*">\)<\/p>$/,'the image keeps exactly src and alt');
+});
+test('a paragraph that starts with a tag is still a paragraph; a paragraph that is only a tag is not',async()=>{
+  const env=environment();
+  await savePage(env,'tags',{...page('public_static','{{TITLE}}|{{SITE_NAME}}\n\n{{TITLE}}'),wrapper_comp:'__none'});
+  const {html}=await new MikanBoxRenderer(env,{site_name:'S'},new Request('https://cloud.test/tags')).render('tags');
+  assert.match(html,/<p>Test\|S<\/p>/);assert.doesNotMatch(html,/<p>Test<\/p>/);assert.match(html,/Test(?!\|)/);
+});
+test('relative page links resolve to the page URL and keep ?query and #fragment; card images load lazily',async()=>{
+  const env=environment();
+  await savePage(env,'other-page',page('public_static','x'));
+  await savePage(env,'src',{...page('public_static','[a](other-page?x=1#frag) [b](Other-Page/) [c](other-page.html) [d](no-such-page) [e](../up) [f](page.pdf)\n\n{{NAV_CARDS:cards}}'),wrapper_comp:'__none'});
+  await savePage(env,'card1',{...page('public_static','c'),category:'cards',ogp_image:'pic.png'});
+  const {html}=await new MikanBoxRenderer(env,{ssg_root_url:'https://cloud.test'},new Request('https://cloud.test/src')).render('src');
+  assert.match(html,/<a href="https:\/\/cloud\.test\/other-page\/?\?x=1#frag">a<\/a>/);
+  assert.match(html,/<a href="https:\/\/cloud\.test\/other-page\/?">b<\/a>/);
+  assert.match(html,/<a href="https:\/\/cloud\.test\/other-page\/?">c<\/a>/);
+  assert.match(html,/<a href="https:\/\/cloud\.test\/no-such-page\/?">d<\/a>/,'a page-ID-shaped link is completed even when the page does not exist yet');
+  assert.match(html,/<a href="\.\.\/up">e<\/a>/);assert.match(html,/<a href="page\.pdf">f<\/a>/);
+  assert.match(html,/<img src="[^"]*pic\.png" alt="" loading="lazy" decoding="async">/);
+});
+test('url(media/…) in page CSS and in inline styles points at the media folder from any page',async()=>{
+  const env=environment();
+  await savePage(env,'deep/page',{...page('public_static','<div style="background:url(\'media/a.jpg\')">x</div>\n\n<p>images/not-a-url.png stays text</p>'),css:'.h{background:url("media/h.jpg")}.i{background:url(images/i.png)}',wrapper_comp:'_layout_t'});
+  await saveComponent(env,'_layout_t',{html:'<!DOCTYPE html><html><head>{{HEAD_CSS}}</head><body>{{CONTENT}}</body></html>',css:'',is_global:true,is_wrapper:true});
+  const {html}=await new MikanBoxRenderer(env,{ssg_root_url:'https://cloud.test/site'},new Request('https://cloud.test/site/deep/page')).render('deep/page');
+  assert.match(html,/url\("\/site\/media\/h\.jpg"\)/,'page CSS: rooted at the site');
+  assert.match(html,/url\(\/site\/media\/i\.png\)/);
+  assert.match(html,/url\('https:\/\/cloud\.test\/site\/media\/a\.jpg'\)/,'inline style: absolute');
+  assert.match(html,/images\/not-a-url\.png stays text/,'text that only looks like a path is left alone');
+});
+test('the document starts with one <!DOCTYPE html>, even when the layout starts with a comment',async()=>{
+  const env=environment();
+  await saveComponent(env,'_c_layout',{html:'<!-- layout note -->\n<!DOCTYPE html>\n<html><head></head><body>{{CONTENT}}</body></html>',css:'',is_global:true,is_wrapper:true});
+  await savePage(env,'dt',{...page('public_static','x'),wrapper_comp:'_c_layout'});
+  const {html}=await new MikanBoxRenderer(env,{},new Request('https://cloud.test/dt')).render('dt');
+  assert.match(html,/^<!DOCTYPE html>\n<!-- layout note -->/);assert.equal((html.match(/<!DOCTYPE/gi)||[]).length,1);
+});
+test('a comment in front of a selector does not hide :root, html or body',()=>{
+  const {scopeCss}=require('../.test-build/src/cssScope.js');
+  assert.equal(scopeCss('/* grain */\n  body::before{x:y}','.s'),'.s::before{x:y}');
+  assert.equal(scopeCss('a{x:y}\n/* note */ :root{--c:1}\n/* two */ /* three */ .a{x:y}','.s'),'.s a{x:y}.s{--c:1}.s .a{x:y}');
+  assert.equal(scopeCss('/* m */ @media print{/* i */ body{x:y}}','.s'),'@media print{.s{x:y}}');
+});
+test(':global(...) leaves the scope, as in the PHP edition',()=>{
+  const {scopeCss}=require('../.test-build/src/cssScope.js');
+  assert.equal(scopeCss(':global(.hero_box){display:none}','.s'),'.hero_box{display:none}');
+  assert.equal(scopeCss(':global(:root){--c:red}','.s'),':root{--c:red}');
+  assert.equal(scopeCss(':global(.a),.b{x:y}','.s'),'.a, .s .b{x:y}');
+  assert.equal(scopeCss(':global(.a .b){x:y}','.s'),'.a .b{x:y}');
+});
+test('template tags are upper case only, as in the PHP edition',async()=>{
+  const env=environment();
+  await savePage(env,'case',{...page('public_static','{{TITLE}}|{{title}}|{{Title}}|{{SITE_NAME}}|{{site_name}}|{{PAGE_URL}}|{{page_url}}|{{UPDATE_DATE}}|{{update_date}}|{{ TITLE }}'),wrapper_comp:'__none'});
+  const {html}=await new MikanBoxRenderer(env,{site_name:'S'},new Request('https://cloud.test/case')).render('case');
+  assert.match(html,/Test\|\{\{title\}\}\|\{\{Title\}\}\|S\|\{\{site_name\}\}\|https:\/\/cloud\.test\/case\/?\|\{\{page_url\}\}\|[0-9-]{10}\|\{\{update_date\}\}\|Test/);
 });
 test('CSS scope handles functional selectors, media groups, strings and keyframes',()=>{
   const {scopeCss}=require('../.test-build/src/cssScope.js');
@@ -441,13 +528,13 @@ test('tracking ID and code settings insert head and body tags and honor page exc
 test('recreating a deleted username never revives its old devices',async()=>{
   const env=environment(),auth=await login(env),second=await login(env,'second','Second');
   assert.equal((await post(env,auth,{save_action:'delete_user',username:'second'})).data.success,true);
-  const invite=(await post(env,auth,{save_action:'device_code_create',invite:'1',username:'second',display_name:'New Second'})).data.message.match(/[0-9A-Z]{5}-[0-9A-Z]{5}/)[0];
-  assert.equal((await claim(env,invite)).status,303);
+  const invite=(await post(env,auth,{save_action:'device_code_create',invite:'1'})).data.issued_code;
+  assert.equal((await claim(env,invite,{username:'second',display_name:'New Second'})).status,303);
   assert.match(await(await call(env,'/admin',undefined,second.cookie)).text(),/name="login_action"/);
 });
 test('a device on probation cannot take access away from other users',async()=>{
   const env=environment(),auth=await login(env);env.sqlite.prepare('UPDATE device_sessions SET created_at=?').run(Date.now()-4*86400_000);
-  const code=(await post(env,auth,{save_action:'device_code_create'})).data.message.match(/[0-9A-Z]{5}-[0-9A-Z]{5}/)[0];
+  const code=(await post(env,auth,{save_action:'device_code_create'})).data.issued_code;
   const cookie=(await claim(env,code)).headers.get('Set-Cookie').split(';')[0];
   const fresh={cookie,csrf_token:(await require('../.test-build/src/devices.js').deviceSession(new Request('https://cloud.test/admin',{headers:{Cookie:cookie}}),env)).csrf};
   await login(env,'other','Other');

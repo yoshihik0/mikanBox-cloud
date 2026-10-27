@@ -45,15 +45,17 @@ function statusOptions(t: (key:string)=>string, selected: string) {
   const current = ['public','public_dynamic'].includes(selected) ? 'public_static' : selected;
   return statuses.map(status=>`<option value="${status}" ${current===status?'selected':''}>${statusLabel(t,status)}</option>`).join('');
 }
-export function renderLoginPage(opts: {lang:string; initial:boolean; error:string; t:(key:string,...args:(string|number)[])=>string; csrf:string}):string {
-  const {lang,initial,error,t,csrf}=opts, ja=lang==='ja';
+export function renderLoginPage(opts: {lang:string; initial:boolean; error:string; t:(key:string,...args:(string|number)[])=>string; csrf:string; inviteStep?:{code:string;device_name:string;username?:string;display_name?:string}}):string {
+  const {lang,initial,error,t,csrf,inviteStep}=opts, ja=lang==='ja';
   const hidden=(action:string)=>`<input type="hidden" name="login_action" value="${action}"><input type="hidden" name="csrf_token" value="${h(csrf)}">`;
   const deviceField=`<div class="form-group"><label>${ja?'この端末の名前（例: 仕事用PC）':'Name for this device (e.g. Work laptop)'}</label><input type="text" name="device_name" maxlength="60" required></div>`;
   const setupFields=`<div class="form-group"><label>${ja?'初期設定トークン（SETUP_TOKEN）':'Setup token (SETUP_TOKEN)'}</label><input type="password" name="setup_token" autocomplete="off" required></div><div class="form-group"><label>${t('label_username')}</label><input type="text" name="username" autocomplete="off" required></div>`;
   return `<!DOCTYPE html><html lang="${h(lang)}"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>🍊mikanBox</title><link rel="stylesheet" href="/mikanbox/admin.css?v=${h(CLOUD_VERSION)}"></head>
   <body class="login-body"><div class="login-box"><div class="login-title"><span>🍊</span><span>mikanBox</span></div>
   ${error?`<div class="error" role="alert">${h(error)}</div>`:''}
-  ${initial?`<p><strong>${t('hint_initial_setup')}</strong><br>${ja?'この端末を、最初の管理端末として登録します。パスワードはありません。登録した端末のブラウザが鍵になります。':'Register this device as the first admin device. There is no password; this browser becomes the key.'}</p>
+  ${inviteStep&&!initial?`<p><strong>${t('device_invite_intro')}</strong></p>
+  <form method="post">${hidden('claim')}<input type="hidden" name="code" value="${h(inviteStep.code)}"><input type="hidden" name="device_name" value="${h(inviteStep.device_name)}"><div class="form-group"><label>${t('label_username')}</label><input type="text" name="username" autocomplete="off" required maxlength="80" pattern="[A-Za-z0-9_\\-]{1,80}" value="${h(inviteStep.username||'')}"></div><div class="form-group"><label>${t('label_display_name')}</label><input type="text" name="display_name" required maxlength="120" value="${h(inviteStep.display_name||'')}"></div><button type="submit">${ja?'この端末を登録':'Register this device'}</button></form>`
+  :initial?`<p><strong>${t('hint_initial_setup')}</strong><br>${ja?'この端末を、最初の管理端末として登録します。パスワードはありません。登録した端末のブラウザが鍵になります。':'Register this device as the first admin device. There is no password; this browser becomes the key.'}</p>
   <form method="post">${hidden('setup')}${setupFields}<div class="form-group"><label>${t('label_display_name')}</label><input type="text" name="display_name" required></div>${deviceField}<button type="submit">${ja?'この端末を登録':'Register this device'}</button></form>`
   :`<p>${ja?'この端末は登録されていません。登録済みの端末の管理画面（サイト →「端末とユーザー」）で追加用のコードを出し、入力してください。':'This device is not registered. Issue a code on a registered device (Site → Devices and users) and enter it here.'}</p>
   <form method="post">${hidden('claim')}<div class="form-group"><label>${ja?'追加用のコード':'Device code'}</label><input type="text" name="code" autocomplete="off" required autofocus placeholder="XXXXX-XXXXX"></div>${deviceField}<button type="submit">${ja?'この端末を登録':'Register this device'}</button></form>
@@ -194,6 +196,16 @@ ${opts.mediaEnabled?`<div id="drop-zone">${getIcon('cloud')} ${t('hint_drop_uplo
     window.CSRF_TOKEN = ${JSON.stringify(csrf)};
     window.AI_PROMPT = ${aiPromptJson};
     window.HELP_FILE = ${JSON.stringify(helpFile)};
+
+    window.copyField = async function(id) {
+        const input = document.getElementById(id);
+        if (!input) return;
+        try { await navigator.clipboard.writeText(input.value); showToast(${JSON.stringify(t('msg_copied'))}); }
+        catch { input.select(); document.execCommand('copy'); showToast(${JSON.stringify(t('msg_copied'))}); }
+    };
+    // The admin MCP endpoint of the host this screen is served from.
+    const mcpUrlField = document.getElementById('mcp-url-display');
+    if (mcpUrlField) mcpUrlField.value = location.origin + '/mcp';
 
     window.copyPendingPreviewUrl = async function() {
         const input = document.getElementById('pending-preview-url');
@@ -1137,7 +1149,11 @@ export function renderSiteView(opts: {
         </div>
     </div>
 
-    <div id="mcp-key"><div class="section-container section-tight"><details class="section-accordion"><summary class="header section-header accordion-summary"><h2 class="accordion-title">${t('mcp_key_head')} <span class="accordion-arrow">▼</span></h2></summary><div class="editor-container editor-container-sub"><input type="password" value="${h(settings.api_key||'')}" readonly aria-label="MCP API key" onclick="this.type='text';this.select()"><form method="post">${csrfField(csrf)}<input type="hidden" name="save_action" value="generate_api_key"><button class="btn btn-gray btn-small">${t('btn_generate_mcp_key')}</button></form><p>${settings.system_lang==='en'?'Administration: site URL + /mcp, with this key in Authorization: Bearer. First call get_site_info, then get_ai_context. Public read-only help: /public-mcp (no key).':'管理用：サイトURL + /mcp に、このキーを Authorization: Bearer で指定します。最初に get_site_info、次に get_ai_context を呼びます。公開ヘルプ用：/public-mcp（キー不要・読み取り専用）。'}</p></div></details></div></div>
+    <div id="mcp-key"><div class="section-container section-tight"><details class="section-accordion"><summary class="header section-header accordion-summary"><h2 class="accordion-title">${t('mcp_key_head')} <span class="accordion-arrow">▼</span></h2></summary><div class="editor-container editor-container-sub">
+      <div class="form-group mt-10"><label for="mcp-url-display">${t('mcp_url_label')}</label><div class="copy-row"><input type="text" id="mcp-url-display" value="" readonly><button type="button" class="btn btn-gray btn-small" onclick="copyField('mcp-url-display')">${getIcon('copy')} ${t('btn_copy')}</button></div></div>
+      ${settings.api_key?`<div class="form-group mt-10"><label for="mcp-key-display">${t('mcp_key_label')}</label><div class="copy-row"><input type="text" id="mcp-key-display" value="${h(settings.api_key)}" readonly><button type="button" class="btn btn-gray btn-small" onclick="copyField('mcp-key-display')">${getIcon('copy')} ${t('btn_copy')}</button></div></div>`:''}
+      <form method="post" class="mt-10">${csrfField(csrf)}<input type="hidden" name="save_action" value="generate_api_key"><button class="btn ${settings.api_key?'btn-gray':'btn-blue'} btn-small">${getIcon('sparkles')} ${settings.api_key?t('btn_regenerate_mcp_key'):t('btn_generate_mcp_key')}</button></form>
+      <p class="sub-text">${settings.system_lang==='en'?'Administration: the Connection URL above, with this key in Authorization: Bearer. First call get_site_info, then get_ai_context. Public read-only help: /public-mcp (no key).':'管理用：上の接続URLに、このキーを Authorization: Bearer で指定します。最初に get_site_info、次に get_ai_context を呼びます。公開ヘルプ用：/public-mcp（キー不要・読み取り専用）。'}</p></div></details></div></div>
 
     <div id="csv-import"><div class="section-container section-tight"><details class="section-accordion"><summary class="header section-header accordion-summary"><h2 class="accordion-title">${t('csv_head')} <span class="accordion-arrow">▼</span></h2></summary><div class="editor-container editor-container-sub"><small class="sub-text sub-text-intro">${t('csv_hint')}</small><div class="mt-10"><input type="file" id="csv-file-input" accept=".csv,text/csv"></div><div class="mt-10"><button type="button" class="btn btn-gray btn-small" onclick="csvConvertAndCopy()" id="csv-copy-btn">${getIcon('copy')} ${t('btn_csv_convert')}</button></div></div></details></div></div>
 
@@ -1322,7 +1338,7 @@ function buildTagGuide(
                         <li><code>{{AUDIO:${t('filename')}}}</code> : ${t('insert_audio_module')}</li>
                         <li><code>{{VIDEO:${t('filename')}}}</code> : ${t('display_video')}</li>
                         <li><code>{{POST_MD:pageID}}</code> : ${t('hint_post_md')}</li>
-                        <li><code>{{EXT_MD:url}}</code> : ${t('hint_ext_md')}</li>
+                        <li><code>{{EXT_MD:url}}</code> : ${t('hint_ext_md')}${t('cloud_unavailable_note')}</li>
                         <li><code>{{NAV_LINKS:category}}</code> : ${t('link_list')}<span class="hint-desc"> — li.active</span></li>
                         <li><code>{{NAV_CARDS:category:componentID}}</code> : ${t('card_list')}</li>
                         <li class="hint-note">${t('nav_links_cards_hint')}</li>
@@ -1349,10 +1365,10 @@ function buildTagGuide(
                         <li style="margin-top:8px"><span class="hint-section-label">${t('hint_datarow_usage')}</span></li>
                         <li><code>{{POST_MD::key}}</code> : ${t('data_from_self')}</li>
                         <li><code>{{POST_MD:pageID:key}}</code> : ${t('data_from_page')}</li>
-                        <li><code>{{EXT_MD:url:key}}</code> : ${t('hint_ext_md_key')}</li>
+                        <li><code>{{EXT_MD:url:key}}</code> : ${t('hint_ext_md_key')}${t('cloud_unavailable_note')}</li>
                         <li style="margin-top:6px"><code>{{POST_MD::#rowID:key}}</code> : ${t('hint_datarow_self_table')}</li>
                         <li><code>{{POST_MD:pageID#rowID:key}}</code> : ${t('hint_datarow_page_table')}</li>
-                        <li><code>{{EXT_MD:url#rowID:key}}</code> : ${t('hint_datarow_ext_table')}</li>
+                        <li><code>{{EXT_MD:url#rowID:key}}</code> : ${t('hint_datarow_ext_table')}${t('cloud_unavailable_note')}</li>
                         <li style="margin-top:6px" class="hint-note">${t('hint_db_api_hidden')}</li>
                         <li class="hint-note">${t('hint_db_api_public')}</li>
                     </ul>

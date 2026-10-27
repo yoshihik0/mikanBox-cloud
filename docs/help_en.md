@@ -53,7 +53,7 @@
 }
 </style>
 
-# 🍊mikanBox User Manual <small class="manual-version">v2.8.7</small>
+# 🍊mikanBox User Manual <small class="manual-version">v2.9.1</small>
 
 🍊mikanBox comes in two versions: **🍊mikanBox** [SQLite Edition]{.type-badge .badge-sqlite}, which uses a SQLite database, and **🍊mikanBox flat** [flat Edition]{.type-badge .badge-flat}, a JSON file-based edition with no database. The basic usage is shared between both, so this help document covers both. Where the content differs between versions, the badges above are used to mark the difference.
 
@@ -159,7 +159,7 @@ PHP is the only requirement. No database, no build tooling, no Node.js.
 2. If it is missing, install it. macOS no longer ships PHP, so install [Homebrew](https://brew.sh/) and run `brew install php`. On Windows, download it from [windows.php.net](https://windows.php.net/download/). On Linux, run `sudo apt install php` (Debian family) or `sudo dnf install php` (Fedora family).
 3. Extract `index.php` and the `mikanBox` folder into any folder.
 4. Change into that folder and run `php -S localhost:8000`. This is the server bundled with PHP; nothing else is needed.
-5. Open `http://localhost:8000/mikanBox/admin.php` in a browser and set your admin password.
+5. Open `http://localhost:8000/mikanBox/admin.php` in a browser and complete the first-time setup. See [Initial Setup and Sign-in](#first-setup).
 
 The `mikanData` and `media` folders are created on first access, exactly as they are on a server. To stop the server, press Control+C in the terminal that started it.
 
@@ -167,25 +167,69 @@ Open this folder in an AI coding tool and the agent can read and write your page
 
 To publish, upload the folder that static generation produces. In this style there is no PHP, no data and no admin panel on the public side, so there is nothing to tamper with.
 
-### Initial Password Setup
+### Initial Setup and Sign-in {#first-setup}
 
-Whoever accesses `mikanBox/admin.php` first after setup sets the admin password.
+[flat Edition]{.type-badge .badge-flat}: whoever accesses `mikanBox/admin.php` first after setup sets the admin password. Its hash (the encrypted value) is stored in `mikanData/settings.json`.
 
-[SQLite Edition]{.type-badge .badge-sqlite} also asks for a username, display name, and a "security question and answer" used to verify your identity if you forget your password. These are stored in the `users` table inside `mikanData/mikanBox.sqlite`.
+[SQLite Edition]{.type-badge .badge-sqlite} (v2.9.0 and later) has no passwords. Only registered devices (browsers) can open the admin screen. A device's key (a random token) lives in that browser's cookie, and the server stores only its hash. A leaked database cannot reveal the key, and there is no password to reuse or leak. Even if someone guesses the admin URL, they get no further than the sign-in screen without a key.
 
-[flat Edition]{.type-badge .badge-flat} only asks for a password. Its hash (the encrypted value) is stored in `mikanData/settings.json`.
+#### Registering the First Device {#device-setup}
 
-### Multiple installations and saved passwords
+[SQLite Edition only]{.type-badge .badge-sqlite}
 
-Starting with v2.8.6, login state, logout and CSRF tokens are separate for each installation, even on the same domain or when flat and SQLite editions are mixed. Logging into one site does not log you into another. An installation without a password requires initial setup. Legacy shared sessions are not carried over: sign in to each site again after updating. Existing passwords remain unchanged and can still be used; signing in again does not require a password change. Moving the installation directory on the server also requires a new login. Different URLs pointing to the same real directory are treated as the same installation.
+1. Make a random string (at least 20 characters). Keep a copy. It is used only once, so you do not need to remember it for long.
+2. Open `setup-token.txt` in the `setup-token` folder and write that string on a single line below the instructions.
+3. Upload the `mikanBox` folder, `index.php` and the `setup-token` folder.
+4. Open `mikanBox/admin.php`, enter the token you kept, a username, a display name and a name for this device (for example, "Work laptop"), then press "Register this device".
+5. When registration succeeds, this browser stores the device's key and you are taken straight into the admin screen. A token works only once.
 
-Browser-saved passwords and server login state are separate. Editing a saved password in your browser does not change the server password. Submitting a password change in the admin panel changes that site's password. The flat edition also verifies the current password and requires at least four characters for the new password.
+If `setup-token.txt` holds no token, one shorter than 20 characters, or one made of a few repeated characters, the registration screen is not shown. Only a notice reading "The installation method has changed. Please see this page." appears. Nobody becomes the admin just by visiting first. The same steps apply when you run mikanBox locally.
 
-[flat Edition]{.type-badge .badge-flat} shows a read-only “Site ID for password saving” on setup, login and password-change forms, using the admin URL path (for example, `/shiro/mikanBox/admin.php`). This is a hint to help password managers distinguish saved entries, not an additional credential. Check that this ID matches the intended site when saving or updating a password. Review saved entries if you move the site URL.
+After you clear cookies, or when you sign in from another browser or computer, that device is unregistered. Add it as follows.
 
-[SQLite Edition]{.type-badge .badge-sqlite} uses the account username as the saving hint. Reusing the same username on the same domain may cause entries to be combined; use different usernames per site when you want to distinguish them.
+#### Adding a Device
 
-Forms identify username, current-password and new-password fields, but the browser or password manager decides how entries are stored or overwritten. The app cannot guarantee separate saved entries or automatically migrate existing ones. If older entries were combined, save a separate entry for each site in your password manager and check that you are not overwriting another site's entry.
+[SQLite Edition only]{.type-badge .badge-sqlite}
+
+On a registered device, open Site → "Devices and users" → "Add a device" → "Issue a code". The code is shown at the top of the screen. Open the admin screen on the new device and enter the code and a device name. A code has 10 characters, is valid for 3 hours and works once. Keep it private. After 10 wrong entries from the same address (IP), entry from that address is blocked for 15 minutes.
+
+To invite another editor, use "Invite someone" in the same place: issue an invite code and hand it over. The invited person chooses their own user ID and display name when they first sign in. A device added with an add code is registered as the same user as whoever issued the code.
+
+#### When Every Device Is Lost (Recovery) {#device-recovery}
+
+[SQLite Edition only]{.type-badge .badge-sqlite}
+
+1. Make a new token, write it to `setup-token.txt` in the `setup-token` folder and upload it. A value that was used before does not work.
+2. On the sign-in screen, open "Recovery (all devices lost)" and enter the token, an existing username and a device name.
+
+Recovery stops every registered device and clears unused codes, edit locks and the MCP API key. Create a new key under "MCP API Key".
+
+#### Updating from 2.8.x {#upgrade-to-devices}
+
+[SQLite Edition only]{.type-badge .badge-sqlite}
+
+Updating to v2.9.0 deletes passwords and security answers, so you can no longer sign in with a password. Usernames and display names are kept. The MCP API key does not change.
+
+- If you update with "System Update" in the admin screen, the browser you were signed in with before the update becomes the first device automatically, provided it opens the admin screen within 2 hours of the update and no device exists yet. Opening a public page first does not matter.
+- If you overwrite the files over FTP, use a different browser, or come back after 2 hours, write a token as described above and register a device with your existing username.
+- The automatically registered browser shows a notice at the top of the screen, "Passwords are gone. …", until you press "Dismiss".
+- A browser or user that was not registered sees the reason on the sign-in screen: "This site no longer uses passwords (device authentication). You cannot sign in with a password; …".
+- Other users ask a registered device to issue an add code.
+- Preview URLs of pending-approval pages stop working after the update because the signing secret changes.
+
+### Signing In to Multiple Installations {#multi-site-login}
+
+Starting with v2.8.6, login state, logout and CSRF tokens are separate for each installation, even on the same domain or when flat and SQLite editions are mixed. Logging into one site does not log you into another. Moving the installation directory on the server also requires a new login. Different URLs pointing to the same real directory are treated as the same installation.
+
+[SQLite Edition]{.type-badge .badge-sqlite}: the name of the device-key cookie also differs per installation, and the key's hash exists only in that installation's database. A key from another site does not work.
+
+#### Saved Passwords [flat Edition only]{.type-badge .badge-flat}
+
+Browser-saved passwords and server login state are separate. Editing a saved password in your browser does not change the server password. Submitting a password change in the admin panel changes that site's password. The current password is verified and the new password needs at least four characters.
+
+Setup, login and password-change forms show a read-only “Site ID for password saving”, using the admin URL path (for example, `/shiro/mikanBox/admin.php`). This is a hint to help password managers distinguish saved entries, not an additional credential. Check that this ID matches the intended site when saving or updating a password. Review saved entries if you move the site URL.
+
+Forms identify username, current-password and new-password fields, but the browser or password manager decides how entries are stored or overwritten. The app cannot guarantee separate saved entries or automatically migrate existing ones.
 
 This separation prevents accidental shared authentication. It does not provide complete isolation from other apps or scripts on the same origin.
 
@@ -193,7 +237,7 @@ This separation prevents accidental shared authentication. It does not provide c
 
 If you deliver a site to someone else — including your own custom design and content — the steps for letting them set up a new admin account on their own environment differ by edition.
 
-- [SQLite Edition]{.type-badge .badge-sqlite}: Create an empty file named `mikanData/reset_password.txt` on the server. On the next visit, all registered users are deleted and the initial setup screen appears. This file is deleted automatically afterward, so there's no risk of accidentally leaving it in place.
+- [SQLite Edition]{.type-badge .badge-sqlite}: Create an empty file named `mikanData/reset-accounts.txt` on the server. On the next visit, all registered users, devices and unused codes are deleted and the initial setup screen appears. This file is deleted automatically afterward, so there's no risk of accidentally leaving it in place. The recipient then follows [Registering the First Device](#device-setup) with a token of their own.
 - [flat Edition]{.type-badge .badge-flat}: Clear the value of `"password_hash"` inside the `mikanData/settings.json` file.
 
 #### Security
@@ -212,7 +256,7 @@ Manages the pages that make up the actual substance of the site. You decide the 
 
 ### [save]{.material-symbols-outlined .mat-icon}Site
 
-Groups together the settings and management tools for running the site as a whole: the admin memo, Static Site Generation (SSG), language, the MCP API key, CSV import, data management/backup, common site settings, user management (editors), and changing your password.
+Groups together the settings and management tools for running the site as a whole: the admin memo, Static Site Generation (SSG), language, the MCP API key, CSV import, data management/backup, common site settings, devices and users (SQLite Edition), and changing your password (flat Edition).
 
 ### [widgets]{.material-symbols-outlined .mat-icon}Design
 
@@ -554,16 +598,19 @@ Treat the API key like a password. Never store it in a public repository or shar
 
 Starting with mikanBox 2.5.1, the MCP connection instructions tell AI to call `get_ai_context` on first connection. This tool returns every [AI Instructions]{.type-badge .badge-ai} component—such as `DESIGN.md`, `BRAND.md`, and `CONTENTS.md`—in a single response. AI treats the returned content as site-specific project instructions for content, design, and code changes. Updating an instruction component updates what AI receives the next time it loads the context.
 
-#### If no API key has been issued yet
+#### Connection URL
 
-- [[auto_awesome]{.material-symbols-outlined}Generate API Key]{.m-btn .m-btn-blue} — Issues a new API key.
+The URL of this site's administration MCP. "Copy" puts it on the clipboard so you can paste it straight into the client's settings.
 
-#### API Key (once issued)
+- [[content_copy]{.material-symbols-outlined}Copy]{.m-btn .m-btn-gray} — Copies the connection URL to the clipboard.
 
-The issued API key is shown in a read-only field.
+#### API Key
 
-- [[auto_awesome]{.material-symbols-outlined}Regenerate API Key]{.m-btn .m-btn-gray} — Invalidates the current key and issues a new one. Any existing AI integrations will need to be reconfigured.
+An issued API key is shown in a read-only field. Until one is issued there is no field, only "Generate API Key".
+
 - [[content_copy]{.material-symbols-outlined}Copy]{.m-btn .m-btn-gray} — Copies the API key to the clipboard. Paste the generated key into the settings of whatever tool you're connecting (e.g. `.mcp.json` for Claude Desktop).
+- [[auto_awesome]{.material-symbols-outlined}Generate API Key]{.m-btn .m-btn-blue} — (When none is issued) Issues a new API key.
+- [[auto_awesome]{.material-symbols-outlined}Regenerate API Key]{.m-btn .m-btn-gray} — (When one is issued) Invalidates the current key and issues a new one. Any existing AI integrations will need to be reconfigured.
 
 ### CSV Import {#csv-import}
 
@@ -664,46 +711,37 @@ Sets how many items appear per page before the "Media" list paginates (default: 
 
 Saves the "Site Settings" content.
 
-### User Management (Editors) [SQLite Edition only]{.type-badge .badge-sqlite} {#site-users}
+### Devices and Users [SQLite Edition only]{.type-badge .badge-sqlite} {#site-users}
 
-A feature for managing editor accounts when multiple people work on the same site. Each editor logs in with their own username and password, and edit history records which editor made each change.
+Manages the devices that can open the admin screen and the editor accounts. Each editor can register devices, and edit history records the editor's name. There are no passwords (see [Initial Setup and Sign-in](#first-setup)). Keeping devices safe (screen lock, handling a lost device) is your responsibility. Stop a lost device here from another device.
 
-#### Registered Editors
+#### Users and Devices
 
-A list of usernames and display names. You cannot delete your own currently logged-in account, or the only remaining user.
+Each user is shown with their own devices. You see the username and display name, and each device's name, registration time, last use and expiry. Your own device is marked "(this device)".
 
-- [[delete]{.material-symbols-outlined}Delete]{.m-btn .m-btn-red} — Deletes that user's account. This cannot be undone.
+- [Stop]{.m-btn .m-btn-red} — Stops that device. It is signed out immediately and needs an add code to be used again. Stopping your own device is the same as logging out. There is no log-out button at the top right of the admin screen.
+- A device added with a code cannot stop other devices or delete users for 3 days after it is registered. This prevents someone with a stolen code from locking the owner out. The first device has no such limit.
+- When someone registers a new device, a notice appears the next time you open the admin screen. If you do not recognize it, stop it in this list.
+- Your own user has a "Display name" field. Change the name shown in edit history and similar places, then press "Save". The username cannot be changed.
+- [[delete]{.material-symbols-outlined}Delete]{.m-btn .m-btn-red} — Deletes another user, together with their devices and unused codes. This cannot be undone. You cannot delete the user you are signed in as, or the only user.
 
-#### Add New User
+#### Add a Device
 
-Click to expand and reveal the following fields.
+Issues an add code. Open the admin screen on the new device and enter the code. A code is valid for 3 hours and works once. The code is shown only right after it is issued and cannot be viewed later.
 
-- **User ID** — Alphanumeric characters, underscores, and hyphens only. This becomes the login ID.
-- **Display Name** — The name shown in things like edit history. If left blank, the User ID is used instead.
-- **Password** — At least 4 characters.
+##### Invite Someone
 
-#### [add]{.material-symbols-outlined} Add User{.m-btn .m-btn-blue}
+Issue an invite code and hand it to the person you want to invite. You do not choose a user ID or display name. When the invited person enters the code and a device name on the sign-in screen, a screen appears where they choose a user ID and display name (alphanumeric characters, underscores and hyphens only). Registering creates that user and registers the device. A user ID that someone else uses cannot be chosen; if it is refused, the code is not spent.
 
-Creates a new editor account with the entered details.
+#### Unused Codes
 
-#### Account Settings (User ID, Password, Security Question)
+Codes that have been issued but not used. "Cancel" invalidates one.
 
-Click to expand and edit the details of your own currently logged-in account, all in one place.
+#### Unused Devices Expire After
 
-- **User ID** — Your login ID. Alphanumeric characters, underscores, and hyphens only.
-- **Display Name** — The name shown in things like edit history.
-- **Current Password** — Enter the password you currently use to log in.
-- **New Password** — Enter a new password (at least 4 characters). Leave blank to keep your password unchanged.
-- **Security Question** — Set the question used to verify your identity if you forget your password. A warning is shown if this isn't set.
-- **Security Answer (leave blank to keep it unchanged)** — Set the answer to the question. This is checked against what you enter when resetting your password from the login screen.
+Choose 30, 90 or 180 days. Each use of a device extends its period. A device that has expired must be added again with a code.
 
-#### [save]{.material-symbols-outlined} Update{.m-btn .m-btn-blue}
-
-Saves the account settings.
-
-**If you forget your password:** From the login screen's "Forgot your password?" link, you can reset it yourself — enter your User ID, answer your security question, then set a new password (only available if a security question has been configured).
-
-If you have direct server access, creating an empty file named `mikanData/reset_password.txt` deletes all registered users on the next visit and shows the initial setup screen. This file is deleted automatically afterward, so there's no risk of accidentally leaving it in place.
+**If every device is lost:** register again from a new token, as described in [When Every Device Is Lost (Recovery)](#device-recovery).
 
 ### Change Password [flat Edition only]{.type-badge .badge-flat} {#site-password}
 
@@ -1116,6 +1154,14 @@ A space after the symbol is optional here.
 Markdown: `---`
 HTML: `<hr>`
 
+### Code Blocks
+
+Wrap code in lines that hold only three or more backticks or three or more tildes (`~`). The closing line uses the same character and at least as many of them as the opening line. Inside, nothing is converted: not Markdown, not HTML, not `{{tags}}`. It is shown exactly as written. In HTML it becomes `<pre><code>…</code></pre>`.
+
+- A single word after the opening line (for example `php`, `json`, `html`) adds a class that starts with `language-`, as in `<code class="language-php">`. Use it in CSS or a highlighting library to style each language.
+- To show a three-backtick code block inside code (for example on a page that explains Markdown), make the outer fence four or more backticks, or use tildes. A fence that is longer than the inner one is not closed by it.
+- If you forget the closing line, everything from the opening line to the end is treated as code.
+
 ### Inline Elements Usable Mid-Sentence
 
 Markdown: `**bold**`
@@ -1241,6 +1287,8 @@ The content of another page can be embedded via `{{POST_MD:ID}}`. This is handy 
 
 A Markdown document hosted on another site, like GitHub, can be embedded via `{{EXT_MD:url}}`. Not only can you edit it directly on GitHub, but you can also adopt an "AI-friendly" workflow where having an AI agent rewrite the file on GitHub is all it takes to update the site.
 
+**Not available in the Cloud edition.** `EXT_MD` fetches a document from an external server. The Cloud edition does not fetch it, so nothing is shown where the tag is.
+
 ### Page Components
 
 A component that lays out an entire page should include `{{CONTENT}}` to output the body content. Optionally place `{{HEAD_CSS}}` to specify the CSS insertion point. If omitted, CSS is inserted before `</head>` (at the beginning of the HTML if there is no closing head tag). If repeated, only the first occurrence outputs CSS and the remaining tags are removed. See the `_layout` bundled component for the basic structure.
@@ -1278,16 +1326,16 @@ A component that lays out an entire page should include `{{CONTENT}}` to output 
 |`{{ NAV_CARDS:all:componentID (optional) }}`|Shows every page as cards|
 |`{{ NAV_CARDS:(empty):componentID (optional) }}`|Shows pages with no category as cards|
 |`{{ POST_MD:ID }}`|Embeds the given page as Markdown|
-|`{{ EXT_MD:url }}`|Embeds Markdown from the given URL|
+|`{{ EXT_MD:url }}`|Embeds Markdown from the given URL (not available in Cloud)|
 |`{{DATA:key}}value{{/DATA}}`|Defines data (visible). Key (case-insensitive) may only use alphanumeric characters and underscores. Value can be in any language.|
 |`{{DATA:key:GHOST}}value{{/DATA}}`|Defines data (hidden). Key may only use alphanumeric characters and "_".|
 |`{{DATAROW:rowID}} {{DATA:key}}value{{/DATA}} {{/DATAROW}}`|Defines table-format data. key and rowID may only use alphanumeric characters and "_".|
 |`{{ POST_MD::key }}`|Displays data from within the current page|
 |`{{ POST_MD::pageID:key }}`|Displays data from the given page ID|
-|`{{ EXT_MD:url:key }}`|Displays data from an external page|
+|`{{ EXT_MD:url:key }}`|Displays data from an external page (not available in Cloud)|
 |`{{ POST_MD::#rowID:key }}`|Displays table-format data from within the current page|
 |`{{ POST_MD:pageID#rowID:key }}`|Displays table-format data from the given page ID|
-|`{{ EXT_MD:url#rowID:key }}`|Displays table-format data from an external page|
+|`{{ EXT_MD:url#rowID:key }}`|Displays table-format data from an external page (not available in Cloud)|
 |`{{ CONTENT }}`|**Page wrapper only**: inserts the body content|
 |`{{ HEAD_CSS }}`|Optional CSS insertion point: aggregates CSS and outputs it at the first occurrence, removing the remaining tags. If omitted, inserts before `</head>` (at the beginning of the HTML if there is no closing head tag). By default, this is already placed inside the `_global_head` component.|
 

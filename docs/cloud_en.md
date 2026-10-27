@@ -102,7 +102,7 @@ JPEG, PNG and WebP images can be resized and converted to WebP in the browser. U
 There are no passwords. Only registered devices (browsers) can open the admin screen. Each device keeps a random token in a cookie; D1 stores only its hash.
 
 - **First device**: on the sign-in screen, enter `SETUP_TOKEN`, a username, a display name and a name for the device. A used `SETUP_TOKEN` never works again.
-- **Adding a device**: on a registered device, open Site → Devices and users → Add a device, issue a code, and enter it on the new device's sign-in screen. Codes are valid for 3 hours and work once. To invite someone, choose their username and display name under Invite someone. After five wrong codes, entry is blocked for 15 minutes.
+- **Adding a device**: on a registered device, open Site → Devices and users → Add a device, issue a code, and enter it on the new device's sign-in screen. That device is registered as the same user as whoever issued the code. Codes are valid for 3 hours and work once. To invite someone, issue an invite code under Invite someone and hand it over; the invited person chooses their own user ID and display name on the sign-in screen. After five wrong codes, entry is blocked for 15 minutes.
 - **Expiry**: devices expire 30 (default), 90 or 180 days after last use. Each use extends it.
 - **Stopping a device**: stop it from the list under Devices and users. For 3 days after being added with a code, a device cannot stop other devices, delete or change other users, restore users from a backup, or restore D1 to a point in time. Devices registered with `SETUP_TOKEN` have no such limit. Deleting a user also stops that user's devices and unused codes. When a new device is registered, other devices are told the next time they open the admin screen.
 - **Recovery**: if every device is lost, set a new value with `wrangler secret put SETUP_TOKEN` and use Recovery on the sign-in screen with an existing username. Every registered device stops, and unused codes and the MCP key are cleared.
@@ -168,7 +168,7 @@ The standard search form's `/index.php?page=search&q=...` and `/search?q=...` wo
 - Token-based pending previews; authenticated administrators can preview drafts.
 - Component CRUD, part/wrapper/AI-document types, memos, CSS, and JavaScript.
 - Site settings, language, site memo, adding and stopping devices, and inviting and deleting users.
-- Username/display-name changes. Registered devices keep working under the new username.
+- Changing your own display name (the field on your own user in "Devices and users"). The username cannot be changed.
 - Image upload, streaming delivery and deletion without R2, up to 10 MB per file. Existing filenames are not overwritten.
 - ZIP downloads of JSON content and media; these are not a complete D1 backup/restore.
 - Bulk acquisition for pages, components, search, navigation, feeds, data backups and static builds avoids one query per content item. Platform data/CPU limits still apply.
@@ -196,6 +196,8 @@ In D1 storage, Rename updates references in page content, CSS, JavaScript, OGP i
 - Formats: **JPEG, PNG, GIF, WebP, SVG**. Extension and leading format signature must match. D1 audio/video uploads are unsupported.
 - Duplicate names are rejected. v0.4.3 adds optional browser resizing and WebP conversion before storage; the stored original is the processed file.
 - Media ZIP: **20 MB** total, with a file count that fits the request query budget (about 20 small images, or two 10 MB images). Download individually when exceeded.
+
+Static builds add `width`, `height` and loading hints to local images (JPEG, PNG, GIF, WebP; not SVG), as the PHP editions do: the first large image gets `fetchpriority="high"`, later ones `loading="lazy"`. This applies to `![alt](filename)` and `{{IMAGE:}}`; a hand-written `<img>` is left alone. The size is read from the start of the image file and is not stored. One build looks up at most 30 images; any beyond that get no attributes. Live (unbuilt) rendering and the admin preview do not add them.
 
 The D1-only 400 MB image allowance reserves space for content, history and database overhead. It does not apply to R2. Platform storage limits may be reached first.
 
@@ -235,6 +237,10 @@ Write only inside the Cloud directory during this work. Do not run `../shared/sy
 
 The initial hashes of both PHP editions, shared files, and root configuration/manuals are recorded in `.baseline/protected-files.json`. `npm run check` verifies that they remain unchanged. On another checkout, record a baseline before development; never overwrite an existing baseline to hide changes.
 
+## Tags that are not available
+
+- `{{EXT_MD:…}}` (fetching external Markdown or data) is not available in the Cloud edition. Nothing is shown where the tag is; only the comment `<!-- EXT_MD is not available in the Cloud edition -->` remains in the HTML. It is not a feature for carrying data over. The editor's tag list and the bundled sample page say so.
+
 ## Remaining compatibility work
 
 Matching the SQLite edition remains the goal. Full visual and interaction parity is not yet guaranteed.
@@ -242,7 +248,7 @@ Matching the SQLite edition remains the goal. Full visual and interaction parity
 - Exact screen layout/spacing, editor opening/closing and AJAX behavior.
 - PHP self-updates/rollback, SQLite file import/export and migration tools. Cloud uses the JSON restore described above.
 - Additional static-export settings and reproducing dynamic search in exported files.
-- Complete Markdown/CSS/tag compatibility. EXT_MD remains disabled pending a safe external-fetch policy.
+- Complete Markdown/CSS/tag compatibility.
 - Exact MCP response/error/timestamp parity and additional operational tools.
 - Explicit migration of existing content and production performance/capacity validation.
 

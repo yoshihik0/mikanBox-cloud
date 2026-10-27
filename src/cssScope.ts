@@ -32,7 +32,8 @@ export function scopeCss(css:string,prefix:string):string {
   css=css.replace(/\{\{[^}]+\}\}/g,tag=>`___MIKANTAG${tags.push(tag)-1}___`);
   let result='',position=0;
   while(position<css.length) {
-    const opening=delimiter(css,position),prelude=css.slice(position,opening).trim();
+    // A comment in front of a selector ("/* grain */ body::before") is not part of the selector.
+    const opening=delimiter(css,position),prelude=css.slice(position,opening).replace(/\/\*[\s\S]*?\*\//g,'').trim();
     if(opening===css.length){result+=css.slice(position);break;}
     if(css[opening]===';'){result+=css.slice(position,opening+1);position=opening+1;continue;}
     const end=delimiter(css,opening+1,true);
@@ -44,6 +45,9 @@ export function scopeCss(css:string,prefix:string):string {
       result+=`${prelude}{${body}}`;
     } else {
       const scoped=splitSelectors(prelude).map(selector=>{
+        // :global(.x) around a whole selector leaves the scope (same as the PHP edition); partial use is not supported
+        const global=selector.match(/^:global\(([\s\S]+)\)$/);
+        if(global)return global[1].trim();
         if(selector===prefix||selector.startsWith(prefix+' '))return selector;
         if(/^(:root|html|body)(?=[\s.#[>:]|$)/.test(selector))return selector.replace(/^(:root|html|body)/,prefix);
         return `${prefix} ${selector}`;

@@ -43,26 +43,42 @@ export async function deviceSession(request:Request,env:Env){
 // ---- One-time codes for adding a device or inviting a user ----
 const ALPHABET='0123456789ABCDEFGHJKMNPQRSTVWXYZ';
 export const normalizeCode=(code:string)=>code.toUpperCase().replace(/[^0-9A-Z]/g,'').replace(/O/g,'0').replace(/[IL]/g,'1');
-export async function issueCode(env:Env,creator:Device,invite?:{username:string;display_name:string}){
+/** A plain code adds a device for the issuer's own user. An invite code names nobody: the invited person chooses their own user ID and display name when they use it. */
+export async function issueCode(env:Env,creator:Device,invite=false){
  const bytes=crypto.getRandomValues(new Uint8Array(10));let code='';for(const b of bytes)code+=ALPHABET[b&31];
- if(invite&&(!/^[A-Za-z0-9_-]{1,80}$/.test(invite.username)||!invite.display_name.trim()||invite.display_name.length>120))throw new Error('ユーザー名・表示名を確認してください。 / Check username and display name.');
- if(invite&&await env.DB.prepare('SELECT 1 FROM users WHERE username=?').bind(invite.username).first())throw new Error('そのユーザー名は使われています。 / That username is taken.');
  const now=Date.now();
  await env.DB.prepare('INSERT INTO device_codes(code_hash,username,display_name,created_by,created_at,expires_at) VALUES(?,?,?,?,?,?)')
-  .bind(await sha256(code),invite?.username||creator.username,invite?.display_name.trim()||'',creator.id,now,now+CODE_HOURS*3600_000).run();
+  .bind(await sha256(code),invite?'':creator.username,'',creator.id,now,now+CODE_HOURS*3600_000).run();
  return code.slice(0,5)+'-'+code.slice(5);
 }
-/** Use a code once. An invite code creates its user; a plain code adds a device for the issuer's user. */
-export async function claimCode(env:Env,code:string,name:string,request:Request){
- const hash=await sha256(normalizeCode(code)),now=Date.now();
- const row=await env.DB.prepare('SELECT * FROM device_codes WHERE code_hash=? AND used_at IS NULL AND expires_at>?').bind(hash,now).first<DeviceCode>();
- if(!row)return null;
+async function findCode(env:Env,code:string){
+ const hash=await sha256(normalizeCode(code));
+ const row=await env.DB.prepare('SELECT * FROM device_codes WHERE code_hash=? AND used_at IS NULL AND expires_at>?').bind(hash,Date.now()).first<DeviceCode>();
+ return row?{hash,row}:null;
+}
+/** 'add' (a device for an existing user), 'invite' (a new user chooses an ID and name), or null for a bad code. */
+export async function codeKind(env:Env,code:string):Promise<'add'|'invite'|null>{
+ const found=await findCode(env,code);
+ return found?(found.row.username===''?'invite':'add'):null;
+}
+/** Use a code once. An invite code needs `newUser`; mistakes in it throw before the code is spent. A 2.9.0 invite (it already names its user) still creates that user. */
+export async function claimCode(env:Env,code:string,name:string,request:Request,newUser?:{username:string;display_name:string}){
+ const found=await findCode(env,code);
+ if(!found)return null;
+ const {hash,row}=found,now=Date.now(),invited=row.username==='';
+ let username=row.username,displayName=row.display_name;
+ if(invited){
+  username=(newUser?.username||'').trim();displayName=(newUser?.display_name||'').trim();
+  if(!/^[A-Za-z0-9_-]{1,80}$/.test(username))throw new Error('ユーザーIDは半角英数字・アンダースコア・ハイフンのみです。 / The user ID may only contain letters, digits, _ and -.');
+  if(!displayName||displayName.length>120)throw new Error('表示名を入力してください。 / Enter a display name.');
+  if(await env.DB.prepare('SELECT 1 FROM users WHERE username=?').bind(username).first())throw new Error('このユーザーIDはすでに登録されています。 / This user ID is already registered.');
+ }
  const used=await env.DB.prepare('UPDATE device_codes SET used_at=? WHERE code_hash=? AND used_at IS NULL').bind(now,hash).run();
  if(!used.meta.changes)return null;
  // An invite must create its own user; never attach a device to an account that appeared meanwhile.
- if(row.display_name&&!(await env.DB.prepare("INSERT INTO users(username,display_name,password_hash,auth_version) VALUES(?,?,'',1) ON CONFLICT(username) DO NOTHING").bind(row.username,row.display_name).run()).meta.changes)return null;
- if(!await env.DB.prepare('SELECT 1 FROM users WHERE username=?').bind(row.username).first())return null;
- return createDevice(env,row.username,name,request);
+ if((invited||displayName)&&!(await env.DB.prepare("INSERT INTO users(username,display_name,password_hash,auth_version) VALUES(?,?,'',1) ON CONFLICT(username) DO NOTHING").bind(username,displayName).run()).meta.changes)return null;
+ if(!await env.DB.prepare('SELECT 1 FROM users WHERE username=?').bind(username).first())return null;
+ return createDevice(env,username,name,request);
 }
 export async function listCodes(env:Env){return (await env.DB.prepare('SELECT * FROM device_codes WHERE used_at IS NULL AND expires_at>? ORDER BY created_at').bind(Date.now()).all<DeviceCode>()).results;}
 export async function cancelCode(env:Env,hash:string){await env.DB.prepare('DELETE FROM device_codes WHERE code_hash=? AND used_at IS NULL').bind(hash).run();}
@@ -92,12 +108,14 @@ export async function setupTokenUsable(env:Env,token:string){
  if(!env.SETUP_TOKEN||token.length!==env.SETUP_TOKEN.length)return false;
  let diff=0;for(let i=0;i<token.length;i++)diff|=token.charCodeAt(i)^env.SETUP_TOKEN.charCodeAt(i);
  if(diff)return false;
- const used=await env.DB.prepare("SELECT value FROM settings WHERE key='setup_token_used'").first<{value:string}>();
- return used?.value!==await sha256(env.SETUP_TOKEN);
+ const hash=await sha256(env.SETUP_TOKEN);
+ // Every value that ever worked stays dead, not only the latest one (earlier versions kept a single hash).
+ const used=await env.DB.prepare("SELECT 1 AS used FROM settings WHERE key=? OR (key='setup_token_used' AND value=?)").bind('setup_token_used:'+hash,hash).first();
+ return !used;
 }
 /** Recovery starts over: every device, unused code and the MCP key are cleared. */
 export async function consumeSetupToken(env:Env,recovery:boolean){
- const statements=[env.DB.prepare("INSERT INTO settings(key,value) VALUES('setup_token_used',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").bind(await sha256(env.SETUP_TOKEN))];
+ const statements=[env.DB.prepare("INSERT OR IGNORE INTO settings(key,value) VALUES(?,?)").bind('setup_token_used:'+await sha256(env.SETUP_TOKEN),String(Date.now()))];
  if(recovery)statements.push(env.DB.prepare('UPDATE device_sessions SET revoked_at=? WHERE revoked_at IS NULL').bind(Date.now()),env.DB.prepare('DELETE FROM device_codes'),env.DB.prepare('DELETE FROM edit_locks'));
  await env.DB.batch(statements);
  if(recovery){const settings=await loadSettings(env);if(settings.api_key){settings.api_key='';await saveSettings(env,settings);}}
