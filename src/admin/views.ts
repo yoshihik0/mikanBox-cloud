@@ -45,8 +45,8 @@ function statusOptions(t: (key:string)=>string, selected: string) {
   const current = ['public','public_dynamic'].includes(selected) ? 'public_static' : selected;
   return statuses.map(status=>`<option value="${status}" ${current===status?'selected':''}>${statusLabel(t,status)}</option>`).join('');
 }
-export function renderLoginPage(opts: {lang:string; initial:boolean; error:string; t:(key:string,...args:(string|number)[])=>string; csrf:string; inviteStep?:{code:string;device_name:string;username?:string;display_name?:string}}):string {
-  const {lang,initial,error,t,csrf,inviteStep}=opts, ja=lang==='ja';
+export function renderLoginPage(opts: {lang:string; initial:boolean; noDevices?:boolean; error:string; t:(key:string,...args:(string|number)[])=>string; csrf:string; inviteStep?:{code:string;device_name:string;username?:string;display_name?:string}}):string {
+  const {lang,initial,noDevices,error,t,csrf,inviteStep}=opts, ja=lang==='ja';
   const hidden=(action:string)=>`<input type="hidden" name="login_action" value="${action}"><input type="hidden" name="csrf_token" value="${h(csrf)}">`;
   const deviceField=`<div class="form-group"><label>${ja?'この端末の名前（例: 仕事用PC）':'Name for this device (e.g. Work laptop)'}</label><input type="text" name="device_name" maxlength="60" required></div>`;
   const setupFields=`<div class="form-group"><label>${ja?'初期設定トークン（SETUP_TOKEN）':'Setup token (SETUP_TOKEN)'}</label><input type="password" name="setup_token" autocomplete="off" required></div><div class="form-group"><label>${t('label_username')}</label><input type="text" name="username" autocomplete="off" required></div>`;
@@ -55,6 +55,8 @@ export function renderLoginPage(opts: {lang:string; initial:boolean; error:strin
   ${error?`<div class="error" role="alert">${h(error)}</div>`:''}
   ${inviteStep&&!initial?`<p><strong>${t('device_invite_intro')}</strong></p>
   <form method="post">${hidden('claim')}<input type="hidden" name="code" value="${h(inviteStep.code)}"><input type="hidden" name="device_name" value="${h(inviteStep.device_name)}"><div class="form-group"><label>${t('label_username')}</label><input type="text" name="username" autocomplete="off" required maxlength="80" pattern="[A-Za-z0-9_\\-]{1,80}" value="${h(inviteStep.username||'')}"></div><div class="form-group"><label>${t('label_display_name')}</label><input type="text" name="display_name" required maxlength="120" value="${h(inviteStep.display_name||'')}"></div><button type="submit">${ja?'この端末を登録':'Register this device'}</button></form>`
+  :noDevices?`<p>${ja?'このサイトには、登録された端末がまだありません。初期設定トークン（SETUP_TOKEN）と既存のユーザー名で、この端末を登録します。':'No device is registered on this site yet. Register this device with the setup token (SETUP_TOKEN) and an existing username.'}</p>
+  <form method="post">${hidden('setup')}${setupFields}${deviceField}<button type="submit">${ja?'この端末を登録':'Register this device'}</button></form>`
   :initial?`<p><strong>${t('hint_initial_setup')}</strong><br>${ja?'この端末を、最初の管理端末として登録します。パスワードはありません。登録した端末のブラウザが鍵になります。':'Register this device as the first admin device. There is no password; this browser becomes the key.'}</p>
   <form method="post">${hidden('setup')}${setupFields}<div class="form-group"><label>${t('label_display_name')}</label><input type="text" name="display_name" required></div>${deviceField}<button type="submit">${ja?'この端末を登録':'Register this device'}</button></form>`
   :`<p>${ja?'この端末は登録されていません。登録済みの端末の管理画面（サイト →「端末とユーザー」）で追加用のコードを出し、入力してください。':'This device is not registered. Issue a code on a registered device (Site → Devices and users) and enter it here.'}</p>

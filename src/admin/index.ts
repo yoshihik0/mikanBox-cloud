@@ -50,7 +50,9 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
   if (request.method==='POST' && (!form || (request.headers.get('Origin') && request.headers.get('Origin')!==url.origin))) return html(t('err_csrf'),403);
   // Before sign-in there is no session, so these forms carry a double-submit token.
   const loginCsrf=request.headers.get('Cookie')?.match(/(?:^|;\s*)login_csrf=([A-Za-z0-9-]+)/)?.[1]||crypto.randomUUID();
-  const loginResponse=(error='',status=200,inviteStep?:{code:string;device_name:string;username?:string;display_name?:string})=>{const response=html(renderLoginPage({lang,initial,error,t,csrf:loginCsrf,inviteStep}),status);response.headers.append('Set-Cookie',`login_csrf=${loginCsrf}; Secure; SameSite=Strict; HttpOnly; Path=/; Max-Age=900`);return response;};
+  // Users exist but no device does (an upgraded site): only the setup token can register one.
+  const noDevices=!initial&&!auth&&(await listDevices(env)).length===0;
+  const loginResponse=(error='',status=200,inviteStep?:{code:string;device_name:string;username?:string;display_name?:string})=>{const response=html(renderLoginPage({lang,initial,noDevices,error,t,csrf:loginCsrf,inviteStep}),status);response.headers.append('Set-Cookie',`login_csrf=${loginCsrf}; Secure; SameSite=Strict; HttpOnly; Path=/; Max-Age=900`);return response;};
   if (form?.has('login_action')) {
     if(!verifyCsrf(val(form,'csrf_token'),loginCsrf))return html(t('err_csrf'),403);
     let error='';
