@@ -1,6 +1,6 @@
 <style>.manual-version{font-size:.5em;font-weight:400;white-space:nowrap}</style>
 
-# 🍊mikanBox Cloudflare Development Manual <small class="manual-version">v0.6.0</small>
+# 🍊mikanBox Cloudflare Development Manual <small class="manual-version">v0.6.1</small>
 
 This edition is under development. It targets the SQLite edition's UI and features, but full compatibility has not been reached. Changes to existing editions are limited to the explicitly requested common settings correction; existing data and the official server are unchanged.
 
@@ -93,7 +93,7 @@ References: [D1 limits](https://developers.cloudflare.com/d1/platform/limits/), 
 
 ## v0.4.3 admin operations
 
-Rebuild generates public HTML and updates static delivery together, removing unpublished or deleted pages. Previously published files remain until rebuilding. Images are delivered through the Worker and changes take effect directly. Keep the admin screen open while the browser performs these steps. Configure a dedicated token with Workers edit permission in Site settings. The installation target is fixed. The token is encrypted using a key derived from JWT_SECRET, never displayed again, and excluded from portable backups. Expiring Wrangler login credentials are never copied into the Worker. The existing MCP build_ssg generates HTML only; delivery still requires the admin screen or the publication command.
+Rebuild generates public HTML and updates static delivery together, removing unpublished or deleted pages. Previously published files remain until rebuilding. Images are delivered through the Worker and changes take effect directly. Keep the admin screen open while the browser performs these steps. Configure a dedicated token with Workers edit permission in Site settings. The installation target is fixed. The token is encrypted using a key derived from JWT_SECRET, never displayed again, and excluded from portable backups. Create it once: you only need a new one if the token is deleted or revoked in Cloudflare, its permissions change, JWT_SECRET changes, or the database is restored to a different state by a backup or Time Travel. While no token is set, a notice under “Build static site” in the page list says so. Expiring Wrangler login credentials are never copied into the Worker. The existing MCP build_ssg generates HTML only; delivery still requires the admin screen or the publication command.
 
 JPEG, PNG and WebP images can be resized and converted to WebP in the browser. Uploads default to a 2,000px maximum side. Existing conversion replaces the image and updates references with page history. GIF and SVG uploads preserve original bytes. Browser processing accepts dimensions up to 16,000px and 40 million pixels.
 

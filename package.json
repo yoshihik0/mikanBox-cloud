@@ -1,6 +1,6 @@
 {
   "name": "mikanbox-cloud",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "private": true,
   "scripts": {
     "precheck": "node scripts/sync-cloud-help.mjs",
