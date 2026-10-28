@@ -32,14 +32,19 @@ publishing a partial snapshot.
   subdomain and resources through available read-only tools instead of asking
   the user for information the AI can find. If a subdomain must be registered,
   ask the user to choose one and explain it must be available and is shared by
-  the account's Workers. Never change an existing subdomain without consent.
+  the account's Workers. Explain that the subdomain is public and should not
+  contain an email address, email username, login ID, or other private personal
+  information. Never derive or suggest names from account or login details.
+  Never change an existing subdomain without consent.
 - Explain `workers.dev` URLs with a concrete example: for account subdomain B,
   management name A and public name C, management is
   `https://A.B.workers.dev/admin` and public is `https://C.B.workers.dev/`.
   A and C are separate Worker names; the account-wide B is shared. A custom
   domain can instead be connected to the public Worker. Ask for a desired short
-  name when needed, offer sensible distinct names, and derive both full URLs
-  yourself. Names in examples are suggestions, not automatic choices.
+  site name when needed; propose distinct names based only on the user-provided
+  site name or neutral examples, and derive both full URLs yourself. Never use
+  email usernames, login IDs, account names, or private personal details for
+  suggestions. Names in examples are suggestions, not automatic choices.
 - Before creating resources or deploying, show the two derived addresses and
   get the user's agreement unless they have already explicitly selected them.
   If they are undecided, wait for their choice; use any prior choices without
