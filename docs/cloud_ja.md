@@ -282,6 +282,10 @@ SQLite版と同じ見た目・操作の目標は継続します。現段階で�
 
 管理用と公開用の2つのWorkerを使います。**インストール前に管理画面のURL（`/admin` を含む）と公開サイトのURLを決めてください。** AIに依頼した場合も、両方の完全なURLとWorker名を利用者に確認してから作成します。設定例やリポジトリ名を無断で採用しません。`workers.dev` の場合はWorker名とアカウント共通のサブドメインでURLが決まります。新規登録や変更を行う前にサブドメインを確認します。変更は他のWorkerにも影響します。既存WorkerやD1を上書きしないよう、作成前にCloudflareアカウントと名前を確認します。独自ドメインを使う場合は、Cloudflareで公開用Workerに接続したHTTPSのオリジンを `PUBLIC_SITE_URL` に指定します。
 
+URLは、Cloudflareの `workers.dev` を利用するか、独自ドメインを使うか選べます。独自ドメインは適切な有効なCloudflareゾーンを準備し、対象Workerに接続する必要があります。まず `workers.dev` の仮URLでインストールし、あとから公開URLを独自ドメインに変えることもできます。AIが導入する場合は、この選択肢と変更時の作業を説明してから希望を確認します。
+
+公開URLをあとから変更する場合は、新しいドメインを公開用Workerに接続し、管理側の `PUBLIC_SITE_URL` を更新して管理用Workerをデプロイし直します。その後、管理画面で再構築し、新URL・ページ・画像・サイトマップ・RSSを確認します。外部リンクや検索結果の移行も必要になる場合があります。管理URLは別に選べます。管理URLの変更時は端末の再認証が必要になる場合があります。既存サイトに公開用の初期ページを再デプロイしないでください。
+
 1. `npm ci`、`npx wrangler login` を実行し、`npx wrangler whoami` で対象アカウントを確認します。`npx wrangler d1 create mikanbox-cloud` で新しいD1を作成し、表示されたIDを控えます。
 2. `wrangler.production.example.json` を `wrangler.production.json` に、`wrangler.public.example.json` を `wrangler.public.json` にコピーします。両ファイルの `account_id` に同じアカウントIDを設定します。管理側の `name` と `vars.CLOUDFLARE_WORKER_NAME` を同じ管理用の名前に、公開側の `name` と管理側の `vars.CLOUDFLARE_PUBLIC_WORKER_NAME` を同じ別の公開用の名前にします。管理側の `vars.CLOUDFLARE_ACCOUNT_ID` にアカウントIDを、`vars.CLOUDFLARE_D1_ID` と `d1_databases[0].database_id` に作成したD1のIDを設定します。`PUBLIC_SITE_URL` には実際の公開用HTTPS URLをパスなしで設定します（例 `https://mikanbox-public.<サブドメイン>.workers.dev`）。各設定ファイルはGitに含めません。
 3. 初回だけ `npx wrangler deploy --config wrangler.public.json` を実行し、公開用Workerに初期ページを配置します。**既存の公開サイトにこのコマンドを再実行するとサイトが初期ページに置き換わります。** 初期作成前に対象名を確認してください。

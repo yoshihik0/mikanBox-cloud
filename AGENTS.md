@@ -23,6 +23,15 @@ publishing a partial snapshot.
 
 ## Installing for a user
 
+- Before asking for URLs, explain both choices: use separate `workers.dev`
+  addresses now, including temporarily, or use a custom domain. A custom domain
+  requires a suitable active Cloudflare zone and must be connected to its Worker.
+  The public address can be changed later; explain that this entails updating
+  `PUBLIC_SITE_URL`, deploying the management configuration, rebuilding the
+  public site, and checking links, feeds, and the new address. Public links and
+  search results may need migration. The management address can be chosen
+  separately; changing it may require device authentication again. Do not suggest
+  rerunning the public placeholder deployment on an existing site.
 - Before creating or deploying either Worker, ask the user which management URL
   (including `/admin`) and public site URL they want. If they have already chosen
   both, use those choices; otherwise wait for their answer. Never silently adopt
