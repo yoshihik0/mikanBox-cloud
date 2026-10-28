@@ -10,7 +10,7 @@ import type { Revision } from '../revisions';
 import {CLOUD_VERSION} from '../version';
 import {trackingConfigured} from '../tracking';
 import type {PublicationStatus,PublicState} from '../publish-status';
-import type {CloudRelease} from '../cloud-release';
+import {cloudUpdateUrl,type CloudRelease} from '../cloud-release';
 
 // PHP版と同じMaterial Iconsマッピング
 function getIcon(name: string): string {
@@ -1151,6 +1151,7 @@ export function renderSiteView(opts: {
   trackingLegacy?: {id:string;html:string|null;exists:boolean};
   users?: User[]; username?:string;
   release?:CloudRelease;
+  updateRepository?:string;
   lang?:string;
 }): string {
   const { t, settings, csrf, helpFile } = opts;
@@ -1184,9 +1185,18 @@ export function renderSiteView(opts: {
                 <span>${t('version_current')}: ${h(CLOUD_VERSION)} (Cloud)</span>
                 <span>${t('version_latest')}: ${opts.release?.version?'v'+h(opts.release.version):opts.release?.status==='error'?t('version_check_failed'):(lang==='en'?'Cloud release information not published':'Cloud版のリリース情報は未公開')}</span>
                 <a id="cloud-check-updates" href="/admin?view=site&amp;refresh_updates=1#cloud-version-row">${t('btn_check_updates')}</a>
+                ${opts.release?.outdated?`<span style="font-weight:600">${lang==='en'?'A new version is available':'新しいバージョンがあります'}</span>`:''}
+                ${cloudUpdateUrl(opts.updateRepository)?`<a class="btn btn-small btn-blue" href="${h(cloudUpdateUrl(opts.updateRepository))}" target="_blank" rel="noopener noreferrer">${lang==='en'?'Update on GitHub':'GitHubでアップデート'}</a>`:''}
                 ${opts.release?.url?`<a href="${h(opts.release.url)}" target="_blank" rel="noopener noreferrer">${lang==='en'?'Cloud release':'Cloud版リリース'}</a>`:''}
             </div>
-            <small class="sub-text sub-text-block">${lang==='en'?'AI can help you update mikanBox from GitHub, including deploying the Worker and applying any required database migrations.':'AIを使ってGitHubから簡単にアップデートできます。Workerの公開と必要なデータベース更新もAIに依頼できます。'}</small>
+            <small class="sub-text sub-text-block">${lang==='en'?'Open GitHub and press Run workflow to update. Updates run only when you choose. After it succeeds, reload this screen to check the installed version.':'GitHubを開き「Run workflow」を押すと更新します。自動では更新しません。成功後、この画面を再読み込みして現在のバージョンを確認してください。'}</small>
+            <details><summary>${lang==='en'?'Set up manual updates':'手動アップデートの設定'}</summary>
+              <p><a href="${h(helpFile)}#manual-update" target="_blank" rel="noopener noreferrer">${lang==='en'?'First-time GitHub setup instructions':'GitHubでの初回設定手順'}</a></p>
+              <form method="post">${csrfField(csrf)}<input type="hidden" name="save_action" value="save_cloud_update_repository">
+                <label>${lang==='en'?'Your GitHub repository (owner/repository)':'自分のGitHubリポジトリ（所有者/リポジトリ名）'} <input name="cloud_update_repository" value="${h(opts.updateRepository||'')}" placeholder="owner/repository" maxlength="200"></label>
+                <button type="submit" class="btn btn-gray btn-small">${t('btn_save')}</button>
+              </form>
+            </details>
         </div>
 
     <div id="language">

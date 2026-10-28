@@ -2,7 +2,7 @@ import {mediaStorageMode} from '../media-mode';
 import {beginMediaMigration,copyMediaMigrationImage,finishMediaMigration,cancelMediaMigration,migrationStatus} from '../media-migration';
 import {cleanMediaObjects} from '../r2-media';
 import {importContentPackage,importWordPressContent} from '../content-import';
-import {latestCloudRelease} from '../cloud-release';
+import {latestCloudRelease,cloudUpdateUrl} from '../cloud-release';
 import {exportBackupManifest,exportBackupMediaPart,validateExportSnapshot,createBackupRestore,stageBackupMediaPart,commitBackupRestore,abortBackupRestore} from '../backup-restore';
 import {cloudConfigured,saveCloudToken,cloudTarget,beginD1Export,pollD1Export,prepareD1Download,openD1Download,d1Restore,cloudToken} from '../cloudflare-api';
 import {beginPublication,hashPublicationFiles,preparePublication,uploadPublicationFile,finishPublication,cancelPublication} from '../publication-service';
@@ -229,6 +229,12 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
           editId=id;message=t('msg_comp_saved',id);break;
         }
         case 'delete_comp': await assertNotPublished(env,['/component-js/'+val(form,'old_id')+'.js']);if(!await deleteComponent(env,componentId(val(form,'old_id')||val(form,'id')))) throw new Error(t('err_save_failed'));editId=null;break;
+        case 'save_cloud_update_repository': {
+          const repository=val(form,'cloud_update_repository').trim();
+          if(repository&&!cloudUpdateUrl(repository))throw new Error('GitHub repository must be owner/repository.');
+          settings.cloud_update_repository=repository;
+          if(!await saveSettings(env,settings))throw new Error(t('err_save_failed'));break;
+        }
         case 'save_settings': {
           if(form.has('tracking_id')||form.has('tracking_head_code')||form.has('tracking_body_code')){
             const id=val(form,'tracking_id').trim().toUpperCase();
@@ -390,7 +396,7 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
   const d1Bytes=typeof databaseProbe.meta.size_after==='number'?databaseProbe.meta.size_after:null;
   const storageMode=await mediaStorageMode(env),migration=await migrationStatus(env);
   const target=cloudTarget(env),displaySettings={...settings,storage_migrated:url.searchParams.get('storage_migrated')==='1',media_storage:storageMode,r2_configured:!!env.MEDIA,d1_bytes:d1Bytes,media_migration:migration,r2_bytes:(await env.DB.prepare('SELECT COALESCE(SUM(size),0) bytes FROM r2_objects').first<{bytes:number}>())?.bytes||0,cloud_connection_ready:cloudReady,cloud_account_id:target.account,cloud_worker_name:target.worker};
-  const siteHtml=view==='import'?renderImportView({t,csrf,lang,stats:{pages:pages.length,components:components.length,users:users.length,media:files.length,mediaBytes:files.reduce((sum,file)=>sum+file.size,0)},cloudReady}):renderSiteView({t,trackingLegacy:(()=>{const id=String(settings.tracking_component||''),data=components.find(c=>c.id===id)?.data;return{id,html:trackingLegacyHtml(data),exists:!!data&&!data.is_ai_doc&&!data.is_wrapper};})(),settings:displaySettings,csrf,helpFile,users,username:auth.user.username,accountsHtml:renderAccountsSection({lang,csrf,users,me:auth.device,devices:await listDevices(env),codes:await listCodes(env),expiryDays:expiryFrom(settings),issuedCode}),lang,release:await latestCloudRelease(env,url.searchParams.has('refresh_updates'))});
+  const siteHtml=view==='import'?renderImportView({t,csrf,lang,stats:{pages:pages.length,components:components.length,users:users.length,media:files.length,mediaBytes:files.reduce((sum,file)=>sum+file.size,0)},cloudReady}):renderSiteView({t,trackingLegacy:(()=>{const id=String(settings.tracking_component||''),data=components.find(c=>c.id===id)?.data;return{id,html:trackingLegacyHtml(data),exists:!!data&&!data.is_ai_doc&&!data.is_wrapper};})(),settings:displaySettings,csrf,helpFile,users,username:auth.user.username,accountsHtml:renderAccountsSection({lang,csrf,users,me:auth.device,devices:await listDevices(env),codes:await listCodes(env),expiryDays:expiryFrom(settings),issuedCode}),lang,updateRepository:String(settings.cloud_update_repository||env.CLOUD_UPDATE_REPOSITORY||''),release:await latestCloudRelease(env,url.searchParams.has('refresh_updates'))});
   const unseen=await unseenDevices(env,auth.device);
   if(unseen.length)message=(message?message+' ':'')+(lang==='ja'?'新しい端末が登録されました: ':'New device registered: ')+unseen.map(d=>`${d.name} (${d.username})`).join(', ')+(lang==='ja'?'。心当たりがなければ「端末とユーザー」で止めてください。':'. If you do not recognise it, stop it under Devices and users.');
   return html(renderAdminShell({lang,t,view,editId,hasNew,helpFile,message,csrf,settings:{...settings,_public_url:env.CLOUDFLARE_PUBLIC_WORKER_NAME ? env.PUBLIC_SITE_URL||'' : ''},pagesHtml,pageEditorHtml,siteHtml,designHtml,designEditorHtml,mediaHtml,

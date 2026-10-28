@@ -69,6 +69,7 @@ export interface Env {
   PUBLIC_SITE_URL?: string;
   CLOUDFLARE_D1_ID?: string;
   CLOUD_RELEASE_MANIFEST_URL?: string;
+  CLOUD_UPDATE_REPOSITORY?: string;
 }
 
 export interface MediaMeta {

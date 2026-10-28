@@ -1,6 +1,6 @@
 <style>.manual-version{font-size:.5em;font-weight:400;white-space:nowrap}</style>
 
-# 🍊mikanBox Cloudflare Development Manual <small class="manual-version">v0.6.5</small>
+# 🍊mikanBox Cloudflare Development Manual <small class="manual-version">v0.6.6</small>
 
 You can use `{{SITE_URL}}` in Markdown link destinations. Tags inside code examples remain literal. Renaming an image also requests confirmation when it is used only as the site-wide OGP image.
 
@@ -12,7 +12,7 @@ The admin operations below describe v0.4.3. Automatic admin publication and D1 o
 
 The user's explicit 2026-10-04 request authorizes common settings layout, input styling, explanatory text, SSG hint weight and site URL fallback changes in all three editions. The original protected hashes remain intact; reviewed changes are recorded separately. Site environment is advisory metadata, not an access or write restriction. Site URL identifies the site to AI and defaults to the index page location independently of SSG output.
 
-The admin screen checks the Cloud release information published on GitHub and compares it with the installed version. Check again refreshes the result without leaving the page. You can ask AI to update from GitHub, deploy the management Worker, and apply any required D1 migrations. This is separate from building the static site. An HTTPS Cloud release JSON URL can optionally be specified with `CLOUD_RELEASE_MANIFEST_URL`.
+The admin screen checks the Cloud release manifest on GitHub and shows the installed and latest versions and whether an update is available. Check again refreshes release information; reload the page after updating to see the installed version. See the manual update setup below. `CLOUD_RELEASE_MANIFEST_URL` optionally selects an HTTPS Cloud release JSON.
 
 Media omits the image conversion note and maximum-file-size line, and explains using files on a page: a bare filename in Markdown and `media/filename` in HTML. Existing `images/filename` references for images remain supported.
 
@@ -311,3 +311,24 @@ Supports the None wrapper option, missing head metadata completion, a shared tra
 The import/export screen follows SQLite’s status cards, ZIP import, WordPress XML import and execution log, followed by CSV and Cloud-specific complete JSON backup/restore. ZIP/XML add content while retaining existing IDs; images, accounts and site settings are not imported. Limits: 20 MB files, 15 MB ZIP expansion, 1 MB imported content and 300 records. Settings fields and category add-button alignment use the shared PHP CSS.
 
 Changing an unpublished image needs no Cloudflare publication settings. Deleting or renaming a published image publishes a withdrawal, so it does require the connection. Renaming uses the reference confirmation dialog. See the v0.5.0 section for storage limits, migration and complete backup behavior.
+
+<a id="manual-update"></a>
+## Manual updates (v0.6.6 and later)
+
+For routine updates, select Update on GitHub in Site settings, press Run workflow on GitHub, wait for success, then reload the management page. There is no automatic update. You do not need to sync your repository or download files to your computer each time. Each run fetches the latest published release from `yoshihik0/mikanBox-cloud`, including published prereleases while Cloud is in development, but excluding unreleased development changes.
+
+### One-time setup
+
+1. Place the upstream `.github/workflows/update-cloud.yml` in the default branch of a GitHub repository you control. Use your existing installation repository if available. Enable Actions in the Actions tab if disabled on a fork. Do not register your secrets in the upstream repository. Sites on v0.6.5 or earlier can run this workflow for the first update; the management link appears afterward.
+2. In Settings → Secrets and variables → Actions → Repository secrets, add:
+   - `CLOUDFLARE_API_TOKEN`: a Cloudflare token scoped to the target account with Workers Scripts Edit and D1 Edit permissions. If R2 is connected, also grant the permissions Wrangler needs to handle that binding.
+   - `MIKANBOX_UPDATE_CONFIG`: the complete installation `wrangler.production.json` as JSON. Use current management Worker, account, D1, connected R2, routes and custom-domain settings. Do not use a sample or another site's configuration. Do not add JWT_SECRET, SETUP_TOKEN or API tokens to this JSON.
+3. Open GitHub Actions → Update mikanBox Cloud → Run workflow. If the management settings already include manual updates, save your repository as `owner/repository` there. Updates through Actions configure the link automatically.
+
+If Cloudflare Workers Builds or another system already deploys on GitHub pushes, disable that automatic deployment separately to keep updates manual. This workflow has no push or scheduled trigger.
+
+### Preservation and failures
+
+The updater checks the existing management Worker and D1/R2 bindings, verifies the build, applies pending D1 migrations and deploys the management Worker. It does not initialize articles, images or settings; existing secrets including JWT_SECRET for registered devices and existing environment variables are retained. It does not overwrite the public Worker with a placeholder. Mismatched targets or unsupported additional bindings stop the update. Update the saved GitHub JSON when your bindings or routes change.
+
+Save any needed backup before updating. Database migration and code deployment are not a single transaction. If a run fails, inspect the failed step, fix its configuration or permissions and run again. Applied migrations are not repeated. After success, reload the management page and check the version, articles and images. Use the management build when changes need to reach published pages. Live verification of this update workflow remains pending.

@@ -22,3 +22,8 @@ export async function latestCloudRelease(env:Env,refresh=false):Promise<CloudRel
  }catch{value={status:'error'};}
  cached={source,at:Date.now(),value};return value;
 }
+
+export function cloudUpdateUrl(repository:unknown):string {
+ const value=String(repository||'').trim();
+ return /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(value)&&!value.split('/').some(x=>x==='.'||x==='..')?`https://github.com/${value}/actions/workflows/update-cloud.yml`:'';
+}

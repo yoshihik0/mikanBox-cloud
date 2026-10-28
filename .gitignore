@@ -21,3 +21,6 @@ artifacts/
 wrangler.production.json
 wrangler.split.json
 wrangler.public.json
+
+wrangler.update.json
+.build-update/
