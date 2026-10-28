@@ -1,43 +1,19 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "mikanbox",
+  "name": "mikanbox-admin",
+  "account_id": "YOUR_CLOUDFLARE_ACCOUNT_ID",
   "main": "src/index.ts",
   "compatibility_date": "2026-10-03",
   "workers_dev": true,
-  "assets": {
-    "directory": "./.publication",
-    "binding": "ASSETS",
-    "run_worker_first": [
-      "/admin",
-      "/admin/*",
-      "/mikanBox/*",
-      "/mcp",
-      "/public-mcp",
-      "/public-help.html",
-      "/api/*",
-      "/index.php",
-      "/search",
-      "/search/*",
-      "/search.html",
-      "/preview/*",
-      "/preview-media/*"
-    ],
-    "html_handling": "none"
-  },
+  "assets": { "directory": "./public", "binding": "ASSETS", "run_worker_first": true },
   "vars": {
     "SITE_ENVIRONMENT": "staging",
-    "STATIC_DELIVERY": "true",
-    "CLOUDFLARE_WORKER_NAME": "mikanbox"
+    "CLOUDFLARE_ACCOUNT_ID": "YOUR_CLOUDFLARE_ACCOUNT_ID",
+    "CLOUDFLARE_D1_ID": "YOUR_D1_DATABASE_ID",
+    "CLOUDFLARE_WORKER_NAME": "mikanbox-admin",
+    "CLOUDFLARE_PUBLIC_WORKER_NAME": "mikanbox-public",
+    "PUBLIC_SITE_URL": "https://mikanbox-public.YOUR_SUBDOMAIN.workers.dev"
   },
-  "d1_databases": [
-    {
-      "binding": "DB",
-      "database_name": "mikanbox-cloud",
-      "database_id": "YOUR_D1_DATABASE_ID",
-      "migrations_dir": "migrations"
-    }
-  ],
-  "observability": {
-    "enabled": false
-  }
+  "d1_databases": [{ "binding": "DB", "database_name": "mikanbox-cloud", "database_id": "YOUR_D1_DATABASE_ID", "migrations_dir": "migrations" }],
+  "observability": { "enabled": false }
 }

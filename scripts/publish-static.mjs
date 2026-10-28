@@ -5,6 +5,7 @@ import {spawnSync} from 'node:child_process';
 import auth from '../.test-build/src/auth.js';
 import publication from '../.test-build/src/static-publication.js';
 const config=JSON.parse(await readFile('wrangler.production.json','utf8'));
+if(config.vars?.CLOUDFLARE_PUBLIC_WORKER_NAME) throw new Error('This legacy command cannot publish a separated site. Use the build button in the management screen.');
 if(!config.account_id||!config.d1_databases?.[0]?.database_id||config.d1_databases[0].database_id==='YOUR_D1_DATABASE_ID')throw new Error('Configure your Cloudflare account and D1 database in wrangler.production.json.');
 const base=process.env.MIKANBOX_CLOUD_URL?.replace(/\/$/,'');if(!base||!/^https:\/\//.test(base))throw new Error('Set MIKANBOX_CLOUD_URL to the intended HTTPS site URL.');
 const excluded=new Set(process.argv.filter(a=>a.startsWith('--exclude=')).map(a=>a.slice(10)));

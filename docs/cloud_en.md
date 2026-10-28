@@ -53,9 +53,9 @@ Pages are withdrawn by a build. Pages made private and pages deleted are removed
 The Media screen withdraws deleted images automatically. Renamed or converted images keep their old public version until the next build; see "Static image delivery" below.
 
 
-## Separate public and admin Workers (prototype)
+## Separate public and admin Workers
 
-Setting `CLOUDFLARE_PUBLIC_WORKER_NAME` (the public Worker's name) and `PUBLIC_SITE_URL` (the public site's URL) publishes pages to a separate Worker. The public Worker holds static files only and runs no code. The admin screen and MCP stay on the current Worker. Without these settings, everything runs on one Worker as before. The public site URL appears next to the build controls on the page list and links to the public site.
+Setting `CLOUDFLARE_PUBLIC_WORKER_NAME` (the public Worker's name) and `PUBLIC_SITE_URL` (the public site's URL) publishes pages to a separate Worker. The public Worker holds static files only and runs no code. The admin screen and MCP stay on the current Worker. New installations use this split configuration. Verify the destination before migrating an older installation. The public site URL appears next to the build controls on the page list and links to the public site.
 
 - On the admin address, visitors without a session get no pages, images, component scripts or sitemaps, and search engines are told not to index it (`X-Robots-Tag: noindex`).
 - A signed-in device opening `/about` on the admin address is sent to the preview (`/preview/about`). Previews carry a CSP `sandbox`, so page scripts cannot reach the admin screen. Inside a preview, page scripts cannot use cookies or `localStorage`.
@@ -171,7 +171,7 @@ npm test
 npm run build
 ```
 
-To release code or browser assets (`public/mikanbox/`) to the staging site, use `npm run deploy:cloud`. It copies the browser assets into the generated `.publication` folder and then deploys the Worker (`--dry-run` only checks). Publishing pages and images is separate: use the admin screen's build button.
+Use `npm run deploy:cloud` to deploy the management Worker and its browser assets (`--dry-run` only checks). Publish pages and images separately using the build button in the admin screen.
 
 `build` performs a dry run without publishing. If Wrangler cannot write to its default log directory, set `WRANGLER_LOG_PATH=.wrangler/logs` to keep logs inside the Cloud directory.
 
@@ -276,28 +276,18 @@ Matching the SQLite edition remains the goal. Full visual and interaction parity
 - Exact MCP response/error/timestamp parity and additional operational tools.
 - Explicit migration of existing content and production performance/capacity validation.
 
-## Production
+## New installation and publication
 
-Copy `wrangler.production.example.json` to `wrangler.production.json` and set your own Cloudflare account ID, Worker name and D1 database ID. This installation-specific file is excluded from Git. Store `JWT_SECRET` and `SETUP_TOKEN` in `.env.production.secrets` and do not publish or commit them. Use `SETUP_TOKEN` at `/admin` for initial setup.
+Use separate management and public Workers. Choose their names and URLs before publishing. Check the Cloudflare account and resource names before creating anything so that existing Workers and databases are not overwritten. For a custom domain, connect it to the public Worker in Cloudflare and set its HTTPS origin as `PUBLIC_SITE_URL`.
 
-```sh
-npx wrangler d1 migrations apply DB --remote --config wrangler.production.json
-npx wrangler deploy --config wrangler.production.json --secrets-file .env.production.secrets
-```
+1. Run `npm ci` and `npx wrangler login`, then check the account with `npx wrangler whoami`. Create a new database with `npx wrangler d1 create mikanbox-cloud` and note its ID.
+2. Copy `wrangler.production.example.json` to `wrangler.production.json` and `wrangler.public.example.json` to `wrangler.public.json`. Set the same account ID in both `account_id` fields. Set the admin `name` and `vars.CLOUDFLARE_WORKER_NAME` to the management name; set the public `name` and admin `vars.CLOUDFLARE_PUBLIC_WORKER_NAME` to a different public name. Set `vars.CLOUDFLARE_ACCOUNT_ID` to the account ID and both `vars.CLOUDFLARE_D1_ID` and `d1_databases[0].database_id` to the new database ID. Set `PUBLIC_SITE_URL` to the actual public HTTPS origin without a path, for example `https://mikanbox-public.<subdomain>.workers.dev`. These local configuration files are excluded from Git.
+3. Only for initial creation, run `npx wrangler deploy --config wrangler.public.json` to deploy the public placeholder. **Running this again on an existing public site replaces it with the placeholder.** Check the target name first.
+4. Store a long random `JWT_SECRET` and one-use `SETUP_TOKEN` in `.env.production.secrets` as `KEY=value` lines. Never publish or commit the secrets. Run `npx wrangler d1 migrations apply DB --remote --config wrangler.production.json`, then `npm run deploy:cloud`. Register the first device at `/admin` on the management URL.
+5. Create a Cloudflare API token scoped to the intended account with Workers Scripts Edit permission and save it in Site → Cloudflare publication settings. This token is separate from Wrangler login. D1 export and restore additionally require D1 edit permission.
+6. Build the static site from the page list and open the public URL. Verify anonymous access to the management side, public pages and images, private pages, updates and withdrawal. Keep the browser open until the build completes.
 
-For commands that operate on an existing site, explicitly set `MIKANBOX_CLOUD_URL` to the intended HTTPS URL. Verify the account and D1 target before operating. The full new-account installation has not yet been verified against a live environment.
-
-## Direct delivery of public pages and all images
-
-Administration, editing, search, MCP and APIs run through the Worker. Built public_static HTML and published images are served directly by Static Assets. Images not yet published are read by the Worker from D1 or the selected R2 storage.
-
-In v0.3.0, the admin build saved HTML snapshots and `npm run publish:static` in this workspace updated delivery. v0.4.3 adds automatic admin publication through the dedicated token described above. The workspace command remains usable until that token is configured.
-
-Publication downloads files individually. Drafts, pending pages, settings, credentials and AI documents are excluded. HTML and image changes are applied together by switching deployments. Editing is temporarily blocked during publication.
-
-Published pages are withdrawn by site generation, and deleting a published image withdraws it automatically from the Media screen. Renaming or conversion keeps the old public image until the next build. Component JS withdrawal requires a publication. Previously cached browser copies cannot be recalled. See "Delivery and withdrawal" above.
-
-Workers Free supports 20,000 static files and 25 MiB per file, with 2,000 URL aliases. Images now count toward static publication files (up to 10,000 of them). Images, administration, search, dynamic pages and publication consume Worker/D1/R2 allowances. Use the publication command for code updates to retain deployed HTML.
+`npm run deploy:cloud` updates only the management Worker. The admin build updates the public Worker. The legacy `npm run publish:static` command cannot be used for a split site. A complete new-account installation and publication using the dedicated token still need live verification.
 
 ### Media editing and categories
 

@@ -144,3 +144,26 @@ test('editor preview renders submitted changes without saving or publishing them
  const missing=await call(env,'/admin?editor_preview=1',form);assert.doesNotMatch(await missing.text(),/Unsaved text/);
  const newPage=await call(env,'/admin?editor_preview=1',{...form,id:'new-page',old_id:''},auth.cookie);assert.equal(newPage.status,200);assert.equal(await require('../.test-build/src/storage.js').loadPage(env,'new-page'),null);
 });
+
+test('split publication rejects using the management Worker as the public Worker',()=>{
+ const {splitMode}=require('../.test-build/src/site-split.js');
+ assert.throws(()=>splitMode({CLOUDFLARE_WORKER_NAME:'same',CLOUDFLARE_PUBLIC_WORKER_NAME:'same'}),/must be different/);
+});
+
+test('installation examples keep management routing and public assets separate',()=>{
+ const fs=require('node:fs');
+ const admin=JSON.parse(fs.readFileSync('wrangler.production.example.json','utf8'));
+ const publicConfig=JSON.parse(fs.readFileSync('wrangler.public.example.json','utf8'));
+ assert.equal(admin.assets.run_worker_first,true);
+ assert.equal(admin.assets.directory,'./public');
+ assert.equal(admin.vars.CLOUDFLARE_PUBLIC_WORKER_NAME,publicConfig.name);
+ assert.notEqual(admin.name,publicConfig.name);
+ assert.equal(publicConfig.main,undefined);
+ assert.equal(publicConfig.d1_databases,undefined);
+ assert.equal(publicConfig.assets.directory,'./public-bootstrap');
+});
+
+test('split publication rejects the management origin as the public origin',()=>{
+ const env=split(environment());env.PUBLIC_SITE_URL='https://admin.cloud.test';
+ assert.throws(()=>publicRequest(env,admin),/must be different/);
+});

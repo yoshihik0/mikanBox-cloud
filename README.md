@@ -24,7 +24,7 @@ SQLite版のUI・機能を基準にしたCloudflare Workers + D1版です（D1�
 MCP・静的スナップショット等を追加しています。旧設定・秘密・データはコピーしていません。
 
 ルート `.mcp.json` は公式PHPサイト専用のままです。CloudサイトのMCP操作は
-別ワークスペースで行ってください。本番設定は `wrangler.production.example.json` をコピーして各自の `wrangler.production.json` を作成します。このファイルはGitに含めません。
+別ワークスペースで行ってください。新規インストールは管理用Workerと静的ファイル専用の公開用Workerを分けます。両方の名前と公開URLを決め、[新規インストール手順](docs/cloud_ja.md#新規インストールと公開)に従って設定・作成してください。設定例は `wrangler.production.example.json` と `wrangler.public.example.json` です。各自の設定ファイルと秘密はGitに含めません。
 初期状態はR2なしで画像をD1に分割保存します（1画像10 MB・合計400 MB・10,000件）。サイトの「メディアの保存先」から、準備したR2へコピー・確認後に切り替えられます。R2は支払い方法の登録が必要で、無料枠の超過は課金対象です。公開構成にR2はまだ設定していません。詳細は開発マニュアルのv0.5.0の節を参照してください。
 旧Cloud版のDBを保持し、新D1 `mikanbox-cloud` に分離しています。
 初回設定は `/admin` で各自が用意した `.env.production.secrets` の `SETUP_TOKEN` を使ってください。

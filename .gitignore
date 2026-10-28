@@ -20,3 +20,4 @@ artifacts/
 # Installation-specific Cloudflare targets
 wrangler.production.json
 wrangler.split.json
+wrangler.public.json

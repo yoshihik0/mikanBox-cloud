@@ -53,9 +53,9 @@ Macで作成したZIPに含まれる `__MACOSX` や `._` で始まる補助フ�
 画像の削除時はメディア画面の操作が自動で取り下げます。名前変更・WebP変換時は次のビルドまで元の公開画像を維持します。下記の「画像の静的配信」を参照してください。
 
 
-## 公開と管理の分離（試作）
+## 公開と管理の分離
 
-`CLOUDFLARE_PUBLIC_WORKER_NAME`（公開用のWorkerの名前）と `PUBLIC_SITE_URL`（公開サイトのURL）を設定すると、公開ページを別のWorkerに出力します。公開用のWorkerは静的ファイルだけで、プログラムは動きません。管理画面とMCPは今のWorkerに残ります。設定しなければ、今までどおり1つのWorkerで動きます。 ページ一覧のビルドボタンの近くに公開先URLを表示し、リンクから公開サイトを開けます。
+`CLOUDFLARE_PUBLIC_WORKER_NAME`（公開用のWorkerの名前）と `PUBLIC_SITE_URL`（公開サイトのURL）を設定すると、公開ページを別のWorkerに出力します。公開用のWorkerは静的ファイルだけで、プログラムは動きません。管理画面とMCPは今のWorkerに残ります。新規インストールはこの分離構成を使います。旧構成からの移行時は、公開先を確認してから設定してください。 ページ一覧のビルドボタンの近くに公開先URLを表示し、リンクから公開サイトを開けます。
 
 - 管理側のアドレスでは、ログインしていない人にはページ・画像・コンポーネントのJS・サイトマップを出しません。検索エンジンにも載せません（`X-Robots-Tag: noindex`）。
 - ログインした端末で管理側の `/about` などを開くと、プレビュー（`/preview/about`）に移ります。プレビューにはCSPの `sandbox` を付け、ページのJSから管理画面に手が届かないようにします。プレビューの中では、ページのJSからCookieや `localStorage` を使えません。
@@ -171,7 +171,7 @@ npm test
 npm run build
 ```
 
-コードや画面用ファイル（`public/mikanbox/`）を更新して試験サイトへ反映するには `npm run deploy:cloud` を使います。配信用の `.publication` フォルダへ画面用ファイルをコピーしてから、Workerをデプロイします（`--dry-run` で確認のみ）。ページと画像の公開は別で、管理画面の再構築ボタンを使います。
+コードや管理画面用ファイルを更新するには `npm run deploy:cloud` を使います。管理用Workerだけをデプロイします（`--dry-run` は確認のみ）。ページと画像は管理画面の再構築ボタンで公開用Workerへ配信します。
 
 `build` は公開せずにバンドルだけを検証するdry runです。Wranglerのログは権限の問題がある場合、`WRANGLER_LOG_PATH=.wrangler/logs` を指定してこのフォルダ内に保存してください。
 
@@ -278,28 +278,18 @@ SQLite版と同じ見た目・操作の目標は継続します。現段階で�
 - MCPの細部の戻り値・エラー・更新日時などの完全互換性、追加の運用ツール。
 - 既存コンテンツの明示的な移行と本番での性能・容量検証。
 
-## 本番公開
+## 新規インストールと公開
 
-`wrangler.production.example.json` を `wrangler.production.json` にコピーし、自分のCloudflareアカウントID、Worker名、作成したD1のデータベースIDを設定します。設定済みファイルは各環境専用でGitに含めません。別アカウントのD1やWorkerを指定しないでください。公開用の `JWT_SECRET` と `SETUP_TOKEN` は `.env.production.secrets` に用意し、公開・コミットしません。初回は `/admin` で `SETUP_TOKEN` を使います。
+管理用と公開用の2つのWorkerを使います。名前とURLは公開前に決めてください。既存WorkerやD1を上書きしないよう、作成前にCloudflareアカウントと名前を確認します。独自ドメインを使う場合は、Cloudflareで公開用Workerに接続したHTTPSのオリジンを `PUBLIC_SITE_URL` に指定します。
 
-```sh
-npx wrangler d1 migrations apply DB --remote --config wrangler.production.json
-npx wrangler deploy --config wrangler.production.json --secrets-file .env.production.secrets
-```
+1. `npm ci`、`npx wrangler login` を実行し、`npx wrangler whoami` で対象アカウントを確認します。`npx wrangler d1 create mikanbox-cloud` で新しいD1を作成し、表示されたIDを控えます。
+2. `wrangler.production.example.json` を `wrangler.production.json` に、`wrangler.public.example.json` を `wrangler.public.json` にコピーします。両ファイルの `account_id` に同じアカウントIDを設定します。管理側の `name` と `vars.CLOUDFLARE_WORKER_NAME` を同じ管理用の名前に、公開側の `name` と管理側の `vars.CLOUDFLARE_PUBLIC_WORKER_NAME` を同じ別の公開用の名前にします。管理側の `vars.CLOUDFLARE_ACCOUNT_ID` にアカウントIDを、`vars.CLOUDFLARE_D1_ID` と `d1_databases[0].database_id` に作成したD1のIDを設定します。`PUBLIC_SITE_URL` には実際の公開用HTTPS URLをパスなしで設定します（例 `https://mikanbox-public.<サブドメイン>.workers.dev`）。各設定ファイルはGitに含めません。
+3. 初回だけ `npx wrangler deploy --config wrangler.public.json` を実行し、公開用Workerに初期ページを配置します。**既存の公開サイトにこのコマンドを再実行するとサイトが初期ページに置き換わります。** 初期作成前に対象名を確認してください。
+4. `.env.production.secrets` に十分な長さのランダムな `JWT_SECRET` と一度だけ使う `SETUP_TOKEN` を `KEY=value` 形式で保存します。秘密は公開・コミットしません。`npx wrangler d1 migrations apply DB --remote --config wrangler.production.json`、`npm run deploy:cloud` の順に実行します。管理URLの `/admin` で初回端末を登録します。
+5. Cloudflareで対象アカウントに限定した Workers Scripts Edit 権限のAPIトークンを作成し、管理画面の「サイト」→「Cloudflare公開設定」に保存します。Wranglerログインとは別のトークンです。D1の書き出し・復元も使う場合は別途D1編集権限が必要です。
+6. ページ一覧の「静的サイトをビルド」で公開し、公開URLを開きます。管理側の匿名アクセス、公開ページと画像、非公開ページ、更新と取り下げを確認します。ブラウザは完了まで開いておきます。
 
-コマンドで既存サイトを操作する場合は `MIKANBOX_CLOUD_URL` に操作対象のHTTPS URLを明示します。アカウントとD1の接続先を操作前に確認してください。新しいアカウントでの一連の設置作業はまだ実環境で検証していません。
-
-## 公開ページと画像の直接配信
-
-管理・編集・検索・MCP・APIはWorkerで実行します。生成済みの静的公開ページと公開済みの画像はStatic Assetsから直接配信します。まだ公開していない画像はWorkerがD1または移行後のR2から読み出します。
-
-旧v0.3.0では管理画面のビルドでHTMLを保存し、作業環境で `npm run publish:static` を実行して配信先を更新していました。v0.4.3の管理画面からの自動配信は上記の新しい手順を使います。専用トークンを設定するまでは、この作業環境からの公開コマンドも利用できます。
-
-公開処理はファイルごとに取得して送信します。下書き、承認待ち、設定・認証情報・AI文書はファイル配信に含めません。公開HTMLと画像の更新は新しい配信版への切り替えでまとめて反映します。公開処理中は編集を一時的に止めます。
-
-公開済みページの取り下げはサイト生成で行い、公開済み画像の削除はメディア画面の操作が取り下げを自動で実行します。名前変更・WebP変換は次のビルドまで元画像を公開し続けます。部品JSの取り下げには配信更新が必要です。公開先のブラウザに保存済みの画像まで回収する機能はありません。上記の「配信と取り下げ」を参照してください。
-
-Workerの無料プランでは静的配信ファイル20,000件・1ファイル25 MiB、URL別名は2,000件までです。画像もこの静的ファイル件数に含めます（画像は最大10,000件）。画像・管理・検索・動的ページ・公開処理はWorker/D1/R2の利用枠を消費します。通常のコード更新でも配信済みHTMLを保持するため、公開コマンドを使います。
+`npm run deploy:cloud` は管理用Workerだけを更新します。公開用Workerは管理画面のビルドで更新します。旧 `npm run publish:static` は分離構成では使用できません。新しいアカウントでの一連の設置と専用トークンによる配信は実環境での確認が必要です。
 
 ### メディアの編集とカテゴリ
 

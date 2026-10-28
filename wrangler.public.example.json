@@ -1,0 +1,8 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "mikanbox-public",
+  "account_id": "YOUR_CLOUDFLARE_ACCOUNT_ID",
+  "compatibility_date": "2026-10-03",
+  "workers_dev": true,
+  "assets": { "directory": "./public-bootstrap", "html_handling": "none" }
+}

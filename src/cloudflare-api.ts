@@ -6,7 +6,7 @@ async function key(env:Env){return crypto.subtle.importKey('raw',await crypto.su
 export async function cloudConfigured(env:Env){return !!env.CLOUDFLARE_API_TOKEN||!!await env.DB.prepare("SELECT key FROM settings WHERE key='cloud_connection'").first();}
 export async function saveCloudToken(env:Env,token:string){
  if(!/^[A-Za-z0-9_-]{20,200}$/.test(token))throw new Error('Invalid Cloudflare API token.');
- const target=cloudTarget(env),worker=env.CLOUDFLARE_PUBLIC_WORKER_NAME||target.worker;if(!target.account||!worker)throw new Error('Cloudflare deployment target is not configured.');
+ const target=cloudTarget(env),worker=env.CLOUDFLARE_PUBLIC_WORKER_NAME||target.worker;if(env.CLOUDFLARE_PUBLIC_WORKER_NAME&&worker===target.worker)throw new Error('Public and management Workers must be different.');if(!target.account||!worker)throw new Error('Cloudflare deployment target is not configured.');
  await cloudResult(env,`/workers/scripts/${worker}/deployments`,{},token);
  const iv=crypto.getRandomValues(new Uint8Array(12)),cipher=await crypto.subtle.encrypt({name:'AES-GCM',iv},await key(env),new TextEncoder().encode(token));
  await env.DB.prepare("INSERT INTO settings(key,value) VALUES('cloud_connection',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").bind(JSON.stringify({iv:encode(iv),cipher:encode(new Uint8Array(cipher))})).run();
