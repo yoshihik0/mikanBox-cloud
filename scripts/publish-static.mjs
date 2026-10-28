@@ -5,8 +5,8 @@ import {spawnSync} from 'node:child_process';
 import auth from '../.test-build/src/auth.js';
 import publication from '../.test-build/src/static-publication.js';
 const config=JSON.parse(await readFile('wrangler.production.json','utf8'));
-if(config.name!=='mikanbox'||config.account_id!=='00000000000000000000000000000000'||config.d1_databases?.[0]?.database_id!=='00000000-0000-0000-0000-000000000000')throw new Error('Cloud publication target does not match the isolated installation.');
-const base='https://example.invalid';
+if(!config.account_id||!config.d1_databases?.[0]?.database_id||config.d1_databases[0].database_id==='YOUR_D1_DATABASE_ID')throw new Error('Configure your Cloudflare account and D1 database in wrangler.production.json.');
+const base=process.env.MIKANBOX_CLOUD_URL?.replace(/\/$/,'');if(!base||!/^https:\/\//.test(base))throw new Error('Set MIKANBOX_CLOUD_URL to the intended HTTPS site URL.');
 const excluded=new Set(process.argv.filter(a=>a.startsWith('--exclude=')).map(a=>a.slice(10)));
 const run=(args,capture=false)=>{
  const result=spawnSync('npx',['wrangler',...args],{encoding:'utf8',env:{...process.env,WRANGLER_LOG_PATH:'.wrangler/logs',WRANGLER_SEND_METRICS:'false'},stdio:capture?'pipe':'inherit'});

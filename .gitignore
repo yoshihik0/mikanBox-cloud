@@ -16,3 +16,7 @@ artifacts/
 .build-release/
 
 .build-split/
+
+# Installation-specific Cloudflare targets
+wrangler.production.json
+wrangler.split.json

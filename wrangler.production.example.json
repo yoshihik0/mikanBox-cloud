@@ -1,7 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "mikanbox",
-  "account_id": "00000000000000000000000000000000",
   "main": "src/index.ts",
   "compatibility_date": "2026-10-03",
   "workers_dev": true,
@@ -28,16 +27,13 @@
   "vars": {
     "SITE_ENVIRONMENT": "staging",
     "STATIC_DELIVERY": "true",
-    "CLOUDFLARE_ACCOUNT_ID": "00000000000000000000000000000000",
-    "CLOUDFLARE_WORKER_NAME": "mikanbox",
-    "CLOUDFLARE_D1_ID": "00000000-0000-0000-0000-000000000000",
-    "CLOUD_RELEASE_MANIFEST_URL": "https://example.invalid/mikanbox/cloud-release.json"
+    "CLOUDFLARE_WORKER_NAME": "mikanbox"
   },
   "d1_databases": [
     {
       "binding": "DB",
       "database_name": "mikanbox-cloud",
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      "database_id": "YOUR_D1_DATABASE_ID",
       "migrations_dir": "migrations"
     }
   ],

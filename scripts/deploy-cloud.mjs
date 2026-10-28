@@ -8,7 +8,7 @@ import {resolve,dirname} from 'node:path';
 import {spawnSync} from 'node:child_process';
 const dryRun=process.argv.includes('--dry-run');
 const config=JSON.parse(await readFile('wrangler.production.json','utf8'));
-if(config.name!=='mikanbox'||config.assets?.directory!=='./.publication')throw new Error('Unexpected deployment configuration.');
+if(!config.account_id||!config.d1_databases?.[0]?.database_id||config.d1_databases[0].database_id==='YOUR_D1_DATABASE_ID'||config.assets?.directory!=='./.publication')throw new Error('Configure your Cloudflare account and D1 database in wrangler.production.json.');
 const run=(command,args)=>{const r=spawnSync(command,args,{stdio:'inherit',env:{...process.env,WRANGLER_LOG_PATH:'.wrangler/logs',WRANGLER_SEND_METRICS:'false'}});if(r.status!==0)throw new Error(command+' '+args.join(' ')+' failed.');};
 run('npx',['tsc','--module','Node16','--moduleResolution','Node16','--outDir','.test-build']);
 const {PUBLICATION_PUBLIC_ASSETS}=(await import(resolve('.test-build/src/static-publication.js'))).default;

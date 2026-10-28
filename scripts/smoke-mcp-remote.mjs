@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {readFile,writeFile,unlink} from 'node:fs/promises';
 import auth from '../.test-build/src/auth.js';
-const base='https://example.invalid';
+const base=process.env.MIKANBOX_CLOUD_URL?.replace(/\/$/,'');if(!base||!/^https:\/\//.test(base))throw new Error('Set MIKANBOX_CLOUD_URL to the intended HTTPS site URL.');
 const accountFile='artifacts/mcp-test-account.json';
 const account=JSON.parse(await readFile(accountFile,'utf8'))[0]?.results[0];
 if(!account?.site_id)throw new Error('An existing Cloud account and site identity are required.');

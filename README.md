@@ -24,10 +24,10 @@ SQLite版のUI・機能を基準にしたCloudflare Workers + D1版です（D1�
 MCP・静的スナップショット等を追加しています。旧設定・秘密・データはコピーしていません。
 
 ルート `.mcp.json` は公式PHPサイト専用のままです。CloudサイトのMCP操作は
-別ワークスペースで行ってください。確認用公開は `wrangler.production.json` を使い、Worker名は `mikanbox` です。このファイルは既存の確認用アカウントとD1に固定されています。別アカウントではそのままデプロイしないでください。独立した新規導入手順はまだ用意できていません。
+別ワークスペースで行ってください。本番設定は `wrangler.production.example.json` をコピーして各自の `wrangler.production.json` を作成します。このファイルはGitに含めません。
 初期状態はR2なしで画像をD1に分割保存します（1画像10 MB・合計400 MB・10,000件）。サイトの「メディアの保存先」から、準備したR2へコピー・確認後に切り替えられます。R2は支払い方法の登録が必要で、無料枠の超過は課金対象です。公開構成にR2はまだ設定していません。詳細は開発マニュアルのv0.5.0の節を参照してください。
 旧Cloud版のDBを保持し、新D1 `mikanbox-cloud` に分離しています。
-初回設定は `/admin` で `.env.production.secrets` の `SETUP_TOKEN` を使ってください。
+初回設定は `/admin` で各自が用意した `.env.production.secrets` の `SETUP_TOKEN` を使ってください。
 
 Cloud 0.2.0では管理MCPのSQLite形式引数、AI指示書・画像アップロード、公開ヘルプMCPとWebMCP、AI質問欄、画像検索/ページ送り/参照更新付き名前変更、カテゴリー削除、アカウント名変更、静的ZIP出力に対応します。管理MCPは `/mcp`（キー必須）、公開ヘルプは `/public-mcp`（読み取り専用）、人向けCloudヘルプは `/public-help.html?language=ja` です。詳細と残る差はCloud専用マニュアルを参照してください。
 

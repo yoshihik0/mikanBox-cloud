@@ -1,6 +1,6 @@
 <style>.manual-version{font-size:.5em;font-weight:400;white-space:nowrap}</style>
 
-# 🍊mikanBox Cloudflare版 開発マニュアル <small class="manual-version">v0.6.3</small>
+# 🍊mikanBox Cloudflare版 開発マニュアル <small class="manual-version">v0.6.4</small>
 
 Markdown のリンク先で `{{SITE_URL}}` を使えます。コード例内のタグは展開しません。画像の名前変更では、サイト共通OGPだけで使っている場合も参照ありとして確認します。
 
@@ -280,18 +280,14 @@ SQLite版と同じ見た目・操作の目標は継続します。現段階で�
 
 ## 本番公開
 
-確認用の公開先は `https://example.invalid/`、管理画面は `/admin` です。`wrangler.production.json` でWorkersとD1のみを使い、R2の有効化と有料プランへの変更は行いません。利用は現在の契約と無料枠の上限に従います。画像アップロードはD1保存で利用できます。
-
-旧Cloud版のD1 `mikanbox` は変更せず、新版は独立したD1 `mikanbox-cloud` を使います。旧データの移行はしていません。Worker `mikanbox` のコードとDB接続先を新版へ切り替えます。公式PHPサーバー、flat版、SQLite版は別の公開先です。
-
-公開用秘密は `.env.production.secrets` に保存し、ローカル用とは分離します。公開・コミットしません。初回は `/admin` で、このファイルの `SETUP_TOKEN` と自分で決めたユーザー名・表示名・端末の名前を入力してください。同じトークンは一度だけ使えます。
+`wrangler.production.example.json` を `wrangler.production.json` にコピーし、自分のCloudflareアカウントID、Worker名、作成したD1のデータベースIDを設定します。設定済みファイルは各環境専用でGitに含めません。別アカウントのD1やWorkerを指定しないでください。公開用の `JWT_SECRET` と `SETUP_TOKEN` は `.env.production.secrets` に用意し、公開・コミットしません。初回は `/admin` で `SETUP_TOKEN` を使います。
 
 ```sh
-WRANGLER_LOG_PATH=.wrangler/logs npx wrangler d1 migrations apply DB --remote --config wrangler.production.json
-WRANGLER_LOG_PATH=.wrangler/logs npx wrangler deploy --config wrangler.production.json --secrets-file .env.production.secrets
+npx wrangler d1 migrations apply DB --remote --config wrangler.production.json
+npx wrangler deploy --config wrangler.production.json --secrets-file .env.production.secrets
 ```
 
-旧公開バージョンIDは `ccf6e1be-645c-4a53-831c-99d9e33ded9a`。旧DBを保持するため、必要ならこの版への切り戻しを検討できます。新版のデータは旧DBへ自動反映されません。
+コマンドで既存サイトを操作する場合は `MIKANBOX_CLOUD_URL` に操作対象のHTTPS URLを明示します。アカウントとD1の接続先を操作前に確認してください。新しいアカウントでの一連の設置作業はまだ実環境で検証していません。
 
 ## 公開ページと画像の直接配信
 

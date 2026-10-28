@@ -1,6 +1,6 @@
 <style>.manual-version{font-size:.5em;font-weight:400;white-space:nowrap}</style>
 
-# 🍊mikanBox Cloudflare Development Manual <small class="manual-version">v0.6.3</small>
+# 🍊mikanBox Cloudflare Development Manual <small class="manual-version">v0.6.4</small>
 
 You can use `{{SITE_URL}}` in Markdown link destinations. Tags inside code examples remain literal. Renaming an image also requests confirmation when it is used only as the site-wide OGP image.
 
@@ -278,18 +278,14 @@ Matching the SQLite edition remains the goal. Full visual and interaction parity
 
 ## Production
 
-The review URL is `https://example.invalid/`, with admin at `/admin`. `wrangler.production.json` uses Workers and D1 without enabling R2 or upgrading the plan. Usage is subject to the current account plan and free tier limits. The media screen supports D1 image uploads and displays storage usage.
-
-The old D1 database `mikanbox` remains unchanged; this version uses the separate `mikanbox-cloud` database. Old content has not been migrated. Deployment switches the existing `mikanbox` Worker's code and database binding. The official PHP server and PHP editions remain separate.
-
-Production secrets are in `.env.production.secrets`, separate from local secrets. Never publish or commit it. For initial setup, open `/admin`, enter the file's `SETUP_TOKEN`, and choose a username, display name and a device name. Each token value works once.
+Copy `wrangler.production.example.json` to `wrangler.production.json` and set your own Cloudflare account ID, Worker name and D1 database ID. This installation-specific file is excluded from Git. Store `JWT_SECRET` and `SETUP_TOKEN` in `.env.production.secrets` and do not publish or commit them. Use `SETUP_TOKEN` at `/admin` for initial setup.
 
 ```sh
-WRANGLER_LOG_PATH=.wrangler/logs npx wrangler d1 migrations apply DB --remote --config wrangler.production.json
-WRANGLER_LOG_PATH=.wrangler/logs npx wrangler deploy --config wrangler.production.json --secrets-file .env.production.secrets
+npx wrangler d1 migrations apply DB --remote --config wrangler.production.json
+npx wrangler deploy --config wrangler.production.json --secrets-file .env.production.secrets
 ```
 
-The previous Cloud version is `ccf6e1be-645c-4a53-831c-99d9e33ded9a`. Its retained database allows a rollback to be considered. New content does not automatically sync to the old database.
+For commands that operate on an existing site, explicitly set `MIKANBOX_CLOUD_URL` to the intended HTTPS URL. Verify the account and D1 target before operating. The full new-account installation has not yet been verified against a live environment.
 
 ## Direct delivery of public pages and all images
 

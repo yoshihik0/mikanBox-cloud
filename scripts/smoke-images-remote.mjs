@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';import {readFile,writeFile} from 'node:fs/promises';import {randomUUID} from 'node:crypto';
 import auth from '../.test-build/src/auth.js';
-const base='https://example.invalid';
+const base=process.env.MIKANBOX_CLOUD_URL?.replace(/\/$/,'');if(!base||!/^https:\/\//.test(base))throw new Error('Set MIKANBOX_CLOUD_URL to the intended HTTPS site URL.');
 const account=JSON.parse(await readFile('artifacts/image-test-account.json','utf8'))[0]?.results[0];if(!account)throw new Error('No existing admin account; no account will be created by this test.');
 const vars=await readFile('.env.production.secrets','utf8');const secret=vars.match(/^JWT_SECRET=(.+)$/m)[1];
 const session=await auth.createSessionToken(secret,account.username,account.auth_version);

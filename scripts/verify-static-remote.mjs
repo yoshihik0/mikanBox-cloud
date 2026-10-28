@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';import {readdir,readFile,writeFile} from 'node:fs/promises';import {createHash} from 'node:crypto';
-const base='https://example.invalid';
+const base=process.env.MIKANBOX_CLOUD_URL?.replace(/\/$/,'');if(!base||!/^https:\/\//.test(base))throw new Error('Set MIKANBOX_CLOUD_URL to the intended HTTPS site URL.');
 const expectedVersion=JSON.parse(await readFile('package.json','utf8')).version;
 const indexStatic=await readFile('.publication/index.html').then(()=>true,()=>false);
 const staticPaths=[...(indexStatic?['/','/index.html']:[]),'/sample_page','/sample_page/','/sample_page.html','/sample_markdown','/sample_tags'];
