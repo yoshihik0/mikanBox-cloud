@@ -79,3 +79,14 @@ publishing a partial snapshot.
   `.env.production.secrets`; never print, commit, or share their values. Tell
   the user where to find the setup token for their first device registration.
   The setup token is separate from the Cloudflare API token used for publication.
+
+- Initial setup registers the browser that submits the one-use setup token as
+  the first management device. Do not consume that token or complete initial
+  registration in the AI's embedded, temporary, automation, or other browser
+  unless the user explicitly wants that browser registered. Ask which browser
+  they normally use; direct them to open the management URL there and enter the
+  setup token themselves. Explain where the local secret file is without showing
+  or requesting the token. Viewing the setup page without submitting is fine.
+  If another browser was already registered, guide the user to add their normal
+  browser using a device-add code from Site → Devices and users; recovery is
+  reserved for losing all registered devices and revokes other devices and keys.
