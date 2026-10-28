@@ -83,10 +83,19 @@ publishing a partial snapshot.
 - Initial setup registers the browser that submits the one-use setup token as
   the first management device. Do not consume that token or complete initial
   registration in the AI's embedded, temporary, automation, or other browser
-  unless the user explicitly wants that browser registered. Ask which browser
-  they normally use; direct them to open the management URL there and enter the
-  setup token themselves. Explain where the local secret file is without showing
+  unless the user explicitly wants that browser registered. Direct them to open
+  the management URL in their usual browser and enter the setup token themselves. Explain where the local secret file is without showing
   or requesting the token. Viewing the setup page without submitting is fine.
   If another browser was already registered, guide the user to add their normal
   browser using a device-add code from Site → Devices and users; recovery is
   reserved for losing all registered devices and revokes other devices and keys.
+
+- After deploying and checking the management setup page, give a concise handoff:
+  link to the local `.env.production.secrets` file so the user can copy the
+  setup token, and provide the management URL with instructions to open it in
+  their own usual browser and enter the token. Do not ask them to paste the
+  token into chat. Do not open or register an embedded browser by default.
+  Avoid repeating the public API token and build instructions in this initial
+  handoff; the management screen guides the user through them. If the user
+  asks, or if an actual failure prevents setup, explain the current public
+  deployment separately and distinguish configured URL from published content.
