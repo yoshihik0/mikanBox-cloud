@@ -1,6 +1,8 @@
 <style>.manual-version{font-size:.5em;font-weight:400;white-space:nowrap}</style>
 
-# 🍊mikanBox Cloudflare Development Manual <small class="manual-version">v0.6.1</small>
+# 🍊mikanBox Cloudflare Development Manual <small class="manual-version">v0.6.2</small>
+
+You can use `{{SITE_URL}}` in Markdown link destinations. Tags inside code examples remain literal.
 
 This edition is under development. It targets the SQLite edition's UI and features, but full compatibility has not been reached. Changes to existing editions are limited to the explicitly requested common settings correction; existing data and the official server are unchanged.
 

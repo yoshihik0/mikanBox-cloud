@@ -195,7 +195,7 @@ export class MikanBoxRenderer {
       const protectedMd = contentMd.replace(/\{\{[^}]+\}\}/g, (m) =>
         '\u200B<!--MKNTG' + btoa(unescape(encodeURIComponent(m))) + '-->\u200B'
       );
-      contentHtml = this.markdown.text(protectedMd);
+      contentHtml = this.restoreMarkdownUrlTags(this.markdown.text(protectedMd));
       contentHtml = contentHtml.replace(/\u200B?<!--MKNTG([a-zA-Z0-9+/=]+)-->\u200B?/g, (_, b64) => {
         try { return decodeURIComponent(escape(atob(b64))); } catch { return ''; }
       });
@@ -618,7 +618,7 @@ export class MikanBoxRenderer {
         const protected2 = content.replace(/\{\{[^}]+\}\}/g, (tag) =>
           '\u200B<!--MKNTG' + btoa(unescape(encodeURIComponent(tag))) + '-->\u200B'
         );
-        let embedded = this.markdown.text(protected2);
+        let embedded = this.restoreMarkdownUrlTags(this.markdown.text(protected2));
         embedded = embedded.replace(/\u200B?<!--MKNTG([a-zA-Z0-9+/=]+)-->\u200B?/g, (_, b64) => {
           try { return decodeURIComponent(escape(atob(b64))); } catch { return ''; }
         });
@@ -869,6 +869,17 @@ if(q)location.replace('https://www.google.com/search?'+new URLSearchParams({q:q,
   }
 
   // ---- コードスパン保護 ----
+  // Restore URL tags in Markdown link attributes without activating code examples.
+  private restoreMarkdownUrlTags(html: string): string {
+    return html.replace(/<a\s+href="([^"]*)"/gi, (_, href: string) => '<a href="' +
+      href.replace(/\u200B?&lt;!--MKNTG([a-zA-Z0-9+/=]+)--&gt;\u200B?/g, (placeholder, b64: string) => {
+        try {
+          const tag = decodeURIComponent(escape(atob(b64)));
+          return /^\{\{\s*(?:SITE_URL|BASE_URL|PAGE_URL)\s*\}\}$/.test(tag) ? tag : placeholder;
+        } catch { return placeholder; }
+      }) + '"');
+  }
+
   private protectCodeSpans(content: string, codeMap: Record<string, string>): string {
     let count = Object.keys(codeMap).length;
     content = content.replace(/(`{3,}|~{3,})[^\n]*\n.*?\1/gs, (m) => {

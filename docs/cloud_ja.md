@@ -1,6 +1,8 @@
 <style>.manual-version{font-size:.5em;font-weight:400;white-space:nowrap}</style>
 
-# 🍊mikanBox Cloudflare版 開発マニュアル <small class="manual-version">v0.6.1</small>
+# 🍊mikanBox Cloudflare版 開発マニュアル <small class="manual-version">v0.6.2</small>
+
+Markdown のリンク先で `{{SITE_URL}}` を使えます。コード例内のタグは展開しません。
 
 この版は開発中です。SQLite版のUIと機能を基準に移植していますが、まだ完全互換ではありません。既存版への変更は明示的に依頼された共通設定の修正に限り、既存データや公式サーバーは変更していません。
 

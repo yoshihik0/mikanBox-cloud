@@ -258,6 +258,17 @@ test('a paragraph that starts with a tag is still a paragraph; a paragraph that 
   const {html}=await new MikanBoxRenderer(env,{site_name:'S'},new Request('https://cloud.test/tags')).render('tags');
   assert.match(html,/<p>Test\|S<\/p>/);assert.doesNotMatch(html,/<p>Test<\/p>/);assert.match(html,/Test(?!\|)/);
 });
+test('URL tags work in Markdown links while code examples stay literal',async()=>{
+  const env=environment();
+  await savePage(env,'embedded',{...page('public_static','[embedded]({{SITE_URL}}/embedded-target)'),wrapper_comp:'__none'});
+  await savePage(env,'tag-links',{...page('public_static','[details]({{SITE_URL}}/about?x=1&y=2)\n\n[base]({{BASE_URL}}/base)\n\n`[example]({{SITE_URL}}/code)`\n\n```\n[example]({{SITE_URL}}/fenced)\n```\n\n{{POST_MD:embedded}}'),wrapper_comp:'__none'});
+  const {html}=await new MikanBoxRenderer(env,{ssg_root_url:'https://cloud.test/site'},new Request('https://cloud.test/site/tag-links')).render('tag-links');
+  assert.match(html,/href="https:\/\/cloud\.test\/site\/about\?x=1&amp;y=2"/);
+  assert.match(html,/href="https:\/\/cloud\.test\/site\/base"/);
+  assert.match(html,/href="https:\/\/cloud\.test\/site\/embedded-target"/);
+  assert.match(html,/<code>\[example\]\(\{\{SITE_URL\}\}\/code\)<\/code>/);
+  assert.match(html,/\[example\]\(\{\{SITE_URL\}\}\/fenced\)/);
+});
 test('relative page links resolve to the page URL and keep ?query and #fragment; card images load lazily',async()=>{
   const env=environment();
   await savePage(env,'other-page',page('public_static','x'));
