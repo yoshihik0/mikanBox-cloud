@@ -40,11 +40,11 @@ publishing a partial snapshot.
   management name A and public name C, management is
   `https://A.B.workers.dev/admin` and public is `https://C.B.workers.dev/`.
   A and C are separate Worker names; the account-wide B is shared. A custom
-  domain can instead be connected to the public Worker. Ask for a desired short
-  site name when needed; propose distinct names based only on the user-provided
-  site name or neutral examples, and derive both full URLs yourself. Never use
-  email usernames, login IDs, account names, or private personal details for
-  suggestions. Names in examples are suggestions, not automatic choices.
+  domain can instead be connected to the public Worker. Ask the user to choose
+  the names and derive both full URLs yourself. Illustrate the format with
+  neutral examples, but do not recommend or proactively suggest names. Offer
+  candidates only if the user asks, using no email usernames, login IDs,
+  account names, or private personal details. Never treat an example as a choice.
 - Before creating resources or deploying, show the two derived addresses and
   get the user's agreement unless they have already explicitly selected them.
   If they are undecided, wait for their choice; use any prior choices without
