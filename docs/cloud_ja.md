@@ -280,12 +280,12 @@ SQLite版と同じ見た目・操作の目標は継続します。現段階で�
 
 ## 新規インストールと公開
 
-管理用と公開用の2つのWorkerを使います。名前とURLは公開前に決めてください。既存WorkerやD1を上書きしないよう、作成前にCloudflareアカウントと名前を確認します。独自ドメインを使う場合は、Cloudflareで公開用Workerに接続したHTTPSのオリジンを `PUBLIC_SITE_URL` に指定します。
+管理用と公開用の2つのWorkerを使います。**インストール前に管理画面のURL（`/admin` を含む）と公開サイトのURLを決めてください。** AIに依頼した場合も、両方の完全なURLとWorker名を利用者に確認してから作成します。設定例やリポジトリ名を無断で採用しません。`workers.dev` の場合はWorker名とアカウント共通のサブドメインでURLが決まります。新規登録や変更を行う前にサブドメインを確認します。変更は他のWorkerにも影響します。既存WorkerやD1を上書きしないよう、作成前にCloudflareアカウントと名前を確認します。独自ドメインを使う場合は、Cloudflareで公開用Workerに接続したHTTPSのオリジンを `PUBLIC_SITE_URL` に指定します。
 
 1. `npm ci`、`npx wrangler login` を実行し、`npx wrangler whoami` で対象アカウントを確認します。`npx wrangler d1 create mikanbox-cloud` で新しいD1を作成し、表示されたIDを控えます。
 2. `wrangler.production.example.json` を `wrangler.production.json` に、`wrangler.public.example.json` を `wrangler.public.json` にコピーします。両ファイルの `account_id` に同じアカウントIDを設定します。管理側の `name` と `vars.CLOUDFLARE_WORKER_NAME` を同じ管理用の名前に、公開側の `name` と管理側の `vars.CLOUDFLARE_PUBLIC_WORKER_NAME` を同じ別の公開用の名前にします。管理側の `vars.CLOUDFLARE_ACCOUNT_ID` にアカウントIDを、`vars.CLOUDFLARE_D1_ID` と `d1_databases[0].database_id` に作成したD1のIDを設定します。`PUBLIC_SITE_URL` には実際の公開用HTTPS URLをパスなしで設定します（例 `https://mikanbox-public.<サブドメイン>.workers.dev`）。各設定ファイルはGitに含めません。
 3. 初回だけ `npx wrangler deploy --config wrangler.public.json` を実行し、公開用Workerに初期ページを配置します。**既存の公開サイトにこのコマンドを再実行するとサイトが初期ページに置き換わります。** 初期作成前に対象名を確認してください。
-4. `.env.production.secrets` に十分な長さのランダムな `JWT_SECRET` と一度だけ使う `SETUP_TOKEN` を `KEY=value` 形式で保存します。秘密は公開・コミットしません。`npx wrangler d1 migrations apply DB --remote --config wrangler.production.json`、`npm run deploy:cloud` の順に実行します。管理URLの `/admin` で初回端末を登録します。
+4. インストールごとに暗号学的に安全な乱数で `JWT_SECRET` と一度だけ使う `SETUP_TOKEN` を生成し、`.env.production.secrets` に `KEY=value` 形式で保存します。AIによる導入でもローカルで生成し、値を会話やログに表示せず、初回登録に使うファイルの場所を利用者に伝えます。秘密は公開・コミットしません。`npx wrangler d1 migrations apply DB --remote --config wrangler.production.json`、`npm run deploy:cloud` の順に実行します。管理URLの `/admin` で初回端末を登録します。
 5. Cloudflareで対象アカウントに限定した Workers Scripts Edit 権限のAPIトークンを作成し、管理画面の「サイト」→「Cloudflare公開設定」に保存します。Wranglerログインとは別のトークンです。D1の書き出し・復元も使う場合は別途D1編集権限が必要です。
 6. ページ一覧の「静的サイトをビルド」で公開し、公開URLを開きます。管理側の匿名アクセス、公開ページと画像、非公開ページ、更新と取り下げを確認します。ブラウザは完了まで開いておきます。
 
