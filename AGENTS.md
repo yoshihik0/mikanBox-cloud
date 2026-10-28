@@ -54,6 +54,15 @@ publishing a partial snapshot.
   an existing subdomain without consent. Explain the user may choose the names
   without proactively recommending names; provide examples only to explain the
   format, or candidates if specifically asked. Never adopt examples silently.
+- When the client supports an input form, request all names needed for this
+  step together in one form: management name and, only for a `workers.dev`
+  public site, public name; include the account subdomain only if it is not
+  registered. Show a known subdomain as context, not an input to change it.
+  Use separate labeled short-text fields, one per value, without multiple
+  sequential screens where the client supports grouping. Show the two address
+  formats in readable text before the form. For a custom domain, request only
+  relevant values and do not ask for a public `workers.dev` name. If the client
+  cannot provide such fields, use a short, clearly formatted text request.
 - Do not ask the user to choose "Worker names" or use technical jargon unless
   asked. Preserve line breaks in the user-facing message; do not put the entire
   explanation into a single question field. Handle configuration details yourself.
