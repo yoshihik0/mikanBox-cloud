@@ -13,8 +13,16 @@ const newer=CLOUD_VERSION.replace(/\d+$/,part=>String(Number(part)+1));
 const {MikanBoxRenderer}=require('../.test-build/src/renderer.js');
 function target(env){Object.assign(env,{CLOUDFLARE_ACCOUNT_ID:'a'.repeat(32),CLOUDFLARE_WORKER_NAME:'test-cloud',CLOUDFLARE_D1_ID:'isolated-db'});return env;}
 test('Cloud release comparison refuses PHP metadata and unavailable release feeds do not invent versions',async()=>{
- const env=environment(),original=global.fetch;assert.equal((await latestCloudRelease(env)).status,'unconfigured');env.CLOUD_RELEASE_MANIFEST_URL='https://releases.example.test/cloud.json';
+ const env=environment(),original=global.fetch;env.CLOUD_RELEASE_MANIFEST_URL='https://releases.example.test/cloud.json';
  try{global.fetch=async()=>Response.json({edition:'sqlite',version:'2.7.0'});assert.equal((await latestCloudRelease(env,true)).status,'error');global.fetch=async()=>Response.json({edition:'cloud',version:'v'+newer,url:'https://releases.example.test/v'+newer});const release=await latestCloudRelease(env,true);assert.equal(release.version,newer);assert.equal(release.outdated,true);}finally{global.fetch=original;}
+});
+test('Cloud release feed defaults to the published GitHub manifest',async()=>{
+ const env=environment(),original=global.fetch;let requested;
+ try{global.fetch=async url=>{requested=url;return Response.json({edition:'cloud',version:CLOUD_VERSION});};
+  const release=await latestCloudRelease(env,true);
+  assert.match(requested,/^https:\/\/raw\.githubusercontent\.com\/yoshihik0\/mikanBox-cloud\//);
+  assert.equal(release.version,CLOUD_VERSION);
+ }finally{global.fetch=original;}
 });
 test('AI identity URL does not redirect Cloud page rendering or change its root',()=>{
  const renderer=new MikanBoxRenderer(environment(),{site_url:'https://identity.example.test/alias'},new Request('https://cloud.test/'));

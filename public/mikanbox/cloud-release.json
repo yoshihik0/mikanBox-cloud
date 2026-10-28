@@ -1,4 +1,5 @@
 {
   "edition": "cloud",
-  "version": "0.6.4"
+  "version": "0.6.5",
+  "url": "https://github.com/yoshihik0/mikanBox-cloud/releases"
 }

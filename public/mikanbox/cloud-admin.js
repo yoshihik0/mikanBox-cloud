@@ -1,6 +1,26 @@
 (() => {
   'use strict';
   const ja=document.documentElement.lang==='ja';
+  const updateLink=document.getElementById('cloud-check-updates');
+  if(updateLink) updateLink.addEventListener('click',async event=>{
+    event.preventDefault();
+    if(updateLink.getAttribute('aria-busy')==='true')return;
+    updateLink.setAttribute('aria-busy','true');
+    try {
+      const response=await fetch(updateLink.href,{cache:'no-store'});
+      if(!response.ok)throw new Error('Update check failed');
+      const doc=new DOMParser().parseFromString(await response.text(),'text/html');
+      const replacement=doc.getElementById('cloud-version-row');
+      if(!replacement)throw new Error('Update check failed');
+      const current=document.getElementById('cloud-version-row');
+      current.querySelectorAll('span, a:not(#cloud-check-updates)').forEach(node=>node.remove());
+      for(const node of replacement.querySelectorAll('span, a:not(#cloud-check-updates)')) {
+        if(node.tagName==='SPAN')current.insertBefore(node,updateLink);
+        else current.appendChild(node);
+      }
+    } catch { if(typeof window.showToast==='function')window.showToast(ja?'更新情報を確認できませんでした。':'Could not check for updates.',true); }
+    finally { updateLink.removeAttribute('aria-busy'); }
+  });
   const pageForm=document.getElementById('page-form');
   let dirty=false,sending=false;
   document.addEventListener('input',event=>{

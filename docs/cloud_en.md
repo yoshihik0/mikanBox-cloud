@@ -1,6 +1,6 @@
 <style>.manual-version{font-size:.5em;font-weight:400;white-space:nowrap}</style>
 
-# 🍊mikanBox Cloudflare Development Manual <small class="manual-version">v0.6.4</small>
+# 🍊mikanBox Cloudflare Development Manual <small class="manual-version">v0.6.5</small>
 
 You can use `{{SITE_URL}}` in Markdown link destinations. Tags inside code examples remain literal. Renaming an image also requests confirmation when it is used only as the site-wide OGP image.
 
@@ -12,7 +12,7 @@ The admin operations below describe v0.4.3. Automatic admin publication and D1 o
 
 The user's explicit 2026-10-04 request authorizes common settings layout, input styling, explanatory text, SSG hint weight and site URL fallback changes in all three editions. The original protected hashes remain intact; reviewed changes are recorded separately. Site environment is advisory metadata, not an access or write restriction. Site URL identifies the site to AI and defaults to the index page location independently of SSG output.
 
-The admin version comparison uses Cloud versions, not PHP releases. This deployment reads its dedicated `/mikanbox/cloud-release.json` feed. Other installations without `CLOUD_RELEASE_MANIFEST_URL` show that release information is unpublished. The HTTPS JSON document contains `edition: "cloud"`, `version: "0.5.0"` and an optional HTTPS `url`. One-click code updates are not implemented. Updates deploy a new Worker and any required D1 migrations; this differs from rebuilding static assets.
+The admin screen checks the Cloud release information published on GitHub and compares it with the installed version. Check again refreshes the result without leaving the page. You can ask AI to update from GitHub, deploy the management Worker, and apply any required D1 migrations. This is separate from building the static site. An HTTPS Cloud release JSON URL can optionally be specified with `CLOUD_RELEASE_MANIFEST_URL`.
 
 Media omits the image conversion note and maximum-file-size line, and explains using files on a page: a bare filename in Markdown and `media/filename` in HTML. Existing `images/filename` references for images remain supported.
 

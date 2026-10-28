@@ -1,6 +1,6 @@
 <style>.manual-version{font-size:.5em;font-weight:400;white-space:nowrap}</style>
 
-# 🍊mikanBox Cloudflare版 開発マニュアル <small class="manual-version">v0.6.4</small>
+# 🍊mikanBox Cloudflare版 開発マニュアル <small class="manual-version">v0.6.5</small>
 
 Markdown のリンク先で `{{SITE_URL}}` を使えます。コード例内のタグは展開しません。画像の名前変更では、サイト共通OGPだけで使っている場合も参照ありとして確認します。
 
@@ -12,7 +12,7 @@ Markdown のリンク先で `{{SITE_URL}}` を使えます。コード例内の�
 
 2026-10-04の明示的な依頼により、サイト共通設定の配置・入力欄・説明、SSG説明の太さ、サイトURLの未設定時の扱いを3版共通で修正しました。元の保護用ハッシュ一覧は保持し、許可された変更は別の一覧で記録します。サイト環境はAIへの用途の目印で、アクセスや操作を制限しません。サイトURLはAIの識別情報で、空欄ならトップページの場所を使い、SSGの出力先とは分けます。
 
-管理画面はCloud版自身の現在・最新バージョンを比較します。PHP版のリリース番号は使いません。本公開先では `/mikanbox/cloud-release.json` のCloud専用リリース情報を確認します。`CLOUD_RELEASE_MANIFEST_URL` を設定していない別の環境では「Cloud版のリリース情報は未公開」と表示します。HTTPSのJSON（`edition: "cloud"`、`version: "0.5.0"`、任意のHTTPS `url`）を読み取ります。1クリックでのコード更新は未実装で、新しいWorkerの公開と必要なDB更新を行います。再構築による静的ファイル配信の更新とは別です。
+管理画面はGitHubで公開するCloud版のリリース情報を確認し、現在のバージョンと比較します。「再確認」は画面を移動せずに最新情報を取得します。AIにGitHubからのアップデートを依頼できます。更新には管理用Workerの公開と必要なD1マイグレーションが含まれ、静的サイトのビルドとは別です。必要に応じて `CLOUD_RELEASE_MANIFEST_URL` でHTTPSのCloud専用JSONを指定できます。
 
 メディア画面では画像変換の補足と最大ファイルサイズの行を省き、ページ内での利用方法を案内します。Markdownはファイル名だけ、HTMLは `media/ファイル名` を標準とします。画像の従来の `images/ファイル名` も利用できます。
 

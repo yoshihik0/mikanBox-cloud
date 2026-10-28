@@ -1180,13 +1180,13 @@ export function renderSiteView(opts: {
     </div>
 
         <div class="section-container section-tight">
-            <div class="system-version-row">
+            <div class="system-version-row" id="cloud-version-row">
                 <span>${t('version_current')}: ${h(CLOUD_VERSION)} (Cloud)</span>
                 <span>${t('version_latest')}: ${opts.release?.version?'v'+h(opts.release.version):opts.release?.status==='error'?t('version_check_failed'):(lang==='en'?'Cloud release information not published':'Cloud版のリリース情報は未公開')}</span>
-                <a href="/admin?view=site&amp;refresh_updates=1">${t('btn_check_updates')}</a>
+                <a id="cloud-check-updates" href="/admin?view=site&amp;refresh_updates=1#cloud-version-row">${t('btn_check_updates')}</a>
                 ${opts.release?.url?`<a href="${h(opts.release.url)}" target="_blank" rel="noopener noreferrer">${lang==='en'?'Cloud release':'Cloud版リリース'}</a>`:''}
             </div>
-            <small class="sub-text sub-text-block">${lang==='en'?'Cloud updates require deploying a new Worker and any database migrations. One-click code updates are not implemented.':'Cloud版の更新は、新しいWorkerの公開と必要なDB更新を行います。1クリックでのコード更新は未実装です。'}</small>
+            <small class="sub-text sub-text-block">${lang==='en'?'AI can help you update mikanBox from GitHub, including deploying the Worker and applying any required database migrations.':'AIを使ってGitHubから簡単にアップデートできます。Workerの公開と必要なデータベース更新もAIに依頼できます。'}</small>
         </div>
 
     <div id="language">

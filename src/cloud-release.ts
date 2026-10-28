@@ -3,7 +3,7 @@ import {CLOUD_VERSION} from './version';
 export interface CloudRelease {status:'unconfigured'|'available'|'error';version?:string;url?:string;outdated?:boolean}
 let cached:{source:string;at:number;value:CloudRelease}|undefined;
 export async function latestCloudRelease(env:Env,refresh=false):Promise<CloudRelease>{
- const source=env.CLOUD_RELEASE_MANIFEST_URL;if(!source)return {status:'unconfigured'};
+ const source=env.CLOUD_RELEASE_MANIFEST_URL || 'https://raw.githubusercontent.com/yoshihik0/mikanBox-cloud/split-prototype/public/mikanbox/cloud-release.json';
  if(!refresh&&cached?.source===source&&Date.now()-cached.at<10*60*1000)return cached.value;
  let value:CloudRelease;
  try{
