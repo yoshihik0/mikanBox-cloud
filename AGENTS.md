@@ -23,26 +23,28 @@ publishing a partial snapshot.
 
 ## Installing for a user
 
-- Before asking for URLs, explain both choices: use separate `workers.dev`
-  addresses now, including temporarily, or use a custom domain. A custom domain
-  requires a suitable active Cloudflare zone and must be connected to its Worker.
-  The public address can be changed later; explain that this entails updating
-  `PUBLIC_SITE_URL`, deploying the management configuration, rebuilding the
-  public site, and checking links, feeds, and the new address. Public links and
-  search results may need migration. The management address can be chosen
-  separately; changing it may require device authentication again. Do not suggest
+- Guide the user through URL choices in short, plain language, one step at a
+  time. Do not demand full URLs, Worker names, account subdomain, and migration
+  details all at once. First ask whether to use a temporary `workers.dev` address
+  or a custom domain. Briefly explain a custom domain needs Cloudflare setup and
+  a temporary address can be changed later; give migration details only when
+  relevant or requested. Discover the account's existing `workers.dev`
+  subdomain and resources through available read-only tools instead of asking
+  the user for information the AI can find. If a subdomain must be registered,
+  ask the user to choose one and explain it must be available and is shared by
+  the account's Workers. Never change an existing subdomain without consent.
+- Explain `workers.dev` URLs with a concrete example: for account subdomain B,
+  management name A and public name C, management is
+  `https://A.B.workers.dev/admin` and public is `https://C.B.workers.dev/`.
+  A and C are separate Worker names; the account-wide B is shared. A custom
+  domain can instead be connected to the public Worker. Ask for a desired short
+  name when needed, offer sensible distinct names, and derive both full URLs
+  yourself. Names in examples are suggestions, not automatic choices.
+- Before creating resources or deploying, show the two derived addresses and
+  get the user's agreement unless they have already explicitly selected them.
+  If they are undecided, wait for their choice; use any prior choices without
+  re-asking. After deployment verify both addresses match. Do not suggest
   rerunning the public placeholder deployment on an existing site.
-- Before creating or deploying either Worker, ask the user which management URL
-  (including `/admin`) and public site URL they want. If they have already chosen
-  both, use those choices; otherwise wait for their answer. Never silently adopt
-  names or URLs from the examples, repository name, or account defaults.
-- Explain that a `workers.dev` URL combines the Worker name with the account's
-  shared `workers.dev` subdomain. Ask whether to use that subdomain or a custom
-  domain, and confirm any new or changed account subdomain before registering it.
-  Changing it affects other Workers. Show both full intended URLs and the two
-  distinct Worker names and confirm them before resource creation or deployment,
-  unless the user has already explicitly chosen them. Verify the resulting URLs
-  match the choices after deployment.
 - Check the intended Cloudflare account and whether the selected names already
   exist; do not overwrite existing resources. Follow the installation guide in
   `docs/cloud_ja.md` or `docs/cloud_en.md`.
