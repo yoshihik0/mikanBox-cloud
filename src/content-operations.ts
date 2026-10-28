@@ -17,7 +17,10 @@ async function sourceRows(env:Env) {
 export async function mediaReferenceCount(env:Env,name:string) {
   const source=await sourceRows(env);
   const used=(row:{data:string},fields:string[])=>{const data=JSON.parse(row.data);return fields.some(field=>typeof data[field]==='string'&&mediaReplace(data[field],name,'__reference_probe__')!==data[field]);};
-  return source.pages.filter(row=>used(row,textFields)).length+source.components.filter(row=>used(row,['html','css','js'])).length;
+  const siteRow=await env.DB.prepare('SELECT value FROM settings WHERE key=?').bind('settings').first<{value:string}>();
+  const site=siteRow ? JSON.parse(siteRow.value) : {};
+  const ogp=typeof site.ogp_image==='string' ? site.ogp_image : '';
+  return source.pages.filter(row=>used(row,textFields)).length+source.components.filter(row=>used(row,['html','css','js'])).length+(mediaReplace(ogp,name,'__reference_probe__')!==ogp?1:0);
 }
 export async function mediaHasLockedReferences(env:Env,name:string) {
   const rows=await env.DB.prepare('SELECT posts.data FROM posts JOIN edit_locks ON edit_locks.post_id=posts.id WHERE edit_locks.expires_at>?').bind(Date.now()).all<{data:string}>();

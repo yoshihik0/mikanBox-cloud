@@ -7,7 +7,7 @@ SQLite版のUI・機能を基準にしたCloudflare Workers + D1版です（D1�
 - [日本語の開発マニュアル](docs/cloud_ja.md)
 - [English development manual](docs/cloud_en.md)
 - ローカル起動: `npm ci` → `npm run prepare:local` → `npm run db:local` → `npm run dev`
-- 検証: `npm run check`、`npm test`、`npm run build`（公開しないdry run）
+- 検証: `npm run check`、`npm test`、`npm run build`（公開しないdry run）。共通ファイルの開発時保護チェックは、保護ベースラインと隣接するPHP版がある開発環境で `npm run check:protected` を実行します。
 - R2結合テスト: `node scripts/test-r2-local.mjs`（公式ローカル環境・専用一時データ。契約や支払い登録不要）
 - 標準コンテンツをCloudにだけコピー: `npm run sync:defaults`（ページ8件＋コンポーネント11件／言語）
 - 共通アセットをCloudにだけコピー: `npm run sync:assets`
@@ -24,7 +24,7 @@ SQLite版のUI・機能を基準にしたCloudflare Workers + D1版です（D1�
 MCP・静的スナップショット等を追加しています。旧設定・秘密・データはコピーしていません。
 
 ルート `.mcp.json` は公式PHPサイト専用のままです。CloudサイトのMCP操作は
-別ワークスペースで行ってください。確認用公開は `wrangler.production.json` を使い、Worker名は `mikanbox` です。
+別ワークスペースで行ってください。確認用公開は `wrangler.production.json` を使い、Worker名は `mikanbox` です。このファイルは既存の確認用アカウントとD1に固定されています。別アカウントではそのままデプロイしないでください。独立した新規導入手順はまだ用意できていません。
 初期状態はR2なしで画像をD1に分割保存します（1画像10 MB・合計400 MB・10,000件）。サイトの「メディアの保存先」から、準備したR2へコピー・確認後に切り替えられます。R2は支払い方法の登録が必要で、無料枠の超過は課金対象です。公開構成にR2はまだ設定していません。詳細は開発マニュアルのv0.5.0の節を参照してください。
 旧Cloud版のDBを保持し、新D1 `mikanbox-cloud` に分離しています。
 初回設定は `/admin` で `.env.production.secrets` の `SETUP_TOKEN` を使ってください。

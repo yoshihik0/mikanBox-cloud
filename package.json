@@ -1,13 +1,14 @@
 {
   "name": "mikanbox-cloud",
-  "version": "0.6.2",
+  "version": "0.6.3",
   "private": true,
   "scripts": {
     "precheck": "node scripts/sync-cloud-help.mjs",
     "pretest": "node scripts/sync-cloud-help.mjs",
     "prebuild": "node scripts/sync-cloud-help.mjs",
     "dev": "wrangler dev",
-    "check": "tsc --noEmit && node scripts/verify-protected.mjs",
+    "check": "tsc --noEmit",
+    "check:protected": "node scripts/verify-protected.mjs",
     "test": "tsc --module Node16 --moduleResolution Node16 --outDir .test-build && node --test tests/*.test.cjs",
     "db:local": "wrangler d1 migrations apply DB --local",
     "build": "wrangler deploy --dry-run --outdir .build",

@@ -71,6 +71,14 @@ test('rename preflight counts exact content references and file-only confirmatio
  const renamed=await post(env,auth,{save_action:'rename_media',file:'old.png',new_name:'new.png',confirmed:'0'});assert.equal(renamed.data.success,true,renamed.data.message);assert.ok(await getMediaObject(env,'new.png'));assert.equal((await loadPage(env,'used')).content_md,'old.png old.png');assert.equal((await loadComponent(env,'used')).html,'old.png');
 });
 
+test('site OGP alone triggers rename confirmation',async()=>{
+ const env=environment(),auth=await login(env);await upload(env,'ogp.png');
+ await saveSettings(env,{...(await loadSettings(env)),ogp_image:'ogp.png'});
+ const status=await post(env,auth,{save_action:'media_reference_status',file:'ogp.png'});assert.equal(status.data.count,1);
+ const ask=await post(env,auth,{save_action:'rename_media',file:'ogp.png',new_name:'new.png'});assert.equal(ask.data.require_confirm,true);
+ const renamed=await post(env,auth,{save_action:'rename_media',file:'ogp.png',new_name:'new.png',confirmed:'1'});assert.equal(renamed.data.success,true,renamed.data.message);assert.equal((await loadSettings(env)).ogp_image,'new.png');
+});
+
 test('WebP conversion updates saved page and component references through the actual admin action',async()=>{
  const env=environment(),auth=await login(env);await upload(env,'photo.png');
  await savePage(env,'image-test',{title:'Test',status:'draft',content_md:'![img](photo.png)',css:'background:url(photo.png)',js:'const image="photo.png"',ogp_image:'photo.png'});
