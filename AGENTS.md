@@ -36,6 +36,14 @@ publishing a partial snapshot.
   contain an email address, email username, login ID, or other private personal
   information. Never derive or suggest names from account or login details.
   Never change an existing subdomain without consent.
+- Speak in terms of the management screen address and public site address.
+  Do not ask the user to choose "Worker names" or introduce Worker jargon
+  unless they ask for technical details. Present the two addresses on separate
+  lines with clear labels and blank lines, showing which first part of each URL
+  the user can choose. Ask for those two parts in plain language; explain that
+  they must be different. Avoid a single dense paragraph or a form question
+  that collapses the example into one long line. Handle the Worker configuration
+  yourself. Examples illustrate the shape and are never selected automatically.
 - Explain `workers.dev` URLs with a concrete example: for account subdomain B,
   management name A and public name C, management is
   `https://A.B.workers.dev/admin` and public is `https://C.B.workers.dev/`.
