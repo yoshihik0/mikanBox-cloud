@@ -26,7 +26,8 @@ publishing a partial snapshot.
 - Guide installation in short steps, using ordinary language and line breaks.
   First ask whether the public site will use a custom domain. Briefly explain
   that using one now requires Cloudflare domain setup and that it can be added
-  later. Offer "Use a custom domain" and "Not now". Do not ask again if the
+  later. Offer "Use a custom domain" and "Do not use one (or set it up later)".
+  Do not ask again if the
   user has already chosen. If using a custom domain, guide them through using
   an existing domain or obtaining one and connecting it to Cloudflare; do not
   imply that all existing domains must be purchased or transferred. Ask for
