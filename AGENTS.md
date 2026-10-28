@@ -23,36 +23,39 @@ publishing a partial snapshot.
 
 ## Installing for a user
 
-- Guide the user through URL choices in short, plain language, one step at a
-  time. Do not demand full URLs, Worker names, account subdomain, and migration
-  details all at once. First ask whether to use a temporary `workers.dev` address
-  or a custom domain. Briefly explain a custom domain needs Cloudflare setup and
-  a temporary address can be changed later; give migration details only when
-  relevant or requested. Discover the account's existing `workers.dev`
-  subdomain and resources through available read-only tools instead of asking
-  the user for information the AI can find. If a subdomain must be registered,
-  ask the user to choose one and explain it must be available and is shared by
-  the account's Workers. Explain that the subdomain is public and should not
-  contain an email address, email username, login ID, or other private personal
-  information. Never derive or suggest names from account or login details.
-  Never change an existing subdomain without consent.
-- Speak in terms of the management screen address and public site address.
-  Do not ask the user to choose "Worker names" or introduce Worker jargon
-  unless they ask for technical details. Present the two addresses on separate
-  lines with clear labels and blank lines, showing which first part of each URL
-  the user can choose. Ask for those two parts in plain language; explain that
-  they must be different. Avoid a single dense paragraph or a form question
-  that collapses the example into one long line. Handle the Worker configuration
-  yourself. Examples illustrate the shape and are never selected automatically.
-- Explain `workers.dev` URLs with a concrete example: for account subdomain B,
-  management name A and public name C, management is
-  `https://A.B.workers.dev/admin` and public is `https://C.B.workers.dev/`.
-  A and C are separate Worker names; the account-wide B is shared. A custom
-  domain can instead be connected to the public Worker. Ask the user to choose
-  the names and derive both full URLs yourself. Illustrate the format with
-  neutral examples, but do not recommend or proactively suggest names. Offer
-  candidates only if the user asks, using no email usernames, login IDs,
-  account names, or private personal details. Never treat an example as a choice.
+- Guide installation in short steps, using ordinary language and line breaks.
+  First ask whether the public site will use a custom domain. Briefly explain
+  that using one now requires Cloudflare domain setup and that it can be added
+  later. Offer "Use a custom domain" and "Not now". Do not ask again if the
+  user has already chosen. If using a custom domain, guide them through using
+  an existing domain or obtaining one and connecting it to Cloudflare; do not
+  imply that all existing domains must be purchased or transferred. Ask for
+  the intended public domain and check the zone and connection.
+- Then explain the management and public addresses on separate lines. If the
+  public site uses `workers.dev`, use this form:
+
+  Management: `https://[management name].[subdomain].workers.dev/admin`
+
+  Public: `https://[public name].[subdomain].workers.dev/`
+
+  Ask for the subdomain if one must be newly registered, the management name,
+  and the public name. The two site names must differ. When a custom public
+  domain is selected, show that domain as the public address instead and do
+  not ask the user for a public `workers.dev` address or public site name.
+  Determine any internal public Worker name yourself, check it does not collide
+  with an existing resource, and do not expose private personal information.
+- Discover an existing `workers.dev` account subdomain and resources through
+  available read-only tools and show what was found instead of asking for it
+  again. A newly registered subdomain must be available and is shared by the
+  account's Workers. Explain that it appears publicly; do not use an email
+  username, login ID, account name, or other private personal information.
+  Never infer or suggest names from login or account details, and never change
+  an existing subdomain without consent. Explain the user may choose the names
+  without proactively recommending names; provide examples only to explain the
+  format, or candidates if specifically asked. Never adopt examples silently.
+- Do not ask the user to choose "Worker names" or use technical jargon unless
+  asked. Preserve line breaks in the user-facing message; do not put the entire
+  explanation into a single question field. Handle configuration details yourself.
 - Before creating resources or deploying, show the two derived addresses and
   get the user's agreement unless they have already explicitly selected them.
   If they are undecided, wait for their choice; use any prior choices without
