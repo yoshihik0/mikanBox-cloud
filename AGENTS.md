@@ -73,7 +73,9 @@ publishing a partial snapshot.
   rerunning the public placeholder deployment on an existing site.
 - Check the intended Cloudflare account and whether the selected names already
   exist; do not overwrite existing resources. Follow the installation guide in
-  `docs/cloud_ja.md` or `docs/cloud_en.md`.
+  `docs/cloud_ja.md` or `docs/cloud_en.md`; the detailed commands and
+  configuration steps are in `docs/install-reference_ja.md` (the English manual
+  still carries them inline).
 - Generate a unique cryptographically random `JWT_SECRET` and `SETUP_TOKEN`
   locally for each installation. Save them privately in the ignored
   `.env.production.secrets`; never print, commit, or share their values. Tell
