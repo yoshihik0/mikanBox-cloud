@@ -1,39 +1,109 @@
 <style>.manual-version{font-size:.5em;font-weight:400;white-space:nowrap}</style>
 
-
 # 🍊mikanBox Cloudflare Manual <small class="manual-version">v0.6.10</small>
 
-Images are published after upload, including images used only in drafts. Do not upload images that must remain private. JavaScript and CSS files are published when the site is built.
+This manual covers installation and the Cloudflare edition’s differences. For shared operations, see the [operation manual](https://yoshihiko.com/mikanbox/help_en.html).
 
-You can use `{{SITE_URL}}` in Markdown link destinations. Tags inside code examples remain literal. Renaming an image also requests confirmation when it is used only as the site-wide OGP image.
+## Setup and distribution
 
-The Data migration and import screen contains CSV conversion, D1 export and time-based recovery, JSON backup and restore, and static HTML ZIP export. D1 SQL export and time-based recovery are separate: the saved SQL file cannot be restored from this screen. Time-based recovery does not restore R2 images or published files; rebuild after restoring. Both D1 actions require D1 edit permission in the Cloudflare API token. SQL and JSON files contain sensitive information and are not encrypted, so restrict access and store them securely. JSON restore keeps the current site ID, API key and Cloud connection; accounts are restored only when selected.
+### New installation and publication
 
-Admin publication and D1 operations require a Cloudflare API token.
+Use separate management and public Workers. With `workers.dev`, for example, an account subdomain `mikanbox-cloud` can produce management URL `https://admin.mikanbox-cloud.workers.dev/admin` and public URL `https://mikan.mikanbox-cloud.workers.dev/`. The management and public names `admin` and `mikan` are chosen separately; the account subdomain `mikanbox-cloud` is shared. A newly registered account subdomain must be available. Because the subdomain is public, avoid email usernames, login IDs, and other private personal information; choose a site-related name instead.
 
-The admin screen checks the Cloud release manifest on GitHub and shows the installed and latest versions and whether an update is available. Check again refreshes release information; reload the page after updating to see the installed version. See the manual update setup below. `CLOUD_RELEASE_MANIFEST_URL` optionally selects an HTTPS Cloud release JSON.
+A custom domain can also be used for the public site. You can start with temporary `workers.dev` URLs and change to a custom domain later; the domain requires Cloudflare setup. An AI installer should first offer “Use a custom domain” and “Do not use one (or set it up later)”, briefly explain that it can be added later, and guide the user one step at a time. If selected, help connect an existing domain or obtain one; purchasing or transferring an existing domain is not always required. It should show the management and public addresses on separate lines and ask in plain language for their distinct first parts, instead of asking for "Worker names". With a custom public domain, show that domain and do not ask for a public `workers.dev` address or name. It should discover available account information itself, illustrate the URL format with neutral examples, ask the user to choose names, and confirm both resulting URLs before creating resources. It must not proactively recommend names; provide candidates only when asked, and never derive them from email addresses, login IDs, or account details. Example names must not be silently adopted. When an input form is available, group separate fields for the management name, public name only when needed, and account subdomain only if not yet registered. Show an existing subdomain as context.
 
-Media omits the image conversion note and maximum-file-size line, and explains using files on a page: a bare filename in Markdown and `media/filename` in HTML. Existing `images/filename` references for images remain supported.
+To change the public URL later, connect the new domain to the public Worker, update `PUBLIC_SITE_URL` in the management configuration, and redeploy the management Worker. Rebuild from the admin screen, then verify the new URL, pages, images, sitemap, and RSS. External links and search results may also need migration. The management URL can be chosen separately; changing it may require device authentication again. Do not redeploy the public placeholder to an existing site.
 
+1. Run `npm ci` and `npx wrangler login`, then check the account with `npx wrangler whoami`. Create a new database with `npx wrangler d1 create mikanbox-cloud` and note its ID.
+2. Copy `wrangler.production.example.json` to `wrangler.production.json` and `wrangler.public.example.json` to `wrangler.public.json`. Set the same account ID in both `account_id` fields. Set the admin `name` and `vars.CLOUDFLARE_WORKER_NAME` to the management name; set the public `name` and admin `vars.CLOUDFLARE_PUBLIC_WORKER_NAME` to a different public name. Set `vars.CLOUDFLARE_ACCOUNT_ID` to the account ID and both `vars.CLOUDFLARE_D1_ID` and `d1_databases[0].database_id` to the new database ID. Set `PUBLIC_SITE_URL` to the actual public HTTPS origin without a path, for example `https://mikanbox-public.<subdomain>.workers.dev`. These local configuration files are excluded from Git.
+3. Only for initial creation, run `npx wrangler deploy --config wrangler.public.json` to deploy the public placeholder. **Running this again on an existing public site replaces it with the placeholder.** Check the target name first.
+4. Generate a unique cryptographically random `JWT_SECRET` and one-use `SETUP_TOKEN` for each installation and store them in `.env.production.secrets` as `KEY=value` lines. An AI installer generates them locally, never prints them in conversation or logs, and tells the user where to find the file for initial registration. Never publish or commit the secrets. Run `npx wrangler d1 migrations apply DB --remote --config wrangler.production.json`, then `npm run deploy:cloud`. Open `/admin` on the management URL in the browser you normally use and register the first device there. The browser that submits the token is registered, and the token can be used only once. Registration in an AI embedded browser does not automatically carry over to your normal browser. The AI should link to the local secrets file and ask you to open the management page in your usual browser and enter the token yourself, without asking you to paste it into chat. It need not repeat the publication setup and build instructions already shown in the management screen unless asked or a problem requires explanation. If another browser is already registered, use Site → Devices and users in that browser to create a device-add code for your normal browser.
+5. Create a Cloudflare API token scoped to the intended account with Workers Scripts Edit permission and save it in Site → Cloudflare publication settings. This token is separate from Wrangler login. D1 export and restore additionally require D1 edit permission.
+6. Build the static site from the page list and open the public URL. Verify anonymous access to the management side, public pages and images, private pages, updates and withdrawal. Keep the browser open until the build completes.
 
-Save and other notifications appear at the lower right and disappear after about three seconds.
+`npm run deploy:cloud` updates only the management Worker. The admin build updates the public Worker. The legacy `npm run publish:static` command cannot be used for a split site.
 
+#### Device authentication
 
-macOS metadata files inside `__MACOSX` or starting with `._` are ignored automatically.
+There are no passwords. The Devices and users section is normally closed, and changing the device expiry shows the result in place. Only registered devices (browsers) can open the admin screen. Each device keeps a random token in a cookie; D1 stores only its hash.
 
+- **First device**: on the sign-in screen, enter `SETUP_TOKEN`, a username, a display name and a name for the device. A used `SETUP_TOKEN` never works again.
+- **Adding a device**: on a registered device, open Site → Devices and users → Add a device, issue a code, and enter it on the new device's sign-in screen. That device is registered as the same user as whoever issued the code. Codes are valid for 3 hours and work once. To invite someone, issue an invite code under Invite someone and hand it over; the invited person chooses their own user ID and display name on the sign-in screen. After five wrong codes, entry is blocked for 15 minutes.
+- **Expiry**: devices expire 30 (default), 90 or 180 days after last use. Each use extends it.
+- **Stopping a device**: stop it from the list under Devices and users. For 3 days after being added with a code, a device cannot stop other devices, delete or change other users, restore users from a backup, or restore D1 to a point in time. Devices registered with `SETUP_TOKEN` have no such limit. Deleting a user also stops that user's devices and unused codes. When a new device is registered, other devices are told the next time they open the admin screen.
+- **Recovery**: if every device is lost, set a new value with `wrangler secret put SETUP_TOKEN` and use Recovery on the sign-in screen with an existing username. Every registered device stops, and unused codes and the MCP key are cleared.
+- Clearing browser cookies, switching browsers or using a private window is the same as losing the device. Keeping devices safe (screen lock, handling loss) is your responsibility.
 
-Open “How to arrange files in the ZIP” on the import screen to see the folder layout and resulting page IDs.
+## Overview
 
+### Standard content
+
+Initial setup imports the SQLite edition's standard content in the selected language: eight pages and eleven components for each of Japanese and English, including home, 404, search, examples, layouts, headers, footers, cards, and AI instruction samples. The read-only source is `../shared/import/`. Run `npm run sync:defaults` inside Cloud to refresh its copy without modifying either PHP edition.
+
+Existing pages and components are preserved. On this review deployment, the temporary homepage is replaced only if it exactly matches the unedited page originally created during deployment. Settings, accounts, secrets, and the previous Cloud database are not part of this import.
+
+The standard search form's `/index.php?page=search&q=...` and `/search?q=...` work. Results contain published pages only and exclude drafts, pending pages, and DB pages. AI instruction component IDs such as `DESIGN_sample.md` and `DESIGN.md` are supported. `{{AI_QUESTION}}` and `{{AI_QUESTION:section-id}}` are supported. External `EXT_MD` fetching remains unsupported. Sample images are not included; upload your images from the media screen.
+
+## Pages and editing
+
+See [Pages](https://yoshihiko.com/mikanbox/help_en.html#page-mgmt) and [Page editing](https://yoshihiko.com/mikanbox/help_en.html#page-edit) for shared operations.
+
+### Implemented operations
+
+- Page lists, search, category filtering, pagination, creation, editing, and deletion.
+- Separate draft, pending, public and DB statuses.
+- Memos, Markdown/HTML input, page CSS/JavaScript, SEO fields, and wrapper selection.
+- Revision recording, selection of the last 50 revisions, edit locks, and stale-edit protection.
+- Draft and pending pages are private. Registered, signed-in editors can preview both; the labels describe workflow state and have identical access permissions.
+- Component CRUD, part/wrapper/AI-document types, memos, CSS, and JavaScript.
+- Site settings, language, site memo, adding and stopping devices, and inviting and deleting users.
+- Changing your own display name (the field on your own user in "Devices and users"). The username cannot be changed.
+- Image upload, streaming delivery and deletion without R2, up to 10 MB per file. Existing filenames are not overwritten.
+- ZIP downloads of JSON content and media; these are not a complete D1 backup/restore.
+- Bulk acquisition for pages, components, search, navigation, feeds, data backups and static builds avoids one query per content item. Platform data/CPU limits still apply.
+- Category deletion also removes the category from affected pages and records revisions. Active edits or concurrent changes cancel the entire operation.
+- D1 snapshots of public_static pages. Published HTML stays unchanged until rebuilt; changing a page to draft immediately prevents public access.
+
+Component JavaScript is available at `/component-js/ID.js`. Page/component JavaScript is administrator-authored code executed on public pages.
+
+Pages with DB status expose DATA/DATAROW through `/api/ID`. Draft/pending data cannot be read through public POST_MD embeds, navigation, feeds, or the data API.
+
+Page and settings saves compare their read snapshot with current storage and reject stale writes. A concurrent settings save cannot restore a revoked API key. Deleting an account stops its devices and cancels unused codes issued by them, including invitations.
 
 Admin previews can display images before publication. Each referenced image receives a short-lived preview URL while the preview remains sandboxed.
 
-
 The page-list preview shows saved content. The page editor preview renders the current unsaved form without saving or publishing it.
 
+## Site
 
-When renaming or converting to WebP, an existing target filename stops the operation before the original or published image is withdrawn. If a page whose references would change is being edited, save and close its editor first. Errors remain visible beside the image action.
+See [Site](https://yoshihiko.com/mikanbox/help_en.html#site) for shared settings.
 
-## Delivery and withdrawal
+<a id="manual-update"></a>
+### Manual updates (v0.6.6 and later)
+
+For routine updates, select Update on GitHub in Site settings, press Run workflow on GitHub, wait for success, then reload the management page. There is no automatic update. You do not need to sync your repository or download files to your computer each time. Each run fetches the latest published release from `yoshihik0/mikanBox-cloud`, including published prereleases, but excluding unreleased development changes.
+
+#### One-time setup
+
+1. Place the upstream `.github/workflows/update-cloud.yml` in the default branch of a GitHub repository you control. Use your existing installation repository if available. Enable Actions in the Actions tab if disabled on a fork. Do not register your secrets in the upstream repository. Sites on v0.6.5 or earlier can run this workflow for the first update; the management link appears afterward.
+2. In Settings → Secrets and variables → Actions → Repository secrets, add:
+   - `CLOUDFLARE_API_TOKEN`: a Cloudflare token scoped to the target account with Workers Scripts Edit and D1 Edit permissions. If R2 is connected, also grant the permissions Wrangler needs to handle that binding.
+   - `MIKANBOX_UPDATE_CONFIG`: the complete installation `wrangler.production.json` as JSON. Use current management Worker, account, D1, connected R2, routes and custom-domain settings. Do not use a sample or another site's configuration. Do not add JWT_SECRET, SETUP_TOKEN or API tokens to this JSON.
+3. Open GitHub Actions → Update mikanBox Cloud → Run workflow. If the management settings already include manual updates, save your repository as `owner/repository` there. Updates through Actions configure the link automatically.
+
+If Cloudflare Workers Builds or another system already deploys on GitHub pushes, disable that automatic deployment separately to keep updates manual. This workflow has no push or scheduled trigger.
+
+#### Preservation and failures
+
+The updater checks the existing management Worker and D1/R2 bindings, verifies the build, applies pending D1 migrations and deploys the management Worker. It does not initialize articles, images or settings; existing secrets including JWT_SECRET for registered devices and existing environment variables are retained. It does not overwrite the public Worker with a placeholder. Mismatched targets or unsupported additional bindings stop the update. Update the saved GitHub JSON when your bindings or routes change.
+
+Save any needed backup before updating. Database migration and code deployment are not a single transaction. If a run fails, inspect the failed step, fix its configuration or permissions and run again. Applied migrations are not repeated. After success, reload the management page and check the version, articles and images. Use the management build when changes need to reach published pages.
+
+Publication files are downloaded without executing code with management privileges. Public help permits only the product-provided script. Deleted pages still present on the public site remain marked as pending publication changes. Stopping a device also cancels its unused enrollment codes. Setup and recovery tokens can be consumed only once, including concurrent requests.
+
+The admin screen checks the Cloud release manifest on GitHub and shows the installed and latest versions and whether an update is available. Check again refreshes release information; reload the page after updating to see the installed version. See the manual update setup below. `CLOUD_RELEASE_MANIFEST_URL` optionally selects an HTTPS Cloud release JSON.
+
+### Delivery and withdrawal
 
 Public pages are served as static files only. Viewing them runs neither the Worker nor D1, so it consumes no daily Worker requests and no D1 row reads. The former Worker delivery (the Worker serving built HTML from D1 or dynamic pages) and the `STATIC_DELIVERY` setting are gone.
 
@@ -43,16 +113,15 @@ Pages have four statuses: draft, pending, public and DB. There is no per-page ch
 
 The build (rebuild and publish) button sits below the page list. Progress and results appear beside it, together with the number of pages whose changes are not on the public site and the time of the last publication.
 
-### Withdrawal
+#### Withdrawal
 
 Files placed on the delivery target bypass the Worker, so deleting the source leaves the deployed file in place. Removing it from the delivery target is called withdrawal.
 
 Pages are withdrawn by a build. Pages made private and pages deleted are removed from the delivery target then, along with their URL aliases. **They stay readable until you build.** After unpublishing, build as well.
 
-The Media screen withdraws deleted images automatically. Renamed or converted images keep their old public version until the next build; see "Static image delivery" below.
+The Media screen withdraws deleted images automatically. Renamed or converted images keep their old public version until the next build; see "Static image delivery".
 
-
-## Separate public and admin Workers
+### Separate public and admin Workers
 
 Setting `CLOUDFLARE_PUBLIC_WORKER_NAME` (the public Worker's name) and `PUBLIC_SITE_URL` (the public site's URL) publishes pages to a separate Worker. The public Worker holds static files only and runs no code. The admin screen and MCP stay on the current Worker. New installations use this split configuration. Verify the destination before migrating an older installation. The public site URL appears next to the build controls on the page list and links to the public site.
 
@@ -65,29 +134,13 @@ Setting `CLOUDFLARE_PUBLIC_WORKER_NAME` (the public Worker's name) and `PUBLIC_S
 - The AI question box does not work on the public site. Site search uses Google, as described under Delivery and withdrawal.
 - As in the PHP editions, the 404 page is never listed in sitemaps or RSS, split or not.
 
-## Static image delivery
+### Admin operations
 
-Publication includes images. Every stored file is published, including files no page references, because dynamic pages read the same `/media/filename` paths as static pages.
+Rebuild generates public HTML and updates static delivery together, removing unpublished or deleted pages. Previously published files remain until rebuilding. Images are delivered through the Worker and changes take effect directly. Keep the admin screen open while the browser performs these steps. Configure a dedicated token with Workers edit permission in Site settings. The installation target is fixed. The token is encrypted using a key derived from JWT_SECRET, never displayed again, and excluded from portable backups. Create it once: you only need a new one if the token is deleted or revoked in Cloudflare, its permissions change, JWT_SECRET changes, or the database is restored to a different state by a backup or Time Travel. While no token is set, a notice under “Build static site” in the page list says so. Expiring Wrangler login credentials are never copied into the Worker. The existing MCP build_ssg generates HTML only; delivery still requires the admin screen or the publication command. When Cloudflare returns error details, the error code and message are displayed. Publication requires the latest uploaded Worker version to match the deployed version. If they differ, deploy the intended version first. In split mode, saving the connection checks access to the public Worker; write permission is exercised during publication.
 
-Published images are served from Static Assets. Admin previews can show images before publication. Uploading an image in Media automatically adds that image to the delivery target without rebuilding pages. This needs the Cloudflare publication settings and the last publication state; if the target was changed elsewhere, build the site once. If publication fails, the image remains saved and the admin screen reports that it was not published. MCP uploads do not publish automatically.
+JPEG, PNG and WebP images can be resized and converted to WebP in the browser. Uploads default to a 2,000px maximum side. Existing conversion replaces the image and updates references with page history. GIF and SVG uploads preserve original bytes. Browser processing accepts dimensions up to 16,000px and 40 million pixels.
 
-The delivery target allows 20,000 files per version and 25 MiB per file. Images are limited to 10 MB each and 10,000 files, so pages and components fit within that budget alongside them.
-
-Renaming or converting a published image keeps the old public image and HTML until the next build. The new image and references are saved in the admin, and the next build switches the public site. The old public filename cannot be reused until the build removes it. Deleting a published image still withdraws it from the delivery target first.
-
-Replacing a file under the same name needs no withdrawal, because its public URL does not change. The delivery target keeps the previous content until the next publication.
-
-Installations that do not use static delivery continue to serve every image through the Worker.
-
-## JS and CSS libraries
-
-Media accepts browser-ready `.js` and `.css` files: nonempty UTF-8 text, up to 10 MB each, saved without rewriting code. The admin screen does not execute them. Copy the URL or embed tag from a card and paste tags into page content or component HTML. Uploads do not insert tags automatically. Only trusted administrators and API keys should upload code from a verified source. Format validation does not guarantee safe code.
-
-Code files receive no category prefix, stay visible across category filters, and bypass image conversion. File-type filtering, same-extension renaming, and deletion are available. Existing names are rejected rather than overwritten. Uploading a folder hierarchy is not supported.
-
-Files follow the existing D1/R2 media storage setting and keep `/media/filename` URLs. Complete JSON backup/restore and D1-to-R2 migration include them; code fields remain in D1. Static publication serves these files from the deployed static files; see "Static image delivery" below. Portable static ZIPs include files referenced by HTML.
-
-## Migrate from D1 to R2
+### Migrate from D1 to R2
 
 Start with D1 without enabling R2. Site → Media storage shows the current storage and usage and provides “Migrate from D1 to R2”. Only image storage switches; content, settings, users and other records remain in D1.
 
@@ -111,24 +164,6 @@ Run `node scripts/test-r2-local.mjs` from the Cloud directory to test the offici
 
 References: [D1 limits](https://developers.cloudflare.com/d1/platform/limits/), [R2 pricing](https://developers.cloudflare.com/r2/pricing/), [R2 setup](https://developers.cloudflare.com/r2/get-started/), [Usage-based billing](https://developers.cloudflare.com/billing/understand/usage-based-billing/).
 
-
-## Admin operations
-
-Rebuild generates public HTML and updates static delivery together, removing unpublished or deleted pages. Previously published files remain until rebuilding. Images are delivered through the Worker and changes take effect directly. Keep the admin screen open while the browser performs these steps. Configure a dedicated token with Workers edit permission in Site settings. The installation target is fixed. The token is encrypted using a key derived from JWT_SECRET, never displayed again, and excluded from portable backups. Create it once: you only need a new one if the token is deleted or revoked in Cloudflare, its permissions change, JWT_SECRET changes, or the database is restored to a different state by a backup or Time Travel. While no token is set, a notice under “Build static site” in the page list says so. Expiring Wrangler login credentials are never copied into the Worker. The existing MCP build_ssg generates HTML only; delivery still requires the admin screen or the publication command. When Cloudflare returns error details, the error code and message are displayed. Publication requires the latest uploaded Worker version to match the deployed version. If they differ, deploy the intended version first. In split mode, saving the connection checks access to the public Worker; write permission is exercised during publication.
-
-JPEG, PNG and WebP images can be resized and converted to WebP in the browser. Uploads default to a 2,000px maximum side. Existing conversion replaces the image and updates references with page history. GIF and SVG uploads preserve original bytes. Browser processing accepts dimensions up to 16,000px and 40 million pixels.
-
-### Device authentication
-
-There are no passwords. The Devices and users section is normally closed, and changing the device expiry shows the result in place. Only registered devices (browsers) can open the admin screen. Each device keeps a random token in a cookie; D1 stores only its hash.
-
-- **First device**: on the sign-in screen, enter `SETUP_TOKEN`, a username, a display name and a name for the device. A used `SETUP_TOKEN` never works again.
-- **Adding a device**: on a registered device, open Site → Devices and users → Add a device, issue a code, and enter it on the new device's sign-in screen. That device is registered as the same user as whoever issued the code. Codes are valid for 3 hours and work once. To invite someone, issue an invite code under Invite someone and hand it over; the invited person chooses their own user ID and display name on the sign-in screen. After five wrong codes, entry is blocked for 15 minutes.
-- **Expiry**: devices expire 30 (default), 90 or 180 days after last use. Each use extends it.
-- **Stopping a device**: stop it from the list under Devices and users. For 3 days after being added with a code, a device cannot stop other devices, delete or change other users, restore users from a backup, or restore D1 to a point in time. Devices registered with `SETUP_TOKEN` have no such limit. Deleting a user also stops that user's devices and unused codes. When a new device is registered, other devices are told the next time they open the admin screen.
-- **Recovery**: if every device is lost, set a new value with `wrangler secret put SETUP_TOKEN` and use Recovery on the sign-in screen with an existing username. Every registered device stops, and unused codes and the MCP key are cleared.
-- Clearing browser cookies, switching browsers or using a private window is the same as losing the device. Keeping devices safe (screen lock, handling loss) is your responsibility.
-
 ### JSON backup and restore
 
 Download a single JSON backup from Site settings and select that file to restore. It includes settings, all pages, components, revisions, HTML snapshots, users and original images. Images transfer in 500KB parts. Both operations start from a confirmation screen. Backups contain private content, API keys and authentication hashes: store them securely. Large backups consume browser memory and transfer time; keep the screen open. Metadata is limited to 20MB.
@@ -141,70 +176,74 @@ D1 SQL export and Time Travel are separate server operations available from Site
 
 Publication, backup and restore consume Worker requests and D1 reads/writes. Static delivery is free, but updates remain subject to account-wide daily limits. Updating the maximum 20,000 files daily is not guaranteed within the Free tier.
 
-## Architecture
+### Static HTML ZIP export
 
-The admin sidebar logo displays “mikanBox” and “cloud” on two lines, matching the flat edition's layout.
+After a build, open the Data migration and import screen and choose Download static ZIP under Static HTML (ZIP). Choose `ID.html` or `ID/index.html`. The root `index` exports as `index.html`; directory-style IDs ending in `/index` retain `directory/index.html`. Output path collisions fail clearly.
 
-Cloudflare Workers runs the application. D1 stores content and settings. Images initially use D1 and can migrate to R2 through Image storage, as described in “Migrate from D1 to R2”.
+Only currently public_static, already-built snapshots are included. Links to included pages, images and component scripts become relative paths. Referenced images and public assets are bundled. Dynamic pages, search and APIs retain live-site links. Credentials, settings, users and private pages are excluded. ZIP pages do not register WebMCP; AI question controls become links to Cloud help.
 
-The stylesheet, AI-question browser script, and translations are copies of the shared canonical sources. Screen templates and main browser interactions are Cloud-specific implementations. Sharing CSS does not guarantee complete screen parity.
+The complete ZIP is limited to 20 MB and a bounded image-query budget. Missing assets fail rather than returning an incomplete ZIP. Arbitrary runtime JavaScript requests and string-style CSS `@import` are not automatically converted. This is a static site export, not a full D1 backup.
 
-## Local development
+macOS metadata files inside `__MACOSX` or starting with `._` are ignored automatically.
 
-Run these commands inside `mikanBox-cloud/`:
+Open “How to arrange files in the ZIP” on the import screen to see the folder layout and resulting page IDs.
 
-```sh
-npm ci
-npm run prepare:local
-npm run db:local
-npm run dev
-```
+### Interrupted updates and restores
 
-Open `http://localhost:8787/admin`. Enter the setup token, a username, a display name and a name for this device. The setup token is the `SETUP_TOKEN` in this directory's `.dev.vars`. Each token value works once. Never publish or commit `.dev.vars`.
+JSON restoration stages incoming data separately and replaces current data together only after validation. If communication fails while transferring images, select the backup file again and restart restoration. Reopening the screen does not resume at the previous transfer position.
 
-Local D1/R2 state lives in `.wrangler/state/`. The database ID is a local placeholder, not a production connection. The live smoke test uses a separate `.wrangler/smoke-state/`. Existing edition data is not imported automatically.
+If only the final restoration response is lost, the browser retries the same operation once and checks its recorded completion result. A completed restoration is not performed again, so later edits are not overwritten. If completion cannot be confirmed, reload and inspect pages and images before retrying. Restoring users may require signing in again.
 
-```sh
-npm run check
-npm test
-npm run build
-```
+If the screen says that restoration completed but publication failed, the restored data remains in place. Retry the site build from the page list instead of importing the backup again.
 
-Use `npm run deploy:cloud` to deploy the management Worker and its browser assets (`--dry-run` only checks). Publish pages and images separately using the build button in the admin screen.
+Program updates run the build, pending database migrations, and management Worker deployment in that order. A failed build leaves the database unchanged. If deployment fails after migrations, applied database changes remain. Inspect the failed step in the log, resolve its cause such as connectivity or permissions, and rerun the same update procedure. Do not remove migration records or repeat initial setup.
 
-`build` performs a dry run without publishing. If Wrangler cannot write to its default log directory, set `WRANGLER_LOG_PATH=.wrangler/logs` to keep logs inside the Cloud directory.
+The import/export screen follows SQLite’s status cards, ZIP import, WordPress XML import and execution log, followed by CSV and Cloud-specific complete JSON backup/restore. ZIP/XML add content while retaining existing IDs; images, accounts and site settings are not imported. Limits: 20 MB files, 15 MB ZIP expansion, 1 MB imported content and 300 records. Settings fields and category add-button alignment use the shared PHP CSS.
 
-## Standard content
+Changing an unpublished image needs no Cloudflare publication settings. Deleting or renaming a published image publishes a withdrawal, so it does require the connection. Renaming uses the reference confirmation dialog. See “Migrate from D1 to R2” for storage limits, migration and complete backup behavior.
 
-Initial setup imports the SQLite edition's standard content in the selected language: eight pages and eleven components for each of Japanese and English, including home, 404, search, examples, layouts, headers, footers, cards, and AI instruction samples. The read-only source is `../shared/import/`. Run `npm run sync:defaults` inside Cloud to refresh its copy without modifying either PHP edition.
 
-Existing pages and components are preserved. On this review deployment, the temporary homepage is replaced only if it exactly matches the unedited page originally created during deployment. Settings, accounts, secrets, and the previous Cloud database are not part of this import.
 
-The standard search form's `/index.php?page=search&q=...` and `/search?q=...` work. Results contain published pages only and exclude drafts, pending pages, and DB pages. AI instruction component IDs such as `DESIGN_sample.md` and `DESIGN.md` are supported. `{{AI_QUESTION}}` and `{{AI_QUESTION:section-id}}` are supported. External `EXT_MD` fetching remains unsupported. Sample images are not included; upload your images from the media screen.
+### Cloud-specific MCP
 
-## Implemented operations
+Generate a Cloud-specific API key in Site settings and connect to `/mcp` using a Bearer key from a separate workspace. The root `.mcp.json` remains dedicated to the official PHP server.
 
-- Page lists, search, category filtering, pagination, creation, editing, and deletion.
-- Separate draft, pending, public and DB statuses.
-- Memos, Markdown/HTML input, page CSS/JavaScript, SEO fields, and wrapper selection.
-- Revision recording, selection of the last 50 revisions, edit locks, and stale-edit protection.
-- Draft and pending pages are private. Registered, signed-in editors can preview both; the labels describe workflow state and have identical access permissions.
-- Component CRUD, part/wrapper/AI-document types, memos, CSS, and JavaScript.
-- Site settings, language, site memo, adding and stopping devices, and inviting and deleting users.
-- Changing your own display name (the field on your own user in "Devices and users"). The username cannot be changed.
-- Image upload, streaming delivery and deletion without R2, up to 10 MB per file. Existing filenames are not overwritten.
-- ZIP downloads of JSON content and media; these are not a complete D1 backup/restore.
-- Bulk acquisition for pages, components, search, navigation, feeds, data backups and static builds avoids one query per content item. Platform data/CPU limits still apply.
-- Category deletion also removes the category from affected pages and records revisions. Active edits or concurrent changes cancel the entire operation.
-- D1 snapshots of public_static pages. Published HTML stays unchanged until rebuilt; changing a page to draft immediately prevents public access.
+Current tools: `get_site_info`, `list_pages`, `get_page`, `create_page`, `update_page`, `delete_page`, `list_components`, `get_component`, `create_component`, `update_component`, `delete_component`, `get_revisions`, `get_settings`, `get_ai_context`, `list_ai_docs`, `get_ai_doc`, `update_ai_doc`, `upload_media`, and `build_ssg`.
 
-Component JavaScript is available at `/component-js/ID.js`. Page/component JavaScript is administrator-authored code executed on public pages.
+SQLite-style flat field arguments and legacy `id` plus `data` are both accepted; do not specify the same field in both. Updates preserve unspecified fields. Call `get_site_info`, then `get_ai_context` on connection. AI document IDs may omit `.md`. `get_settings` excludes credentials, API keys and administrator memos. Editing requires exact IDs rather than public directory aliases.
 
-Pages with DB status expose DATA/DATAROW through `/api/ID`. Draft/pending data cannot be read through public POST_MD embeds, navigation, feeds, or the data API.
+`upload_media` accepts `filename` and `content_base64`, up to 10 MB for JPEG, PNG, GIF, WebP and SVG. Optional `category` allows ASCII letters, digits, underscores and hyphens and prefixes the filename. Duplicates fail instead of being overwritten. Large Base64 images have higher transfer and processing costs; use the ordinary media upload form as well. Audio/video and duplicate-name numbering differ from PHP. Administration aliases `/mikanBox/mcp` and `/mikanBox/mcp.php` require the same key.
 
-Page and settings saves compare their read snapshot with current storage and reject stale writes. A concurrent settings save cannot restore a revoked API key. Deleting an account stops its devices and cancels unused codes issued by them, including invitations.
+Check the Cloud site's identity with `get_site_info` before writing. Do not reuse the official site ID. A Cloud API key grants administrative content operations and must remain private.
 
-## Image uploads and limits
+### Public help and WebMCP
+
+`/public-mcp` is anonymous and read-only, exposing only `search_help`, `get_help_section`, `get_product_info`, and `get_agent_instructions`. `/mcp` remains the authenticated administration endpoint. `/mikanBox/public-mcp.php` aliases the public endpoint.
+
+Only the exact published `help_ja`/`help_en` pages are read. If unavailable, the bundled Cloud-specific manual is used. Draft, pending, DB, AI instructions, other pages and administrator data are excluded. After changing the Cloud manuals, run `node scripts/sync-cloud-help.mjs`; check/test/build also run it automatically. Human-readable help is `/public-help.html?language=ja` or `en`.
+
+Public pages and the administration screen load the script that registers four help tools in a compatible browser/agent. Unsupported browsers skip registration while ordinary pages and AI question controls remain usable. This uses the [Chrome WebMCP API](https://developer.chrome.com/docs/ai/webmcp/imperative-api); availability depends on the browser and agent. AI question controls reference Cloud help and public MCP without transmitting API keys or administration URLs.
+
+## Design
+
+See [Design](https://yoshihiko.com/mikanbox/help_en.html#design-mgmt) for shared operations.
+
+### Component list
+
+The three editions share a filter selector to the right of “Ask AI”: All, Selected category, Page, Part, AI instructions and Standard components. Standard means an ID beginning with `_`. Omit this prefix for ordinary new or duplicated components; use it when standard classification is intended. Saving is not rejected.
+“Selected category” uses the category at the top of the admin screen and matches component ID prefixes, just like media filenames: `apps_header` belongs to `apps`. With no category selected, it does not narrow the list.
+
+
+Page and component CSS is inserted automatically across editions. `{{HEAD_CSS}}` optionally specifies the insertion point; only the first occurrence outputs CSS, and remaining tags are removed. If omitted, CSS is inserted before `</head>`, or at the beginning of the HTML if no closing head tag exists. Text inside comments or script/style/textarea/title elements is not treated as an insertion point.
+
+
+Supports the None wrapper option, missing head metadata completion, a shared tracking ID or code (head and right after the opening body tag) and page exclusions. Page editor description/content spacing, Raw HTML checkbox placement and JavaScript field height match the PHP editions. See the bundled common help for details.
+
+## Media
+
+See [Media](https://yoshihiko.com/mikanbox/help_en.html#media-mgmt) for shared operations.
+
+### Image uploads and limits
 
 A page ID such as `test/index` works at `/test/index.html`, `/test/index/`, `/test/`, and `/test` once built. Static pages require a build. An exact `test` page takes precedence when present. These URLs resolve D1 pages; they do not create physical directories or HTML files.
 
@@ -226,103 +265,44 @@ The D1-only 400 MB image allowance reserves space for content, history and datab
 
 [D1 Free](https://developers.cloudflare.com/d1/platform/pricing/) includes 5 million rows read/day, 100,000 rows written/day, and 5 GB account-wide storage. [Workers Free](https://developers.cloudflare.com/workers/platform/limits/) allows 100,000 requests/day. D1 image reads use one row per 500 KB chunk. R2 image delivery reads D1 metadata and R2 objects. Allowances are shared with other account applications. Free-plan daily exhaustion stops operations until reset. The application does not change your plan automatically. Existing Paid contracts remain subject to their pricing.
 
-## Cloud-specific MCP
+Images are published after upload, including images used only in drafts. Do not upload images that must remain private. JavaScript and CSS files are published when the site is built.
 
-Generate a Cloud-specific API key in Site settings and connect to `/mcp` using a Bearer key from a separate workspace. The root `.mcp.json` remains dedicated to the official PHP server.
+Media omits the image conversion note and maximum-file-size line, and explains using files on a page: a bare filename in Markdown and `media/filename` in HTML. Existing `images/filename` references for images remain supported.
 
-Current tools: `get_site_info`, `list_pages`, `get_page`, `create_page`, `update_page`, `delete_page`, `list_components`, `get_component`, `create_component`, `update_component`, `delete_component`, `get_revisions`, `get_settings`, `get_ai_context`, `list_ai_docs`, `get_ai_doc`, `update_ai_doc`, `upload_media`, and `build_ssg`.
-
-SQLite-style flat field arguments and legacy `id` plus `data` are both accepted; do not specify the same field in both. Updates preserve unspecified fields. Call `get_site_info`, then `get_ai_context` on connection. AI document IDs may omit `.md`. `get_settings` excludes credentials, API keys and administrator memos. Editing requires exact IDs rather than public directory aliases.
-
-`upload_media` accepts `filename` and `content_base64`, up to 10 MB for JPEG, PNG, GIF, WebP and SVG. Optional `category` allows ASCII letters, digits, underscores and hyphens and prefixes the filename. Duplicates fail instead of being overwritten. Large Base64 images have higher transfer and processing costs; use the ordinary media upload form as well. Audio/video and duplicate-name numbering differ from PHP. Administration aliases `/mikanBox/mcp` and `/mikanBox/mcp.php` require the same key.
-
-Check the Cloud site's identity with `get_site_info` before writing. Do not reuse the official site ID. A Cloud API key grants administrative content operations and must remain private.
-
-## Public help and WebMCP
-
-`/public-mcp` is anonymous and read-only, exposing only `search_help`, `get_help_section`, `get_product_info`, and `get_agent_instructions`. `/mcp` remains the authenticated administration endpoint. `/mikanBox/public-mcp.php` aliases the public endpoint.
-
-Only the exact published `help_ja`/`help_en` pages are read. If unavailable, the bundled Cloud-specific manual is used. Draft, pending, DB, AI instructions, other pages and administrator data are excluded. After changing the Cloud manuals, run `node scripts/sync-cloud-help.mjs`; check/test/build also run it automatically. Human-readable help is `/public-help.html?language=ja` or `en`.
-
-Public pages and the administration screen load the script that registers four help tools in a compatible browser/agent. Unsupported browsers skip registration while ordinary pages and AI question controls remain usable. This uses the [Chrome WebMCP API](https://developer.chrome.com/docs/ai/webmcp/imperative-api); availability depends on the browser and agent. AI question controls reference Cloud help and public MCP without transmitting API keys or administration URLs.
-
-## Static HTML ZIP export
-
-After a build, open the Data migration and import screen and choose Download static ZIP under Static HTML (ZIP). Choose `ID.html` or `ID/index.html`. The root `index` exports as `index.html`; directory-style IDs ending in `/index` retain `directory/index.html`. Output path collisions fail clearly.
-
-Only currently public_static, already-built snapshots are included. Links to included pages, images and component scripts become relative paths. Referenced images and public assets are bundled. Dynamic pages, search and APIs retain live-site links. Credentials, settings, users and private pages are excluded. ZIP pages do not register WebMCP; AI question controls become links to Cloud help.
-
-The complete ZIP is limited to 20 MB and a bounded image-query budget. Missing assets fail rather than returning an incomplete ZIP. Arbitrary runtime JavaScript requests and string-style CSS `@import` are not automatically converted. This is a static site export, not a full D1 backup.
-
-## Tags that are not available
-
-- `{{EXT_MD:…}}` (fetching external Markdown or data) is not available in the Cloud edition. Nothing is shown where the tag is; only the comment `<!-- EXT_MD is not available in the Cloud edition -->` remains in the HTML. It is not a feature for carrying data over. The editor's tag list and the bundled sample page say so.
-
-## New installation and publication
-
-Use separate management and public Workers. With `workers.dev`, for example, an account subdomain `mikanbox-cloud` can produce management URL `https://admin.mikanbox-cloud.workers.dev/admin` and public URL `https://mikan.mikanbox-cloud.workers.dev/`. The management and public names `admin` and `mikan` are chosen separately; the account subdomain `mikanbox-cloud` is shared. A newly registered account subdomain must be available. Because the subdomain is public, avoid email usernames, login IDs, and other private personal information; choose a site-related name instead.
-
-A custom domain can also be used for the public site. You can start with temporary `workers.dev` URLs and change to a custom domain later; the domain requires Cloudflare setup. An AI installer should first offer “Use a custom domain” and “Do not use one (or set it up later)”, briefly explain that it can be added later, and guide the user one step at a time. If selected, help connect an existing domain or obtain one; purchasing or transferring an existing domain is not always required. It should show the management and public addresses on separate lines and ask in plain language for their distinct first parts, instead of asking for "Worker names". With a custom public domain, show that domain and do not ask for a public `workers.dev` address or name. It should discover available account information itself, illustrate the URL format with neutral examples, ask the user to choose names, and confirm both resulting URLs before creating resources. It must not proactively recommend names; provide candidates only when asked, and never derive them from email addresses, login IDs, or account details. Example names must not be silently adopted. When an input form is available, group separate fields for the management name, public name only when needed, and account subdomain only if not yet registered. Show an existing subdomain as context.
-
-To change the public URL later, connect the new domain to the public Worker, update `PUBLIC_SITE_URL` in the management configuration, and redeploy the management Worker. Rebuild from the admin screen, then verify the new URL, pages, images, sitemap, and RSS. External links and search results may also need migration. The management URL can be chosen separately; changing it may require device authentication again. Do not redeploy the public placeholder to an existing site.
-
-1. Run `npm ci` and `npx wrangler login`, then check the account with `npx wrangler whoami`. Create a new database with `npx wrangler d1 create mikanbox-cloud` and note its ID.
-2. Copy `wrangler.production.example.json` to `wrangler.production.json` and `wrangler.public.example.json` to `wrangler.public.json`. Set the same account ID in both `account_id` fields. Set the admin `name` and `vars.CLOUDFLARE_WORKER_NAME` to the management name; set the public `name` and admin `vars.CLOUDFLARE_PUBLIC_WORKER_NAME` to a different public name. Set `vars.CLOUDFLARE_ACCOUNT_ID` to the account ID and both `vars.CLOUDFLARE_D1_ID` and `d1_databases[0].database_id` to the new database ID. Set `PUBLIC_SITE_URL` to the actual public HTTPS origin without a path, for example `https://mikanbox-public.<subdomain>.workers.dev`. These local configuration files are excluded from Git.
-3. Only for initial creation, run `npx wrangler deploy --config wrangler.public.json` to deploy the public placeholder. **Running this again on an existing public site replaces it with the placeholder.** Check the target name first.
-4. Generate a unique cryptographically random `JWT_SECRET` and one-use `SETUP_TOKEN` for each installation and store them in `.env.production.secrets` as `KEY=value` lines. An AI installer generates them locally, never prints them in conversation or logs, and tells the user where to find the file for initial registration. Never publish or commit the secrets. Run `npx wrangler d1 migrations apply DB --remote --config wrangler.production.json`, then `npm run deploy:cloud`. Open `/admin` on the management URL in the browser you normally use and register the first device there. The browser that submits the token is registered, and the token can be used only once. Registration in an AI embedded browser does not automatically carry over to your normal browser. The AI should link to the local secrets file and ask you to open the management page in your usual browser and enter the token yourself, without asking you to paste it into chat. It need not repeat the publication setup and build instructions already shown in the management screen unless asked or a problem requires explanation. If another browser is already registered, use Site → Devices and users in that browser to create a device-add code for your normal browser.
-5. Create a Cloudflare API token scoped to the intended account with Workers Scripts Edit permission and save it in Site → Cloudflare publication settings. This token is separate from Wrangler login. D1 export and restore additionally require D1 edit permission.
-6. Build the static site from the page list and open the public URL. Verify anonymous access to the management side, public pages and images, private pages, updates and withdrawal. Keep the browser open until the build completes.
-
-`npm run deploy:cloud` updates only the management Worker. The admin build updates the public Worker. The legacy `npm run publish:static` command cannot be used for a split site.
+When renaming or converting to WebP, an existing target filename stops the operation before the original or published image is withdrawn. If a page whose references would change is being edited, save and close its editor first. Errors remain visible beside the image action.
 
 ### Media editing and categories
 
+
+
 The media list retains its scroll position where possible after an operation. Image actions match PHP: “Resize▼”, “Rename▼”, then “Convert to WebP”. WebP conversion appears only for JPEG/PNG; renaming preserves the extension. Conversion uses `.webp` and updates page, component and common OGP references. The top category selection also filters media by filename prefix, while shared `g_` images remain visible; this does not mean only used images. Uploads receive the selected category prefix unless an alphanumeric prefix is already present.
 
-### Component list
+### Static image delivery
 
-The three editions share a filter selector to the right of “Ask AI”: All, Selected category, Page, Part, AI instructions and Standard components. Standard means an ID beginning with `_`. Omit this prefix for ordinary new or duplicated components; use it when standard classification is intended. Saving is not rejected.
-“Selected category” uses the category at the top of the admin screen and matches component ID prefixes, just like media filenames: `apps_header` belongs to `apps`. With no category selected, it does not narrow the list.
+Publication includes images. Every stored file is published, including files no page references, because dynamic pages read the same `/media/filename` paths as static pages.
+
+Published images are served from Static Assets. Admin previews can show images before publication. Uploading an image in Media automatically adds that image to the delivery target without rebuilding pages. This needs the Cloudflare publication settings and the last publication state; if the target was changed elsewhere, build the site once. If publication fails, the image remains saved and the admin screen reports that it was not published. MCP uploads do not publish automatically.
+
+The delivery target allows 20,000 files per version and 25 MiB per file. Images are limited to 10 MB each and 10,000 files, so pages and components fit within that budget alongside them.
+
+Renaming or converting a published image keeps the old public image and HTML until the next build. The new image and references are saved in the admin, and the next build switches the public site. The old public filename cannot be reused until the build removes it. Deleting a published image still withdraws it from the delivery target first.
+
+Replacing a file under the same name needs no withdrawal, because its public URL does not change. The delivery target keeps the previous content until the next publication.
 
 
-Page and component CSS is inserted automatically across editions. `{{HEAD_CSS}}` optionally specifies the insertion point; only the first occurrence outputs CSS, and remaining tags are removed. If omitted, CSS is inserted before `</head>`, or at the beginning of the HTML if no closing head tag exists. Text inside comments or script/style/textarea/title elements is not treated as an insertion point.
 
+### JS and CSS libraries
 
-Supports the None wrapper option, missing head metadata completion, a shared tracking ID or code (head and right after the opening body tag) and page exclusions. Page editor description/content spacing, Raw HTML checkbox placement and JavaScript field height match the PHP editions. See the bundled common help for details.
+Media accepts browser-ready `.js` and `.css` files: nonempty UTF-8 text, up to 10 MB each, saved without rewriting code. The admin screen does not execute them. Copy the URL or embed tag from a card and paste tags into page content or component HTML. Uploads do not insert tags automatically. Only trusted administrators and API keys should upload code from a verified source. Format validation does not guarantee safe code.
 
-The import/export screen follows SQLite’s status cards, ZIP import, WordPress XML import and execution log, followed by CSV and Cloud-specific complete JSON backup/restore. ZIP/XML add content while retaining existing IDs; images, accounts and site settings are not imported. Limits: 20 MB files, 15 MB ZIP expansion, 1 MB imported content and 300 records. Settings fields and category add-button alignment use the shared PHP CSS.
+Code files receive no category prefix, stay visible across category filters, and bypass image conversion. File-type filtering, same-extension renaming, and deletion are available. Existing names are rejected rather than overwritten. Uploading a folder hierarchy is not supported.
 
-Changing an unpublished image needs no Cloudflare publication settings. Deleting or renaming a published image publishes a withdrawal, so it does require the connection. Renaming uses the reference confirmation dialog. See “Migrate from D1 to R2” for storage limits, migration and complete backup behavior.
+Files follow the existing D1/R2 media storage setting and keep `/media/filename` URLs. Complete JSON backup/restore and D1-to-R2 migration include them; code fields remain in D1. Static publication serves these files from the deployed static files; see "Static image delivery". Portable static ZIPs include files referenced by HTML.
 
-<a id="manual-update"></a>
-## Manual updates (v0.6.6 and later)
+## Tags
 
-For routine updates, select Update on GitHub in Site settings, press Run workflow on GitHub, wait for success, then reload the management page. There is no automatic update. You do not need to sync your repository or download files to your computer each time. Each run fetches the latest published release from `yoshihik0/mikanBox-cloud`, including published prereleases, but excluding unreleased development changes.
+### Tags that are not available
 
-### One-time setup
+- `{{EXT_MD:…}}` (fetching external Markdown or data) is not available in the Cloud edition. Nothing is shown where the tag is; only the comment `<!-- EXT_MD is not available in the Cloud edition -->` remains in the HTML. It is not a feature for carrying data over. The editor's tag list and the bundled sample page say so.
 
-1. Place the upstream `.github/workflows/update-cloud.yml` in the default branch of a GitHub repository you control. Use your existing installation repository if available. Enable Actions in the Actions tab if disabled on a fork. Do not register your secrets in the upstream repository. Sites on v0.6.5 or earlier can run this workflow for the first update; the management link appears afterward.
-2. In Settings → Secrets and variables → Actions → Repository secrets, add:
-   - `CLOUDFLARE_API_TOKEN`: a Cloudflare token scoped to the target account with Workers Scripts Edit and D1 Edit permissions. If R2 is connected, also grant the permissions Wrangler needs to handle that binding.
-   - `MIKANBOX_UPDATE_CONFIG`: the complete installation `wrangler.production.json` as JSON. Use current management Worker, account, D1, connected R2, routes and custom-domain settings. Do not use a sample or another site's configuration. Do not add JWT_SECRET, SETUP_TOKEN or API tokens to this JSON.
-3. Open GitHub Actions → Update mikanBox Cloud → Run workflow. If the management settings already include manual updates, save your repository as `owner/repository` there. Updates through Actions configure the link automatically.
-
-If Cloudflare Workers Builds or another system already deploys on GitHub pushes, disable that automatic deployment separately to keep updates manual. This workflow has no push or scheduled trigger.
-
-### Preservation and failures
-
-The updater checks the existing management Worker and D1/R2 bindings, verifies the build, applies pending D1 migrations and deploys the management Worker. It does not initialize articles, images or settings; existing secrets including JWT_SECRET for registered devices and existing environment variables are retained. It does not overwrite the public Worker with a placeholder. Mismatched targets or unsupported additional bindings stop the update. Update the saved GitHub JSON when your bindings or routes change.
-
-Save any needed backup before updating. Database migration and code deployment are not a single transaction. If a run fails, inspect the failed step, fix its configuration or permissions and run again. Applied migrations are not repeated. After success, reload the management page and check the version, articles and images. Use the management build when changes need to reach published pages.
-
-Publication files are downloaded without executing code with management privileges. Public help permits only the product-provided script. Deleted pages still present on the public site remain marked as pending publication changes. Stopping a device also cancels its unused enrollment codes. Setup and recovery tokens can be consumed only once, including concurrent requests.
-
-## Interrupted updates and restores
-
-JSON restoration stages incoming data separately and replaces current data together only after validation. If communication fails while transferring images, select the backup file again and restart restoration. Reopening the screen does not resume at the previous transfer position.
-
-If only the final restoration response is lost, the browser retries the same operation once and checks its recorded completion result. A completed restoration is not performed again, so later edits are not overwritten. If completion cannot be confirmed, reload and inspect pages and images before retrying. Restoring users may require signing in again.
-
-If the screen says that restoration completed but publication failed, the restored data remains in place. Retry the site build from the page list instead of importing the backup again.
-
-Program updates run the build, pending database migrations, and management Worker deployment in that order. A failed build leaves the database unchanged. If deployment fails after migrations, applied database changes remain. Inspect the failed step in the log, resolve its cause such as connectivity or permissions, and rerun the same update procedure. Do not remove migration records or repeat initial setup.
+You can use `{{SITE_URL}}` in Markdown link destinations. Tags inside code examples remain literal. Renaming an image also requests confirmation when it is used only as the site-wide OGP image.
