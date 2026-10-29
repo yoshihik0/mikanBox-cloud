@@ -1,6 +1,6 @@
 <style>.manual-version{font-size:.5em;font-weight:400;white-space:nowrap}</style>
 
-# 🍊mikanBox Cloudflare Development Manual <small class="manual-version">v0.6.6</small>
+# 🍊mikanBox Cloudflare Development Manual <small class="manual-version">v0.6.7</small>
 
 You can use `{{SITE_URL}}` in Markdown link destinations. Tags inside code examples remain literal. Renaming an image also requests confirmation when it is used only as the site-wide OGP image.
 
