@@ -1183,7 +1183,7 @@ export function renderSiteView(opts: {
                 ${opts.release?.url?`<a href="${h(opts.release.url)}" target="_blank" rel="noopener noreferrer">${lang==='en'?'Cloud release':'Cloud版リリース'}</a>`:''}
             </div>
             <small class="sub-text sub-text-block">${lang==='en'?'Open GitHub and press Run workflow to update. Updates run only when you choose. After it succeeds, reload this screen to check the installed version.':'GitHubを開き「Run workflow」を押すと更新します。自動では更新しません。成功後、この画面を再読み込みして現在のバージョンを確認してください。'}</small>
-            <details><summary>${lang==='en'?'Set up manual updates':'手動アップデートの設定'}</summary>
+            <details class="mt-10 js-accordion tracking-code-details"><summary>${lang==='en'?'Set up manual updates':'手動アップデートの設定'} <span class="accordion-arrow">▼</span></summary>
               <p><a href="${h(helpFile)}#manual-update" target="_blank" rel="noopener noreferrer">${lang==='en'?'First-time GitHub setup instructions':'GitHubでの初回設定手順'}</a></p>
               <form method="post">${csrfField(csrf)}<input type="hidden" name="save_action" value="save_cloud_update_repository">
                 <label>${lang==='en'?'Your GitHub repository (owner/repository)':'自分のGitHubリポジトリ（所有者/リポジトリ名）'} <input name="cloud_update_repository" value="${h(opts.updateRepository||'')}" placeholder="owner/repository" maxlength="200"></label>

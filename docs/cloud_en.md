@@ -202,7 +202,7 @@ Component JavaScript is available at `/component-js/ID.js`. Page/component JavaS
 
 Pages with DB status expose DATA/DATAROW through `/api/ID`. Draft/pending data cannot be read through public POST_MD embeds, navigation, feeds, or the data API.
 
-Page and settings saves compare their read snapshot with current storage and reject stale writes. A concurrent settings save cannot restore a revoked API key. Deleting an account stops its devices.
+Page and settings saves compare their read snapshot with current storage and reject stale writes. A concurrent settings save cannot restore a revoked API key. Deleting an account stops its devices and cancels unused codes issued by them, including invitations.
 
 ## Image uploads and limits
 

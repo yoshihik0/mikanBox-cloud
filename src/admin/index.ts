@@ -280,7 +280,7 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
         case 'delete_user': {
           const name=val(form,'username');if(name===auth.user.username) throw new Error('自分自身は削除できません。 / Cannot delete your current account.');
           // Stop the user's devices too, so recreating the same username never revives them.
-          await env.DB.batch([env.DB.prepare('DELETE FROM users WHERE username=?').bind(name),env.DB.prepare('UPDATE device_sessions SET revoked_at=? WHERE username=? AND revoked_at IS NULL').bind(Date.now(),name),env.DB.prepare('DELETE FROM device_codes WHERE username=?').bind(name)]);break;
+          await env.DB.batch([env.DB.prepare('DELETE FROM device_codes WHERE username=? OR created_by IN (SELECT id FROM device_sessions WHERE username=?)').bind(name,name),env.DB.prepare('DELETE FROM users WHERE username=?').bind(name),env.DB.prepare('UPDATE device_sessions SET revoked_at=? WHERE username=? AND revoked_at IS NULL').bind(Date.now(),name)]);break;
         }
         case 'acquire_lock': {
           const id=pageId(val(form,'id'));
