@@ -1,16 +1,12 @@
 <style>.manual-version{font-size:.5em;font-weight:400;white-space:nowrap}</style>
 
-# 🍊mikanBox Cloudflare Development Manual <small class="manual-version">v0.6.8</small>
+# 🍊mikanBox Cloudflare Manual <small class="manual-version">v0.6.8</small>
 
 You can use `{{SITE_URL}}` in Markdown link destinations. Tags inside code examples remain literal. Renaming an image also requests confirmation when it is used only as the site-wide OGP image.
 
-This edition is under development. It targets the SQLite edition's UI and features, but full compatibility has not been reached. Changes to existing editions are limited to the explicitly requested common settings correction; existing data and the official server are unchanged.
-
 The Data migration and import screen contains CSV conversion, D1 export and time-based recovery, JSON backup and restore, and static HTML ZIP export. D1 SQL export and time-based recovery are separate: the saved SQL file cannot be restored from this screen. Time-based recovery does not restore R2 images or published files; rebuild after restoring. Both D1 actions require D1 edit permission in the Cloudflare API token. SQL and JSON files contain sensitive information and are not encrypted, so restrict access and store them securely. JSON restore keeps the current site ID, API key and Cloud connection; accounts are restored only when selected.
 
-The admin operations below describe v0.4.3. Automatic admin publication and D1 operations require a dedicated Cloudflare token and cannot run where it is unconfigured. Verification using that token and complete UI parity remain pending.
-
-The user's explicit 2026-10-04 request authorizes common settings layout, input styling, explanatory text, SSG hint weight and site URL fallback changes in all three editions. The original protected hashes remain intact; reviewed changes are recorded separately. Site environment is advisory metadata, not an access or write restriction. Site URL identifies the site to AI and defaults to the index page location independently of SSG output.
+Admin publication and D1 operations require a Cloudflare API token.
 
 The admin screen checks the Cloud release manifest on GitHub and shows the installed and latest versions and whether an update is available. Check again refreshes release information; reload the page after updating to see the installed version. See the manual update setup below. `CLOUD_RELEASE_MANIFEST_URL` optionally selects an HTTPS Cloud release JSON.
 
@@ -66,7 +62,7 @@ Setting `CLOUDFLARE_PUBLIC_WORKER_NAME` (the public Worker's name) and `PUBLIC_S
 - The AI question box does not work on the public site. Site search uses Google, as described under Delivery and withdrawal.
 - As in the PHP editions, the 404 page is never listed in sitemaps or RSS, split or not.
 
-## Static image delivery (development v0.6.0)
+## Static image delivery
 
 Publication includes images. Every stored file is published, including files no page references, because dynamic pages read the same `/media/filename` paths as static pages.
 
@@ -80,7 +76,7 @@ Replacing a file under the same name needs no withdrawal, because its public URL
 
 Installations that do not use static delivery continue to serve every image through the Worker.
 
-## JS and CSS libraries (development v0.5.1)
+## JS and CSS libraries
 
 Media accepts browser-ready `.js` and `.css` files: nonempty UTF-8 text, up to 10 MB each, saved without rewriting code. The admin screen does not execute them. Copy the URL or embed tag from a card and paste tags into page content or component HTML. Uploads do not insert tags automatically. Only trusted administrators and API keys should upload code from a verified source. Format validation does not guarantee safe code.
 
@@ -88,7 +84,7 @@ Code files receive no category prefix, stay visible across category filters, and
 
 Files follow the existing D1/R2 media storage setting and keep `/media/filename` URLs. Complete JSON backup/restore and D1-to-R2 migration include them; code fields remain in D1. Static publication serves these files from the deployed static files; see "Static image delivery" below. Portable static ZIPs include files referenced by HTML.
 
-## Migrate from D1 to R2 (development v0.5.0)
+## Migrate from D1 to R2
 
 Start with D1 without enabling R2. Site → Media storage shows the current storage and usage and provides “Migrate from D1 to R2”. Only image storage switches; content, settings, users and other records remain in D1.
 
@@ -113,13 +109,13 @@ Run `node scripts/test-r2-local.mjs` from the Cloud directory to test the offici
 References: [D1 limits](https://developers.cloudflare.com/d1/platform/limits/), [R2 pricing](https://developers.cloudflare.com/r2/pricing/), [R2 setup](https://developers.cloudflare.com/r2/get-started/), [Usage-based billing](https://developers.cloudflare.com/billing/understand/usage-based-billing/).
 
 
-## v0.4.3 admin operations
+## Admin operations
 
 Rebuild generates public HTML and updates static delivery together, removing unpublished or deleted pages. Previously published files remain until rebuilding. Images are delivered through the Worker and changes take effect directly. Keep the admin screen open while the browser performs these steps. Configure a dedicated token with Workers edit permission in Site settings. The installation target is fixed. The token is encrypted using a key derived from JWT_SECRET, never displayed again, and excluded from portable backups. Create it once: you only need a new one if the token is deleted or revoked in Cloudflare, its permissions change, JWT_SECRET changes, or the database is restored to a different state by a backup or Time Travel. While no token is set, a notice under “Build static site” in the page list says so. Expiring Wrangler login credentials are never copied into the Worker. The existing MCP build_ssg generates HTML only; delivery still requires the admin screen or the publication command. When Cloudflare returns error details, the error code and message are displayed. Publication requires the latest uploaded Worker version to match the deployed version. If they differ, deploy the intended version first. In split mode, saving the connection checks access to the public Worker; write permission is exercised during publication.
 
 JPEG, PNG and WebP images can be resized and converted to WebP in the browser. Uploads default to a 2,000px maximum side. Existing conversion replaces the image and updates references with page history. GIF and SVG uploads preserve original bytes. Browser processing accepts dimensions up to 16,000px and 40 million pixels.
 
-### Device authentication (prototype)
+### Device authentication
 
 There are no passwords. The Devices and users section is normally closed, and changing the device expiry shows the result in place. Only registered devices (browsers) can open the admin screen. Each device keeps a random token in a cookie; D1 stores only its hash.
 
@@ -146,7 +142,7 @@ Publication, backup and restore consume Worker requests and D1 reads/writes. Sta
 
 The admin sidebar logo displays “mikanBox” and “cloud” on two lines, matching the flat edition's layout.
 
-Cloudflare Workers runs the application. D1 stores content and settings. Images initially use D1 and can migrate to R2 through Image storage, as described in the v0.5.0 section.
+Cloudflare Workers runs the application. D1 stores content and settings. Images initially use D1 and can migrate to R2 through Image storage, as described in “Migrate from D1 to R2”.
 
 The stylesheet, AI-question browser script, and translations are copies of the shared canonical sources. Screen templates and main browser interactions are Cloud-specific implementations. Sharing CSS does not guarantee complete screen parity.
 
@@ -218,7 +214,7 @@ In D1 storage, Rename updates references in page content, CSS, JavaScript, OGP i
 - Each image: **10 MB** (10,000,000 bytes).
 - D1 images: **400 MB** total. R2 removes this total-byte limit. Both modes allow **10,000 files**.
 - Formats: **JPEG, PNG, GIF, WebP, SVG**. Extension and leading format signature must match. D1 audio/video uploads are unsupported.
-- Duplicate names are rejected. v0.4.3 adds optional browser resizing and WebP conversion before storage; the stored original is the processed file.
+- Duplicate names are rejected. Optional browser resizing and WebP conversion are available before storage; the stored original is the processed file.
 - Media ZIP: **20 MB** total, with a file count that fits the request query budget (about 20 small images, or two 10 MB images). Download individually when exceeded.
 
 Static builds add `width`, `height` and loading hints to local images (JPEG, PNG, GIF, WebP; not SVG), as the PHP editions do: the first large image gets `fetchpriority="high"`, later ones `loading="lazy"`. This applies to `![alt](filename)` and `{{IMAGE:}}`; a hand-written `<img>` is left alone. The size is read from the start of the image file and is not stored. One build looks up at most 30 images; any beyond that get no attributes. Live (unbuilt) rendering and the admin preview do not add them.
@@ -255,26 +251,9 @@ Only currently public_static, already-built snapshots are included. Links to inc
 
 The complete ZIP is limited to 20 MB and a bounded image-query budget. Missing assets fail rather than returning an incomplete ZIP. Arbitrary runtime JavaScript requests and string-style CSS `@import` are not automatically converted. This is a static site export, not a full D1 backup.
 
-## Protecting existing editions
-
-Write only inside the Cloud directory during this work. Do not run `../shared/sync.sh`, which overwrites files in both PHP editions. To refresh shared copies, use the Cloud-only `npm run sync:assets`. Changes to canonical shared sources require a separate review of their impact on existing editions.
-
-The initial hashes of both PHP editions, shared files, and root configuration/manuals are recorded in `.baseline/protected-files.json`. `npm run check` verifies that they remain unchanged. On another checkout, record a baseline before development; never overwrite an existing baseline to hide changes.
-
 ## Tags that are not available
 
 - `{{EXT_MD:…}}` (fetching external Markdown or data) is not available in the Cloud edition. Nothing is shown where the tag is; only the comment `<!-- EXT_MD is not available in the Cloud edition -->` remains in the HTML. It is not a feature for carrying data over. The editor's tag list and the bundled sample page say so.
-
-## Remaining compatibility work
-
-Matching the SQLite edition remains the goal. Full visual and interaction parity is not yet guaranteed.
-
-- Exact screen layout/spacing, editor opening/closing and AJAX behavior.
-- PHP self-updates/rollback, SQLite file import/export and migration tools. Cloud uses the JSON restore described above.
-- Additional static-export settings and reproducing dynamic search in exported files.
-- Complete Markdown/CSS/tag compatibility.
-- Exact MCP response/error/timestamp parity and additional operational tools.
-- Explicit migration of existing content and production performance/capacity validation.
 
 ## New installation and publication
 
@@ -291,7 +270,7 @@ To change the public URL later, connect the new domain to the public Worker, upd
 5. Create a Cloudflare API token scoped to the intended account with Workers Scripts Edit permission and save it in Site → Cloudflare publication settings. This token is separate from Wrangler login. D1 export and restore additionally require D1 edit permission.
 6. Build the static site from the page list and open the public URL. Verify anonymous access to the management side, public pages and images, private pages, updates and withdrawal. Keep the browser open until the build completes.
 
-`npm run deploy:cloud` updates only the management Worker. The admin build updates the public Worker. The legacy `npm run publish:static` command cannot be used for a split site. A complete new-account installation and publication using the dedicated token still need live verification.
+`npm run deploy:cloud` updates only the management Worker. The admin build updates the public Worker. The legacy `npm run publish:static` command cannot be used for a split site.
 
 ### Media editing and categories
 
@@ -310,12 +289,12 @@ Supports the None wrapper option, missing head metadata completion, a shared tra
 
 The import/export screen follows SQLite’s status cards, ZIP import, WordPress XML import and execution log, followed by CSV and Cloud-specific complete JSON backup/restore. ZIP/XML add content while retaining existing IDs; images, accounts and site settings are not imported. Limits: 20 MB files, 15 MB ZIP expansion, 1 MB imported content and 300 records. Settings fields and category add-button alignment use the shared PHP CSS.
 
-Changing an unpublished image needs no Cloudflare publication settings. Deleting or renaming a published image publishes a withdrawal, so it does require the connection. Renaming uses the reference confirmation dialog. See the v0.5.0 section for storage limits, migration and complete backup behavior.
+Changing an unpublished image needs no Cloudflare publication settings. Deleting or renaming a published image publishes a withdrawal, so it does require the connection. Renaming uses the reference confirmation dialog. See “Migrate from D1 to R2” for storage limits, migration and complete backup behavior.
 
 <a id="manual-update"></a>
 ## Manual updates (v0.6.6 and later)
 
-For routine updates, select Update on GitHub in Site settings, press Run workflow on GitHub, wait for success, then reload the management page. There is no automatic update. You do not need to sync your repository or download files to your computer each time. Each run fetches the latest published release from `yoshihik0/mikanBox-cloud`, including published prereleases while Cloud is in development, but excluding unreleased development changes.
+For routine updates, select Update on GitHub in Site settings, press Run workflow on GitHub, wait for success, then reload the management page. There is no automatic update. You do not need to sync your repository or download files to your computer each time. Each run fetches the latest published release from `yoshihik0/mikanBox-cloud`, including published prereleases, but excluding unreleased development changes.
 
 ### One-time setup
 
@@ -331,4 +310,4 @@ If Cloudflare Workers Builds or another system already deploys on GitHub pushes,
 
 The updater checks the existing management Worker and D1/R2 bindings, verifies the build, applies pending D1 migrations and deploys the management Worker. It does not initialize articles, images or settings; existing secrets including JWT_SECRET for registered devices and existing environment variables are retained. It does not overwrite the public Worker with a placeholder. Mismatched targets or unsupported additional bindings stop the update. Update the saved GitHub JSON when your bindings or routes change.
 
-Save any needed backup before updating. Database migration and code deployment are not a single transaction. If a run fails, inspect the failed step, fix its configuration or permissions and run again. Applied migrations are not repeated. After success, reload the management page and check the version, articles and images. Use the management build when changes need to reach published pages. Live verification of this update workflow remains pending.
+Save any needed backup before updating. Database migration and code deployment are not a single transaction. If a run fails, inspect the failed step, fix its configuration or permissions and run again. Applied migrations are not repeated. After success, reload the management page and check the version, articles and images. Use the management build when changes need to reach published pages.
