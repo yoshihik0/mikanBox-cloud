@@ -259,9 +259,9 @@ ZIP全体は20 MBまでで、画像読出し回数にも上限があります。
 
 ## 新規インストールと公開
 
-[画像付きインストールガイド](/mikanbox/guides/install-ja.html)では、Codexに依頼し、Cloudflareの認可とアドレス選択から公開まで画面を見ながら進められます。
+[画像付きインストールガイド](/mikanbox/guides/install-ja.html)では、AIに依頼し、Cloudflareの認可とアドレス選択から公開まで画面を見ながら進められます。
 
-Codexを使う場合は、作業フォルダで新しい会話を開き、「https://github.com/yoshihik0/mikanBox-cloud からCloudflareにインストールしてください」と依頼します。Codexがファイル取得・設定・配置を進め、利用者はCloudflare認可、アドレスの選択、普段のブラウザでの初回端末登録を行います。以下のコマンドは自分で操作する場合の詳細です。
+ファイルの取得やコマンド実行ができるAIを使う場合は、作業フォルダで新しい会話を開き、「https://github.com/yoshihik0/mikanBox-cloud からCloudflareにインストールしてください」と依頼します。AIがファイル取得・設定・配置を進め、利用者はCloudflare認可、アドレスの選択、普段のブラウザでの初回端末登録を行います。以下のコマンドは自分で操作する場合の詳細です。
 
 ここでは新しいサイトを作る手順を説明します。既存サイトの更新では、D1やWorkerを新規作成せず、[アップデート手順](#manual-update)を参照してください。
 
@@ -335,7 +335,7 @@ node -e "const fs=require('node:fs'),c=require('node:crypto'); fs.writeFileSync(
 
 ### 方法1：ダウンロードして更新
 
-Codexに既存の管理画面URLとGitHubリポジトリのURLを伝え、「既存サイトを最新版に更新してください」と依頼することもできます。Codexがダウンロードと設定確認を行い、Cloudflare認可が必要な場合は利用者が対象アカウントを確認して許可します。
+AIに既存の管理画面URLとGitHubリポジトリのURLを伝え、「既存サイトを最新版に更新してください」と依頼することもできます。AIがダウンロードと設定確認を行い、Cloudflare認可が必要な場合は利用者が対象アカウントを確認して許可します。
 
 自分でコマンドを実行する場合は、最新版の[リリースページ](https://github.com/yoshihik0/mikanBox-cloud/releases)から **Source code (zip)** をダウンロードして展開し、そのフォルダで `npm ci`、`npx wrangler login`、`npx wrangler whoami` を実行します。Cloudflareのアカウントが既存サイトと一致していることを確認します。これは新規インストールではありません。既存のD1、管理Worker、公開Workerを使います。
 
