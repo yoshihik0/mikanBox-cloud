@@ -308,7 +308,6 @@ npx wrangler whoami
 1. `npm ci`、`npx wrangler login` を実行し、`npx wrangler whoami` で対象アカウントを確認します。`npx wrangler d1 create mikanbox-cloud` で新しいD1を作成し、表示されたIDを控えます。
 2. `wrangler.production.example.json` を `wrangler.production.json` に、`wrangler.public.example.json` を `wrangler.public.json` にコピーします。両ファイルの `account_id` に同じアカウントIDを設定します。管理側の `name` と `vars.CLOUDFLARE_WORKER_NAME` を同じ管理用の名前に、公開側の `name` と管理側の `vars.CLOUDFLARE_PUBLIC_WORKER_NAME` を同じ別の公開用の名前にします。管理側の `vars.CLOUDFLARE_ACCOUNT_ID` にアカウントIDを、`vars.CLOUDFLARE_D1_ID` と `d1_databases[0].database_id` に作成したD1のIDを設定します。`PUBLIC_SITE_URL` には実際の公開用HTTPS URLをパスなしで設定します（例 `https://mikanbox-public.<サブドメイン>.workers.dev`）。各設定ファイルはGitに含めません。
 3. 初回だけ `npx wrangler deploy --config wrangler.public.json` を実行し、公開用Workerに初期ページを配置します。**既存の公開サイトにこのコマンドを再実行するとサイトが初期ページに置き換わります。** 初期作成前に対象名を確認してください。
-4. インストールごとに暗号学的に安全な乱数で `JWT_SECRET` と一度だけ使う `SETUP_TOKEN` を生成し、`.env.production.secrets` に `KEY=value` 形式で保存します。AIによる導入でもローカルで生成し、値を会話やログに表示せず、初回登録に使うファイルの場所を利用者に伝えます。秘密は公開・コミットしません。`npx wrangler d1 migrations apply DB --remote --config wrangler.production.json`、`npm run deploy:cloud` の順に実行します。**普段使うブラウザ**で管理URLの `/admin` を開き、初回端末を登録します。トークンを入力したブラウザが登録され、トークンは一度しか使えません。AIの内蔵ブラウザで登録すると、普段のブラウザには自動で引き継がれません。AIはローカルの秘密ファイルへのリンクを示し、普段使うブラウザで管理画面を開いてトークンを入力するよう伝えます。トークンを会話へ貼るよう求めません。公開設定とビルドの詳細は管理画面の案内に任せ、問題がある場合や尋ねられた場合に説明します。初期設定画面では「初期設定トークン（SETUP_TOKEN）」「ユーザーID」「表示名」「この端末の名前」を入力し、「この端末を登録」を押します。すでに別のブラウザで登録した場合は、登録済みブラウザの「サイト」→「端末とユーザー」から追加コードを作り、普段のブラウザを追加できます。
 秘密ファイルをまだ作っていない新規サイトでは、例えば次のコマンドで2つの値を生成できます。既存ファイルがある場合は上書きせずエラーで止まります。登録時はファイル内の `SETUP_TOKEN` の値だけを自分のブラウザに入力してください。
 
 ```sh
@@ -317,6 +316,7 @@ node -e "const fs=require('node:fs'),c=require('node:crypto'); fs.writeFileSync(
 
 このファイルは手順4のマイグレーションとデプロイの**前**に作成します。既存サイトの更新にはこの生成コマンドを使いません。
 
+4. インストールごとに暗号学的に安全な乱数で `JWT_SECRET` と一度だけ使う `SETUP_TOKEN` を生成し、`.env.production.secrets` に `KEY=value` 形式で保存します。AIによる導入でもローカルで生成し、値を会話やログに表示せず、初回登録に使うファイルの場所を利用者に伝えます。秘密は公開・コミットしません。`npx wrangler d1 migrations apply DB --remote --config wrangler.production.json`、`npm run deploy:cloud` の順に実行します。**普段使うブラウザ**で管理URLの `/admin` を開き、初回端末を登録します。トークンを入力したブラウザが登録され、トークンは一度しか使えません。AIの内蔵ブラウザで登録すると、普段のブラウザには自動で引き継がれません。AIはローカルの秘密ファイルへのリンクを示し、普段使うブラウザで管理画面を開いてトークンを入力するよう伝えます。トークンを会話へ貼るよう求めません。公開設定とビルドの詳細は管理画面の案内に任せ、問題がある場合や尋ねられた場合に説明します。初期設定画面では「初期設定トークン（SETUP_TOKEN）」「ユーザーID」「表示名」「この端末の名前」を入力し、「この端末を登録」を押します。すでに別のブラウザで登録した場合は、登録済みブラウザの「サイト」→「端末とユーザー」から追加コードを作り、普段のブラウザを追加できます。
 5. Cloudflareで対象アカウントに限定した Workers Scripts Edit 権限のAPIトークンを作成し、管理画面の「サイト」→「Cloudflare公開設定」に保存します。Wranglerログインとは別のトークンです。D1の書き出し・復元も使う場合は別途D1編集権限が必要です。
 6. ページ一覧の「静的サイトをビルド」で公開し、公開URLを開きます。管理側の匿名アクセス、公開ページと画像、非公開ページ、更新と取り下げを確認します。ブラウザは完了まで開いておきます。
 
@@ -375,7 +375,7 @@ npx wrangler deploy --config wrangler.production.json --keep-vars
 
 #### 初回2：更新先と権限を登録する
 
-トークンを新しく作る場合は、Cloudflareダッシュボードのプロフィールから **APIトークン → トークンを作成する** を開き、カスタムトークンで対象アカウントの「アカウント / Workers スクリプト / 編集」と「アカウント / D1 / 編集」を選びます。対象アカウントを絞って作成し、表示された値を安全に控えます。トークンはGitHubのSecret欄へ直接貼り、チャットに送らないでください。
+トークンを新しく作る場合は、Cloudflareダッシュボードのプロフィールから **APIトークン → トークンを作成する** を開き、「カスタムトークンを作成する」の **始める** を押し、権限に「アカウント / Workers スクリプト / 編集」と「アカウント / D1 / 編集」を追加します。アカウントリソースで対象アカウントを指定し、**概要に進む → トークンを作成する** を押します。表示された値は再表示できないため、安全に控えます。トークンはGitHubのSecret欄へ直接貼り、チャットに送らないでください。
 
 自分のリポジトリで **Settings → Secrets and variables → Actions** を開き、**New repository secret** から次の2件をそれぞれ登録します。Nameに名前、Secretに値を入れて **Add secret** を押します。制作元ではなく自分のリポジトリに登録してください。
 
