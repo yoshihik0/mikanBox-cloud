@@ -1,6 +1,6 @@
 <style>.manual-version{font-size:.5em;font-weight:400;white-space:nowrap}</style>
 
-# 🍊mikanBox Cloudflare版 開発マニュアル <small class="manual-version">v0.6.7</small>
+# 🍊mikanBox Cloudflare版 開発マニュアル <small class="manual-version">v0.6.8</small>
 
 Markdown のリンク先で `{{SITE_URL}}` を使えます。コード例内のタグは展開しません。画像の名前変更では、サイト共通OGPだけで使っている場合も参照ありとして確認します。
 
