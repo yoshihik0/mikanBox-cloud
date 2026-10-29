@@ -31,3 +31,16 @@ test('JSON backup and restore are available on the authenticated import page and
  const tools=await(await get('/admin?view=import')).text();assert.match(tools,/data-cloudbackup="export"/);assert.match(tools,/data-cloudbackup="restore"/);assert.doesNotMatch(tools,/<div id="settings">/);
  assert.equal((await worker.fetch(new Request('https://example.com/admin?view=import'),env,{})).status,200);
 });
+
+for(const publishFailure of [false,true])test('browser confirms a lost restore response'+(publishFailure?' and identifies a separate publication failure':''),async()=>{
+ const env=environment(),auth=await login(env);const manifest=(await post(env,auth,{save_action:'download_backup_json'})).data.manifest;await savePage(env,'later',{title:'Later',status:'draft'});
+ let handler,commits=0,stage,reloaded=false;const output={};const file=new File(['{"manifest":'+JSON.stringify(manifest)+',\n"parts":[\n]}\n'],'backup.json');const form={dataset:{cloudbackup:'restore'},querySelector:()=>output,querySelectorAll:()=>[]};
+ class Fields extends FormData{constructor(input){super();if(input===form)this.set('backup_file',file);}}
+ const context={FormData:Fields,File,Blob,TextDecoder,Uint8Array,confirm:()=>true,location:{reload(){reloaded=true;}},window:{CSRF_TOKEN:auth.csrf_token,showToast(){},cloudPublish:async()=>{if(publishFailure)throw new Error('Injected publication failure');}},document:{documentElement:{lang:'en'},addEventListener(_,h){handler=h;}},fetch:async(_,init)=>{
+  const data=Object.fromEntries(init.body),name=data.save_action;const response=await post(env,auth,data);if(name==='restore_backup_json')stage=response.data.stage;if(name==='backup_restore_commit'&&++commits===1)throw new Error('Injected lost HTTP response');return {ok:response.response.ok,json:async()=>response.data};
+ }};
+ vm.runInNewContext(fs.readFileSync('public/mikanbox/cloud-backup.js','utf8'),context);await handler({target:form,preventDefault(){},stopImmediatePropagation(){}});
+ assert.equal(commits,2);assert.equal(env.sqlite.prepare("SELECT id FROM posts WHERE id='later'").get(),undefined);
+ if(publishFailure){assert.match(output.textContent,/Restore completed, but publication failed/);assert.equal(reloaded,false);}else{assert.match(output.textContent,/Restore completed/);assert.equal(reloaded,true);}
+ const other=await login(env,'another-editor');assert.equal((await post(env,other,{save_action:'backup_restore_commit',stage})).data.success,false);
+});

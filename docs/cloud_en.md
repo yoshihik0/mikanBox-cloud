@@ -1,7 +1,7 @@
 <style>.manual-version{font-size:.5em;font-weight:400;white-space:nowrap}</style>
 
 
-# 🍊mikanBox Cloudflare Manual <small class="manual-version">v0.6.9</small>
+# 🍊mikanBox Cloudflare Manual <small class="manual-version">v0.6.10</small>
 
 Images are published after upload, including images used only in drafts. Do not upload images that must remain private. JavaScript and CSS files are published when the site is built.
 
@@ -316,3 +316,13 @@ The updater checks the existing management Worker and D1/R2 bindings, verifies t
 Save any needed backup before updating. Database migration and code deployment are not a single transaction. If a run fails, inspect the failed step, fix its configuration or permissions and run again. Applied migrations are not repeated. After success, reload the management page and check the version, articles and images. Use the management build when changes need to reach published pages.
 
 Publication files are downloaded without executing code with management privileges. Public help permits only the product-provided script. Deleted pages still present on the public site remain marked as pending publication changes. Stopping a device also cancels its unused enrollment codes. Setup and recovery tokens can be consumed only once, including concurrent requests.
+
+## Interrupted updates and restores
+
+JSON restoration stages incoming data separately and replaces current data together only after validation. If communication fails while transferring images, select the backup file again and restart restoration. Reopening the screen does not resume at the previous transfer position.
+
+If only the final restoration response is lost, the browser retries the same operation once and checks its recorded completion result. A completed restoration is not performed again, so later edits are not overwritten. If completion cannot be confirmed, reload and inspect pages and images before retrying. Restoring users may require signing in again.
+
+If the screen says that restoration completed but publication failed, the restored data remains in place. Retry the site build from the page list instead of importing the backup again.
+
+Program updates run the build, pending database migrations, and management Worker deployment in that order. A failed build leaves the database unchanged. If deployment fails after migrations, applied database changes remain. Inspect the failed step in the log, resolve its cause such as connectivity or permissions, and rerun the same update procedure. Do not remove migration records or repeat initial setup.

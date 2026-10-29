@@ -44,11 +44,11 @@
      await action('backup_restore_part',{stage,part:JSON.parse(line.value.replace(/,$/,''))});progress((ja?'復元データを確認中 ':'Validating restore ')+ ++count);
     }
     if(!closed)throw new Error('Incomplete backup file.');const tail=await iterator.next();if(!tail.done)throw new Error('Unexpected backup data.');
-    const result=await action('backup_restore_commit',{stage});stage='';
+    let result;try{result=await action('backup_restore_commit',{stage});}catch{try{result=await action('backup_restore_commit',{stage});}catch{throw new Error(ja?'復元の完了を確認できません。再読み込みして内容を確認してから再試行してください。':'Restore completion could not be confirmed. Reload and check the content before retrying.');}}stage='';
     progress(ja?'復元が完了しました。':'Restore completed.');
     if(result.accountsRestored){location.href='/admin';return;}
     // Restored snapshots and images need a new immutable asset deployment.
-    if(window.cloudPublish)await window.cloudPublish(true);location.reload();
+    if(window.cloudPublish){try{await window.cloudPublish(true);}catch(error){throw new Error((ja?'復元は完了しましたが、公開更新に失敗しました。ページ一覧からサイトをビルドしてください。 ':'Restore completed, but publication failed. Build the site from the page list. ')+(error.message||''));}}location.reload();
    }
   }catch(error){progress(error.message);window.showToast?.(error.message,true);}finally{
    if(stage)await action('backup_restore_abort',{stage}).catch(()=>{});buttons.forEach(b=>b.disabled=false);

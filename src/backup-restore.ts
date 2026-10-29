@@ -68,6 +68,7 @@ export async function createBackupRestore(env:Env,document:CloudBackupManifest,o
  const targetStore=await mediaStorageMode(env);if(targetStore==='r2')mediaBucket(env);
  validate(document);if(options.restoreUsers&&!document.users.length)fail('Restoring accounts requires at least one account.');
  await env.DB.prepare('DELETE FROM backup_sessions WHERE created_at<?').bind(Date.now()-SESSION_AGE).run();
+ await env.DB.prepare('DELETE FROM backup_restore_results WHERE created_at<?').bind(Date.now()-SESSION_AGE).run();
  const current=await exportBackupManifest(env);
 
  if(targetStore==='d1'){
@@ -118,6 +119,8 @@ export async function stageBackupMediaPart(env:Env,id:string,part:BackupMediaPar
 }
 export async function abortBackupRestore(env:Env,id:string):Promise<void>{await env.DB.prepare('DELETE FROM backup_sessions WHERE id=?').bind(id).run();}
 export async function commitBackupRestore(env:Env,id:string):Promise<{pages:number;components:number;images:number;accountsRestored:boolean}>{
+ const completed=await env.DB.prepare('SELECT result FROM backup_restore_results WHERE id=?').bind(id).first<{result:string}>();
+ if(completed)return JSON.parse(completed.result);
  const s=await session(env,id);
  const desired=(await env.DB.prepare("SELECT kind,record_id,value FROM backup_records WHERE session_id=? AND phase='restore'").bind(id).all<Row>()).results;
  const settingsRecord=desired.find(r=>r.kind==='settings');if(!settingsRecord)fail('Incomplete restore session.');
@@ -146,7 +149,13 @@ export async function commitBackupRestore(env:Env,id:string):Promise<{pages:numb
  statements.push(env.DB.prepare("UPDATE posts SET status='public_static',data=json_set(data,'$.status','public_static') WHERE status IN ('public','public_dynamic')"));
  // Devices of users absent from the restored set stop for good, and pending codes are dropped.
  if(s.restore_users)statements.push(env.DB.prepare('UPDATE device_sessions SET revoked_at=? WHERE revoked_at IS NULL AND username NOT IN (SELECT username FROM users)').bind(Date.now()),env.DB.prepare('DELETE FROM device_codes'));
+ const result={pages:desired.filter(r=>r.kind==='posts').length,components:desired.filter(r=>r.kind==='components').length,images:desired.filter(r=>r.kind==='media').length,accountsRestored:!!s.restore_users};
+ statements.push(env.DB.prepare("INSERT INTO backup_restore_results(id,owner,result,created_at) SELECT id,COALESCE(owner,''),?,? FROM backup_sessions WHERE id=?").bind(JSON.stringify(result),Date.now(),id));
  statements.push(env.DB.prepare('DELETE FROM backup_sessions WHERE id=?').bind(id));statements.push(env.DB.prepare('DELETE FROM backup_commit_guard WHERE session_id=?').bind(id));
- try{await env.DB.batch(statements);}catch{fail('Restore was not applied: incomplete images, concurrent edits, or D1 capacity. Existing data remains unchanged.');}
- return {pages:desired.filter(r=>r.kind==='posts').length,components:desired.filter(r=>r.kind==='components').length,images:desired.filter(r=>r.kind==='media').length,accountsRestored:!!s.restore_users};
+ try{await env.DB.batch(statements);}catch{
+  let receipt;try{receipt=await env.DB.prepare('SELECT result FROM backup_restore_results WHERE id=?').bind(id).first<{result:string}>();}catch{fail('Restore result could not be confirmed. Reload and check the content before retrying.');}
+  if(receipt)return JSON.parse(receipt.result);
+  fail('Restore not applied or completion not yet confirmed. Retry the same operation or reload and check the content.');
+ }
+ return result;
 }

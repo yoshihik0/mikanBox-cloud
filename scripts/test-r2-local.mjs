@@ -30,17 +30,43 @@ async function backup(){
  await action('backup_export_validate',{manifest:JSON.stringify(manifest)});return {manifest,parts};
 }
 async function restore(saved){const stage=(await action('restore_backup_json',{manifest:JSON.stringify(saved.manifest),current_password:password})).stage;for(const part of saved.parts)await action('backup_restore_part',{stage,part:JSON.stringify(part)});return action('backup_restore_commit',{stage,current_password:password});}
-try {
- const migrations=spawnSync(process.execPath,[cli,'d1','migrations','apply','DB','--local','--config',config,'--persist-to',state],{cwd:root,env:environment,encoding:'utf8',timeout:60000});assert.equal(migrations.status,0,migrations.stderr+'\n'+migrations.stdout);
- check('all D1 migrations applied to isolated local state');
+async function startWorker(){
  worker=spawn(process.execPath,[cli,'dev','--local','--config',config,'--persist-to',state,'--ip','127.0.0.1','--port',String(port),'--inspector-port','0','--show-interactive-dev-session=false'],{cwd:root,env:environment,stdio:['ignore','pipe','pipe']});
  worker.stdout.on('data',data=>{log+=data;});worker.stderr.on('data',data=>{log+=data;});
  for(let attempt=0;;attempt++){try{if((await request('/admin')).status===200)break;}catch{}if(attempt>=60||worker.exitCode!==null)throw new Error('Local Worker did not start: '+log);await new Promise(resolve=>setTimeout(resolve,500));}
+}
+async function stopWorker(){
+ if(worker&&worker.exitCode===null){worker.kill('SIGTERM');await Promise.race([new Promise(resolve=>worker.once('exit',resolve)),new Promise(resolve=>setTimeout(resolve,5000))]);}
+}
+function localSql(command){
+ const result=spawnSync(process.execPath,[cli,'d1','execute','DB','--local','--config',config,'--persist-to',state,'--json','--command',command],{cwd:root,env:environment,encoding:'utf8',timeout:30000});assert.equal(result.status,0,result.stderr);
+}
+async function failedRestore(saved,mode){
+ const before=(await action('download_backup_json')).manifest,old=JSON.parse(before.pages.find(p=>p.id==='integration_page').data);
+ await action('save_page',{id:'integration_page',old_id:'integration_page',expected_revision:old.revision_tag||'',title:'Current before restore',status:'draft',content_md:'Current content must survive failure'});
+ const stage=(await action('restore_backup_json',{manifest:JSON.stringify(saved.manifest)})).stage;
+ for(const part of saved.parts){await action('backup_restore_part',{stage,part:JSON.stringify(part)});await action('backup_restore_part',{stage,part:JSON.stringify(part)});}
+ await stopWorker();await startWorker();check(mode+' staged restore survives Worker shutdown and repeated parts');
+ localSql("CREATE TRIGGER audit_restore_failure BEFORE INSERT ON posts BEGIN SELECT RAISE(ABORT,'Injected restore failure'); END");
+ try{await action('backup_restore_commit',{stage},false);
+ const current=(await action('download_backup_json')).manifest;assert.equal(JSON.parse(current.pages.find(p=>p.id==='integration_page').data).title,'Current before restore');await image('pixel.png',pixel);
+ check(mode+' transaction failure after deletion retains current page and image');
+ }finally{localSql('DROP TRIGGER audit_restore_failure');}
+ const completed=await action('backup_restore_commit',{stage});
+ const repeated=await action('backup_restore_commit',{stage});assert.deepEqual(repeated,completed);
+ const current=(await action('download_backup_json')).manifest;assert.equal(JSON.parse(current.pages.find(p=>p.id==='integration_page').data).title,JSON.parse(saved.manifest.pages.find(p=>p.id==='integration_page').data).title);
+ await image('pixel.png',pixel);check(mode+' retry succeeds once and repeated commit returns completion');
+}
+try {
+ const migrations=spawnSync(process.execPath,[cli,'d1','migrations','apply','DB','--local','--config',config,'--persist-to',state],{cwd:root,env:environment,encoding:'utf8',timeout:60000});assert.equal(migrations.status,0,migrations.stderr+'\n'+migrations.stdout);
+ check('all D1 migrations applied to isolated local state');
+ await startWorker();
  const loginPage=await request('/admin');cookie=loginPage.headers.get('set-cookie').split(';')[0];const loginCsrf=cookie.split('=')[1];const login=await request('/admin',new URLSearchParams({login_action:'setup',username:'local-system',display_name:'Local integration test',device_name:'Local test',setup_token:setupToken,csrf_token:loginCsrf}));assert.equal(login.status,303,await login.text());cookie=login.headers.get('set-cookie').split(';')[0];
  const admin=await(await request('/admin?view=site')).text();csrf=admin.match(/window.CSRF_TOKEN = "([^"]+)"/)[1];check('actual Worker authentication, CSRF and default installation');
  await upload('large.png',large);await upload('pixel.png',pixel);await image('large.png',large);await image('pixel.png',pixel);check('D1 multipart upload and public byte-for-byte delivery with static mode enabled');
  await action('save_page',{id:'integration_page',title:'Integration',status:'draft',content_md:'![Test](large.png)'});
  const d1Backup=await backup();assert.equal(d1Backup.manifest.media.length,2);check('D1 backup with original image parts');
+ await failedRestore(d1Backup,'D1');
  let job=(await action('begin_media_migration',{current_password:password})).migration;assert.equal(job.total,2);
  await action('finish_media_migration',{migration_id:job.id},false);await action('delete_media',{file:'pixel.png'},false);await image('pixel.png',pixel);check('incomplete cutover and image changes rejected while originals stay readable');
  job=(await action('copy_media_migration',{migration_id:job.id})).migration;assert.equal(job.copied,1);await action('cancel_media_migration',{migration_id:job.id});await image('large.png',large);check('real local R2 copy, checksum verification and cancellation preserve D1');
@@ -52,6 +78,7 @@ try {
  await restore(d1Backup);await image('large.png',large);await image('pixel.png',pixel);assert.equal((await request('/media/new.png')).status,404);check('D1 backup restores atomically into R2');
  const r2Backup=await backup();const stage=(await action('restore_backup_json',{manifest:JSON.stringify(r2Backup.manifest),current_password:password})).stage;await action('backup_restore_commit',{stage,current_password:password},false);await image('large.png',large);await action('backup_restore_abort',{stage});check('incomplete R2 restore rejected without changing current images');
  await action('delete_media',{file:'large.png'});assert.equal((await request('/media/large.png')).status,404);await restore(r2Backup);await image('large.png',large);check('R2 backup restores deleted multipart images');
+ await failedRestore(r2Backup,'R2');
  await action('cleanup_media');await image('large.png',large);check('R2 cleanup retains live and recently superseded objects');
  // Read only the disposable D1 database through the official local binding.
  const inspected=spawnSync(process.execPath,[cli,'d1','execute','DB','--local','--config',config,'--persist-to',state,'--json','--command',"SELECT (SELECT COUNT(*) FROM media_chunks) chunks,(SELECT COUNT(*) FROM media WHERE object_key IS NULL OR data<>'') invalid,(SELECT value FROM settings WHERE key='media_storage') mode"],{cwd:root,env:environment,encoding:'utf8',timeout:30000});assert.equal(inspected.status,0,inspected.stderr);const row=JSON.parse(inspected.stdout)[0].results[0];assert.equal(row.chunks,0);assert.equal(row.invalid,0);assert.equal(row.mode,'r2');check('D1 contains only R2 metadata after migration and restoration');

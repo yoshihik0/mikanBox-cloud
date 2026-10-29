@@ -154,7 +154,7 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
           return json({success:true,stage});
         }
         case 'backup_restore_part': case 'backup_restore_commit': case 'backup_restore_abort': {
-          const stage=val(form,'stage'),owned=await env.DB.prepare('SELECT id FROM backup_sessions WHERE id=? AND owner=?').bind(stage,auth.user.username).first();if(!owned)throw new Error('Restore session not found.');
+          const stage=val(form,'stage'),owned=await env.DB.prepare('SELECT id FROM backup_sessions WHERE id=? AND owner=?').bind(stage,auth.user.username).first();if(!owned){const completed=action==='backup_restore_commit'&&await env.DB.prepare('SELECT result FROM backup_restore_results WHERE id=? AND owner=?').bind(stage,auth.user.username).first<{result:string}>();if(completed)return json({success:true,...JSON.parse(completed.result)});throw new Error('Restore session not found.');}
           if(action==='backup_restore_part'){await stageBackupMediaPart(env,stage,JSON.parse(val(form,'part')));return json({success:true});}
           if(action==='backup_restore_abort'){await abortBackupRestore(env,stage);return json({success:true});}
           return json({success:true,...await commitBackupRestore(env,stage)});

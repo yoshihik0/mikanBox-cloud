@@ -18,12 +18,13 @@ export function validateUpdateConfig(config, remote) {
   return db;
 }
 
-export async function updateCloud() {
+export async function updateCloud(dependencies={}) {
+  const request=dependencies.fetch||fetch;
   if(!process.env.CLOUDFLARE_API_TOKEN||!process.env.MIKANBOX_UPDATE_CONFIG) throw new Error('Set CLOUDFLARE_API_TOKEN and MIKANBOX_UPDATE_CONFIG in GitHub Actions secrets first.');
   const config=JSON.parse(process.env.MIKANBOX_UPDATE_CONFIG);
   // Validate identifiers before constructing an authenticated API URL.
   if(!/^[a-f0-9]{32}$/.test(config.account_id||'')||!/^[a-z0-9][a-z0-9-]{0,62}$/.test(config.name||'')) throw new Error('Invalid update target.');
-  const response=await fetch(`https://api.cloudflare.com/client/v4/accounts/${config.account_id}/workers/scripts/${config.name}/settings`,{headers:{Authorization:`Bearer ${process.env.CLOUDFLARE_API_TOKEN}`},signal:AbortSignal.timeout(15000)});
+  const response=await request(`https://api.cloudflare.com/client/v4/accounts/${config.account_id}/workers/scripts/${config.name}/settings`,{headers:{Authorization:`Bearer ${process.env.CLOUDFLARE_API_TOKEN}`},signal:AbortSignal.timeout(15000)});
   const remote=await response.json();
   if(!response.ok||!remote.success) throw new Error('Cannot read the existing management Worker. Check the account, name and token permissions.');
   const db=validateUpdateConfig(config,remote.result);
@@ -39,14 +40,14 @@ export async function updateCloud() {
   const file='wrangler.update.json';
   const env={...process.env,CLOUDFLARE_ACCOUNT_ID:config.account_id,WRANGLER_SEND_METRICS:'false'};
   delete env.MIKANBOX_UPDATE_CONFIG;
-  const run=args=>{const result=spawnSync('npx',['--no-install','wrangler',...args],{stdio:'inherit',env});if(result.status!==0)throw new Error('Update stopped. Inspect the failed step before retrying.');};
+  const run=dependencies.run||(args=>{const result=spawnSync('npx',['--no-install','wrangler',...args],{stdio:'inherit',env});if(result.status!==0)throw new Error('Update stopped. Inspect the failed step before retrying.');});
   try {
     await writeFile(file,JSON.stringify(target,null,2),{mode:0o600});
     // Compilation must succeed before any database modification.
-    run(['deploy','--config',file,'--dry-run','--outdir','.build-update']);
+    await run(['deploy','--config',file,'--dry-run','--outdir','.build-update']);
     console.log(`Updating existing management Worker ${config.name}; D1 ${db.database_id}.`);
-    run(['d1','migrations','apply','DB','--remote','--config',file]);
-    run(['deploy','--config',file,'--keep-vars','--message','Manual mikanBox update']);
+    await run(['d1','migrations','apply','DB','--remote','--config',file]);
+    await run(['deploy','--config',file,'--keep-vars','--message','Manual mikanBox update']);
     console.log('Deployment completed. Reload your management page and verify the version, pages and images.');
   } finally {await rm(file,{force:true});}
 }
