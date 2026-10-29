@@ -35,7 +35,7 @@
 
 #### 自分でコマンドを実行する場合
 
-Node.js（22以上）とnpm、ターミナルが必要です。コマンドと設定ファイルの詳細は[インストール手順リファレンス](https://github.com/yoshihik0/mikanBox-cloud/blob/HEAD/docs/install-reference_ja.md)を参照してください。公開URLをあとから変更する手順も、同じリファレンスにあります。
+Node.js（22以上）とnpm、ターミナルが必要です。コマンドと設定ファイルの詳細は[詳細リファレンス（インストール手順）](https://github.com/yoshihik0/mikanBox-cloud/blob/HEAD/docs/reference_ja.md#インストール手順)を参照してください。公開URLをあとから変更する手順も、同じリファレンスにあります。
 
 #### 端末認証
 
@@ -87,7 +87,7 @@ DB状態のページは、`/api/ID` でDATA/DATAROWを公開できます。下�
 
 ページ・コンポーネントのJavaScriptは、管理者が書いたコードとして公開ページで実行されます。コンポーネントのJavaScriptは `/component-js/ID.js` で直接読み込めます。
 
-内部動作の詳細は[ページ操作の内部動作メモ](https://github.com/yoshihik0/mikanBox-cloud/blob/HEAD/docs/page-operations-reference_ja.md)を参照してください。
+内部動作の詳細は[詳細リファレンス（ページ操作）](https://github.com/yoshihik0/mikanBox-cloud/blob/HEAD/docs/reference_ja.md#ページ操作)を参照してください。
 
 ## サイト
 
@@ -158,7 +158,7 @@ DB状態のページは、`/api/ID` でDATA/DATAROWを公開できます。下�
 - Workers Buildsなど別の仕組みでGitHubへのpush時に自動デプロイしている場合は、手動更新とは別にその設定を確認してください。
 - DBの更新とWorkerの公開は別の工程です。途中で失敗するとDBだけ更新済みの場合があります。失敗した工程を確認してから再実行します。適用済みのDB更新は再適用されません。
 
-動作の詳細は[アップデート手順リファレンス](https://github.com/yoshihik0/mikanBox-cloud/blob/HEAD/docs/update-reference_ja.md)を参照してください。
+動作の詳細は[詳細リファレンス（アップデート手順）](https://github.com/yoshihik0/mikanBox-cloud/blob/HEAD/docs/reference_ja.md#アップデート手順)を参照してください。
 
 #### ダウンロードして更新する
 
@@ -166,7 +166,7 @@ DB状態のページは、`/api/ID` でDATA/DATAROWを公開できます。下�
 2. 既存サイトと同じCloudflareアカウントでログインします。認可画面で対象アカウントを確認し、**Authorize** を押します。
 3. 更新を実行します。**AIに頼むか、コマンドで行います。**
 
-AIに頼む場合は、展開したフォルダでAIの新しい会話を開き、既存の管理画面URLを伝えて「このサイトを最新版に更新してください」と依頼します。AIが設定を確認して更新を進めます。コマンドで行う場合の手順は、[アップデート手順リファレンス](https://github.com/yoshihik0/mikanBox-cloud/blob/HEAD/docs/update-reference_ja.md)を参照してください。
+AIに頼む場合は、展開したフォルダでAIの新しい会話を開き、既存の管理画面URLを伝えて「このサイトを最新版に更新してください」と依頼します。AIが設定を確認して更新を進めます。コマンドで行う場合の手順は、[詳細リファレンス（アップデート手順）](https://github.com/yoshihik0/mikanBox-cloud/blob/HEAD/docs/reference_ja.md#アップデート手順)を参照してください。
 
 **注意：** 更新には、設置時の設定ファイル `wrangler.production.json` が必要です。現在のサイトの構成と一致しているものを使い、新規用のサンプル値は使いません。見つからない場合は、Cloudflareで既存Workerの設定を確認してから進めてください。
 
@@ -217,7 +217,7 @@ Cloud版では、管理画面と公開サイトが別々のWorkerで動きます
 - 画面上部のログアウトボタンはありません。この端末を使わなくなるときは、「端末とユーザー」で止めます。
 - AIの質問ボックスは、公開側では動きません。
 
-仕組みの詳細は[公開と配信の技術メモ](https://github.com/yoshihik0/mikanBox-cloud/blob/HEAD/docs/publication-reference_ja.md)を参照してください。
+仕組みの詳細は[詳細リファレンス（公開と配信）](https://github.com/yoshihik0/mikanBox-cloud/blob/HEAD/docs/reference_ja.md#公開と配信)を参照してください。
 
 #### サイト内検索
 
@@ -249,7 +249,7 @@ Cloud版では、管理画面と公開サイトが別々のWorkerで動きます
 
 移行中はD1の原本を表示し、画像の追加・変更・削除を止めます。画面を閉じても、同じメニューから再開・中止できます。未完了・失敗・中止ではD1の原本を保持します。全件の確認が完了すると、R2の参照へ一括で切り替えます。
 
-「不要な一時画像を整理」で、24時間以上保持した未使用の一時画像を最大20件ずつ削除できます。内部動作は[保存先とバックアップの技術メモ](https://github.com/yoshihik0/mikanBox-cloud/blob/HEAD/docs/storage-backup-reference_ja.md)を参照してください。
+「不要な一時画像を整理」で、24時間以上保持した未使用の一時画像を最大20件ずつ削除できます。内部動作は[詳細リファレンス（保存先とバックアップ）](https://github.com/yoshihik0/mikanBox-cloud/blob/HEAD/docs/reference_ja.md#保存先とバックアップ)を参照してください。
 
 ### バックアップと取り込み
 
@@ -265,7 +265,7 @@ Cloud版では、管理画面と公開サイトが別々のWorkerで動きます
 
 #### D1自体のバックアップ
 
-D1のSQL書き出しと、指定時点にDB全体を戻すTime Travelは、JSONバックアップとは別の機能です。D1編集権限を持つ専用トークンが必要です。R2の画像実体は含まれないため、R2を使っている場合はJSONバックアップを使ってください。詳細は[技術メモ](https://github.com/yoshihik0/mikanBox-cloud/blob/HEAD/docs/storage-backup-reference_ja.md)を参照してください。
+D1のSQL書き出しと、指定時点にDB全体を戻すTime Travelは、JSONバックアップとは別の機能です。D1編集権限を持つ専用トークンが必要です。R2の画像実体は含まれないため、R2を使っている場合はJSONバックアップを使ってください。詳細は[詳細リファレンス（保存先とバックアップ）](https://github.com/yoshihik0/mikanBox-cloud/blob/HEAD/docs/reference_ja.md#保存先とバックアップ)を参照してください。
 
 #### 静的HTMLのZIP出力
 
@@ -291,27 +291,39 @@ JSON復元では、転送中のデータを一時領域に置き、全件の検�
 
 「復元は完了しましたが、公開更新に失敗しました」と表示された場合、復元済みのデータは残っています。バックアップをもう一度取り込むのではなく、ページ一覧からサイトのビルドを再試行してください。
 
-### Cloud専用MCP
+### AIから管理する（MCP）
 
-サイト画面でCloud専用のAPIキーを生成し、別ワークスペースから `/mcp` にBearerキー付きで接続します。ルートの `.mcp.json` は公式サーバー専用のままです。
+MCPに対応したAIから、ページ・コンポーネント・画像を直接読み書きできます。
 
-現在のツールは `get_site_info`、`list_pages`、`get_page`、`create_page`、`update_page`、`delete_page`、`list_components`、`get_component`、`create_component`、`update_component`、`delete_component`、`get_revisions`、`get_settings`、`get_ai_context`、`list_ai_docs`、`get_ai_doc`、`update_ai_doc`、`upload_media`、`build_ssg`。
+#### 接続する
 
-作成・更新はSQLite版と同じ `id` と各フィールドを直接渡す形式に対応し、従来の `id` と `data` も使えます。両形式で同じフィールドを重ねて指定しないでください。更新は未指定のフィールドを保持します。接続直後は `get_site_info`、続けて `get_ai_context` を呼びます。AI指示書IDの `.md` は省略できます。`get_settings` はAPIキー・認証情報・管理メモを返しません。編集操作には公開URLのディレクトリ省略ではなく正確なIDを指定します。
+1. 管理画面のサイト設定で、Cloud専用のAPIキーを生成します。
+2. AIの接続設定に、管理用のアドレス `/mcp` を登録し、APIキーをBearerキーとして渡します。
 
-`upload_media` は `filename` と `content_base64` を渡します。JPEG・PNG・GIF・WebP・SVGの10 MBまでです。任意の `category` は英数字・`_`・`-` に限り、ファイル名の接頭辞になります。同名は上書きせずエラーです。大きな画像ではBase64通信と変換処理が増えるため、通常の管理画面アップロードも使ってください。音声・動画や重複時の連番保存はPHP版と差があります。
+APIキーはサイトの管理操作権限を持つため、公開しないでください。
 
-管理用の互換URL `/mikanBox/mcp` と `/mikanBox/mcp.php` も同じキーが必要です。管理窓口と公開ヘルプ窓口は別です。
+#### できること
 
-書き込み前には `get_site_info` のCloudサイトIDを確認してください。公式サイトIDはCloud版へ引き継ぎません。Cloud APIキーはサイトの管理操作権限を持つため公開しません。
+- ページ・コンポーネントの一覧、取得、作成、更新、削除
+- 履歴の取得、サイト設定の取得（APIキー・認証情報・管理メモは返しません）
+- AI指示書（DESIGN.mdなど）の一覧、取得、更新
+- 画像のアップロード
+- 静的HTMLの生成（`build_ssg`）。生成のみで、公開側への配信は管理画面のビルドで行います。
 
-### 公開ヘルプ・WebMCP
+使い方のポイントは次のとおりです。
 
-公開の `/public-mcp` はAPIキー不要・読み取り専用です。`search_help`、`get_help_section`、`get_product_info`、`get_agent_instructions` の4つだけを提供します。管理用 `/mcp` は引き続きキー必須です。`/mikanBox/public-mcp.php` は公開窓口の互換URLです。
+- 接続したら、最初に `get_site_info`、続けて `get_ai_context` を呼びます。書き込みの前には、`get_site_info` で接続先のサイトIDを確認してください。
+- 更新は、指定しなかったフィールドをそのまま保持します。
+- 編集には、URLのディレクトリ省略ではなく、正確なページIDを指定します。
+- 画像のアップロードは、JPEG・PNG・GIF・WebP・SVGの10 MBまでです。同名のファイルは上書きせず、エラーになります。大きな画像は、通常の管理画面からのアップロードも使ってください。音声・動画はアップロードできません。
 
-公開済みの `help_ja`・`help_en` ページがあればその本文を読み、なければこのCloud専用マニュアルを使います。下書き・承認待ち・DB・管理情報・AI指示書・その他のページは公開窓口から読みません。Cloud専用マニュアルを更新したら `node scripts/sync-cloud-help.mjs` で同梱コピーを更新します（check/test/buildでも自動実行）。人向けヘルプは `/public-help.html?language=ja` または `en` です。
+ツールの一覧や詳細は[詳細リファレンス（MCPとヘルプ）](https://github.com/yoshihik0/mikanBox-cloud/blob/HEAD/docs/reference_ja.md#mcpとヘルプ)を参照してください。
 
-公開ページと管理画面にWebMCP用スクリプトを読み込みます。対応するブラウザ・エージェントで4つのヘルプツールを利用できます。未対応ブラウザでは登録を省略し、通常画面やAI質問欄は利用できます。[ChromeのWebMCP API](https://developer.chrome.com/docs/ai/webmcp/imperative-api)に従う仕組みで、すべてのブラウザやAIクライアントで利用できるとは限りません。AI質問欄はCloudの公開ヘルプと公開MCPを参照し、APIキーや管理画面URLは外部AIへ渡しません。
+### Cloud版のヘルプをAIに読ませる
+
+公開の `/public-mcp` は、APIキー不要・読み取り専用です。AIがこのヘルプを検索して読めるようにします（`search_help`、`get_help_section`、`get_product_info`、`get_agent_instructions`）。人向けのヘルプは `/public-help.html?language=ja` で読めます。
+
+対応するブラウザやAIでは、公開ページと管理画面からヘルプを使えます。すべてのブラウザ・AIクライアントで使えるとは限りません。
 
 ## デザイン
 
