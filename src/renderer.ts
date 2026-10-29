@@ -164,9 +164,7 @@ export class MikanBoxRenderer {
     }
 
     // 非公開ページはプライベートコメントを返す
-    const preview = new URL(this.request.url).searchParams.get('preview');
-    const tokenPreview = pageData.status === 'pending' && !!pageData.preview_token && preview === pageData.preview_token;
-    if (!isPublicStatus(pageData.status) && !allowPrivate && !tokenPreview) {
+    if (!isPublicStatus(pageData.status) && !allowPrivate) {
       return { html: '<h1>404 Not Found</h1>', status: 404 };
     }
 

@@ -223,12 +223,6 @@ ${opts.mediaEnabled?`<div id="drop-zone">${getIcon('cloud')} ${t('hint_drop_uplo
     const mcpUrlField = document.getElementById('mcp-url-display');
     if (mcpUrlField) mcpUrlField.value = location.origin + '/mcp';
 
-    window.copyPendingPreviewUrl = async function() {
-        const input = document.getElementById('pending-preview-url');
-        if (!input) return;
-        try { await navigator.clipboard.writeText(input.value); showToast(${JSON.stringify(t('msg_copied'))}); }
-        catch { input.select(); document.execCommand('copy'); showToast(${JSON.stringify(t('msg_copied'))}); }
-    };
     const searchInput=document.getElementById('admin-page-search'), searchIcon=document.getElementById('admin-page-search-icon'), searchClear=document.getElementById('admin-page-search-clear');
     if(searchInput&&searchIcon&&searchClear){
       const updateSearchControls=()=>{const hasValue=searchInput.value.length>0;searchIcon.style.display=hasValue?'none':'flex';searchClear.style.display=hasValue?'flex':'none';};
@@ -740,7 +734,6 @@ export function renderPageEditor(opts: {
                              <div class="status-selector-group">
                              ${statuses.map(st=>`<label class="radio-label ${status===st?'active '+statusClass(st):''}"><input type="radio" name="status" value="${st}" ${status===st?'checked':''}> ${t('page_status_'+st)}</label>`).join('')}
                              </div>
-                             ${editId&&d.preview_token?`<div id="pending-preview-banner" style="${status==='pending'?'':'display:none'}"><label>${t('preview_share_url_label')}</label><div class="flex-row"><input id="pending-preview-url" readonly value="${h((opts.settings.site_url||opts.settings._site_base||'').replace(/\/$/,'')+(editId==='index'?'/':'/'+editId)+'?preview='+d.preview_token)}" onclick="this.select()"><button type="button" class="btn btn-gray btn-small" onclick="copyPendingPreviewUrl()">${getIcon('copy')} ${t('btn_copy')}</button></div></div>`:''}
                          </div></div>
                     <div class="form-group form-group-memo grid-span-2"><label class="sub-label">${t('label_memo')}</label><textarea name="memo" class="textarea-xs textarea-memo" placeholder="${t('memo_hint')}">${h(d.memo||'')}</textarea></div>
                     </div>

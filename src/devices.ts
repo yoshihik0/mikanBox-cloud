@@ -89,7 +89,7 @@ export async function listDevices(env:Env){return (await env.DB.prepare('SELECT 
 export function onProbation(device:Device){return device.via!=='setup'&&Date.now()-device.created_at<PROBATION_DAYS*DAY;}
 export async function revokeDevice(env:Env,actor:Device,id:string){
  if(id!==actor.id&&onProbation(actor))throw new Error(`追加から${PROBATION_DAYS}日間は、ほかの端末を止められません。 / A device added within ${PROBATION_DAYS} days cannot stop other devices.`);
- await env.DB.prepare('UPDATE device_sessions SET revoked_at=? WHERE id=? AND revoked_at IS NULL').bind(Date.now(),id).run();
+ await env.DB.batch([env.DB.prepare('UPDATE device_sessions SET revoked_at=? WHERE id=? AND revoked_at IS NULL').bind(Date.now(),id),env.DB.prepare('DELETE FROM device_codes WHERE created_by=? AND used_at IS NULL').bind(id)]);
 }
 /** Devices registered since this one last looked, then mark them seen. */
 export async function unseenDevices(env:Env,device:Device){
@@ -115,8 +115,8 @@ export async function setupTokenUsable(env:Env,token:string){
 }
 /** Recovery starts over: every device, unused code and the MCP key are cleared. */
 export async function consumeSetupToken(env:Env,recovery:boolean){
- const statements=[env.DB.prepare("INSERT OR IGNORE INTO settings(key,value) VALUES(?,?)").bind('setup_token_used:'+await sha256(env.SETUP_TOKEN),String(Date.now()))];
- if(recovery)statements.push(env.DB.prepare('UPDATE device_sessions SET revoked_at=? WHERE revoked_at IS NULL').bind(Date.now()),env.DB.prepare('DELETE FROM device_codes'),env.DB.prepare('DELETE FROM edit_locks'));
+ const statements=[env.DB.prepare("INSERT INTO settings(key,value) VALUES(?,?)").bind('setup_token_used:'+await sha256(env.SETUP_TOKEN),String(Date.now()))];
+ if(recovery)statements.push(env.DB.prepare('UPDATE device_sessions SET revoked_at=? WHERE revoked_at IS NULL').bind(Date.now()),env.DB.prepare('DELETE FROM device_codes'),env.DB.prepare('DELETE FROM edit_locks'),env.DB.prepare("UPDATE settings SET value=json_set(value,'$.api_key','') WHERE key='settings'"));
  await env.DB.batch(statements);
- if(recovery){const settings=await loadSettings(env);if(settings.api_key){settings.api_key='';await saveSettings(env,settings);}}
+
 }

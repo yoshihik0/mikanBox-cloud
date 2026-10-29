@@ -26,5 +26,7 @@ export async function publicationStatus(env:Env,origin:string,list:Array<{id:str
   if(state!=='live'&&(status==='public_static'||onSite))stale++;
   pages[row.id]={url,state};
  }
+ const currentPaths=new Set(list.map(row=>row.id==='index'?'/index.html':'/'+row.id+'.html'));
+ for(const path of paths)if(path.endsWith('.html')&&!path.startsWith('/mikanbox/')&&!currentPaths.has(path))stale++;
  return {pages,publishedAt,stale};
 }

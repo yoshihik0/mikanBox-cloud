@@ -1,6 +1,9 @@
 <style>.manual-version{font-size:.5em;font-weight:400;white-space:nowrap}</style>
 
-# 🍊mikanBox Cloudflare Manual <small class="manual-version">v0.6.8</small>
+
+# 🍊mikanBox Cloudflare Manual <small class="manual-version">v0.6.9</small>
+
+Images are published after upload, including images used only in drafts. Do not upload images that must remain private. JavaScript and CSS files are published when the site is built.
 
 You can use `{{SITE_URL}}` in Markdown link destinations. Tags inside code examples remain literal. Renaming an image also requests confirmation when it is used only as the site-wide OGP image.
 
@@ -185,7 +188,7 @@ The standard search form's `/index.php?page=search&q=...` and `/search?q=...` wo
 - Separate draft, pending, public and DB statuses.
 - Memos, Markdown/HTML input, page CSS/JavaScript, SEO fields, and wrapper selection.
 - Revision recording, selection of the last 50 revisions, edit locks, and stale-edit protection.
-- Token-based pending previews; authenticated administrators can preview drafts.
+- Draft and pending pages are private. Registered, signed-in editors can preview both; the labels describe workflow state and have identical access permissions.
 - Component CRUD, part/wrapper/AI-document types, memos, CSS, and JavaScript.
 - Site settings, language, site memo, adding and stopping devices, and inviting and deleting users.
 - Changing your own display name (the field on your own user in "Devices and users"). The username cannot be changed.
@@ -311,3 +314,5 @@ If Cloudflare Workers Builds or another system already deploys on GitHub pushes,
 The updater checks the existing management Worker and D1/R2 bindings, verifies the build, applies pending D1 migrations and deploys the management Worker. It does not initialize articles, images or settings; existing secrets including JWT_SECRET for registered devices and existing environment variables are retained. It does not overwrite the public Worker with a placeholder. Mismatched targets or unsupported additional bindings stop the update. Update the saved GitHub JSON when your bindings or routes change.
 
 Save any needed backup before updating. Database migration and code deployment are not a single transaction. If a run fails, inspect the failed step, fix its configuration or permissions and run again. Applied migrations are not repeated. After success, reload the management page and check the version, articles and images. Use the management build when changes need to reach published pages.
+
+Publication files are downloaded without executing code with management privileges. Public help permits only the product-provided script. Deleted pages still present on the public site remain marked as pending publication changes. Stopping a device also cancels its unused enrollment codes. Setup and recovery tokens can be consumed only once, including concurrent requests.

@@ -48,3 +48,8 @@ test('navigation, search, feeds and static builds stay within Free D1 query limi
  queries=0;const rss=await call(env,'/rss.xml');assert.equal(rss.status,200);assert.ok(queries<10);
  queries=0;await require('../.test-build/src/ssg.js').buildStatic(env,new Request('https://cloud.test/'));assert.ok(queries<10);assert.equal(env.sqlite.prepare('SELECT COUNT(*) n FROM static_pages').get().n,81); // the search page is public too
 });
+
+test('public help uses a fresh nonce only for the bundled script',async()=>{
+ const {environment,call}=require('./fixtures.cjs');const env=environment();const a=await call(env,'/public-help.html'),b=await call(env,'/public-help.html');const csp=a.headers.get('content-security-policy'),csp2=b.headers.get('content-security-policy');
+ const nonce=csp.match(/script-src 'nonce-([^']+)'/)[1];assert.notEqual(csp,csp2);assert.match(await a.text(),new RegExp('<script nonce="'+nonce+'" src="/mikanbox/ai-question.js"'));assert.doesNotMatch(csp,/script-src 'self'/);
+});

@@ -109,7 +109,7 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
   if(request.method==='GET'&&url.searchParams.has('publication_manifest'))return json(await publicationManifest(env));
   if(request.method==='GET'&&url.searchParams.has('publication_file')) {
     const entry=await readPublicationEntry(env,request,url.searchParams.get('publication_file')||'');
-    return entry?new Response(entry.body.buffer as ArrayBuffer,{headers:{'Content-Type':entry.contentType,'Cache-Control':'no-store'}}):new Response('Not Found',{status:404});
+    return entry?new Response(entry.body.buffer as ArrayBuffer,{headers:{'Content-Type':entry.contentType,'Cache-Control':'no-store','Content-Security-Policy':"sandbox; default-src 'none'",'Content-Disposition':'attachment'}}):new Response('Not Found',{status:404});
   }
   let editId=url.searchParams.get('edit'), view=url.searchParams.get('view')||'pages';
   if(view==='design') view='components';

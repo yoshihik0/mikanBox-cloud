@@ -167,3 +167,32 @@ test('split publication rejects the management origin as the public origin',()=>
  const env=split(environment());env.PUBLIC_SITE_URL='https://admin.cloud.test';
  assert.throws(()=>publicRequest(env,admin),/must be different/);
 });
+
+test('publication downloads are sandboxed while preserving the original bytes and type',async()=>{
+ const env=split(environment()),auth=await login(env);await savePage(env,'security-check',{...page('public_static'),js:'window.bad=1'});await buildStatic(env,publicRequest(env,admin));
+ const res=await call(env,'/admin?publication_file=%2Fsecurity-check.html',null,auth.cookie);assert.equal(res.status,200);assert.match(res.headers.get('content-type'),/text\/html/);assert.match(res.headers.get('content-disposition'),/attachment/);assert.match(res.headers.get('content-security-policy'),/sandbox/);assert.match(await res.text(),/window.bad=1/);
+});
+test('deleted published page remains marked as an unpublished change',async()=>{
+ const {publicationStatus}=require('../.test-build/src/publish-status.js');const env=split(environment());await savePage(env,'index',page('public_static'));await buildStatic(env,publicRequest(env,admin));
+ env.sqlite.prepare("INSERT INTO settings(key,value) VALUES('static_publication',?)").run(JSON.stringify({paths:['/index.html','/deleted.html'],published_at:new Date(Date.now()+1000).toISOString()}));
+ const status=await publicationStatus(env,'https://admin.cloud.test',await require('../.test-build/src/storage.js').listPages(env));assert.equal(status.stale,1);
+});
+
+test('a recovery token is consumed only once even for concurrent requests',async()=>{
+ const env=split(environment());env.sqlite.prepare("INSERT INTO users(username,display_name,password_hash,auth_version) VALUES('admin','Admin','',1)").run();
+ const body={login_action:'setup',username:'admin',device_name:'Test',setup_token:env.SETUP_TOKEN,csrf_token:'audit-csrf'};
+ const responses=await Promise.all([call(env,'/admin',body,'login_csrf=audit-csrf'),call(env,'/admin',body,'login_csrf=audit-csrf')]);assert.equal(responses.filter(r=>r.status===303).length,1);assert.equal(env.sqlite.prepare('SELECT COUNT(*) n FROM device_sessions WHERE revoked_at IS NULL').get().n,1);
+});
+test('stopping a device also cancels its outstanding enrollment codes',async()=>{
+ const d=require('../.test-build/src/devices.js'),env=split(environment()),auth=await login(env);const req=new Request('https://cloud.test/admin',{headers:{Cookie:auth.cookie}}),actor=(await d.deviceSession(req,env)).device;
+ const code=await d.issueCode(env,actor);await d.revokeDevice(env,actor,actor.id);assert.equal(await d.claimCode(env,code,'Replacement',req),null);
+});
+
+test('draft and pending previews require a registered editing device',async()=>{
+ const env=split(environment()),auth=await login(env);
+ for(const status of ['draft','pending']){
+  await savePage(env,'private-preview',{...page(status,'Private editor content'),preview_token:'old-token'});
+  assert.equal((await call(env,'/preview/private-preview?preview=old-token')).status,404);
+  const response=await call(env,'/preview/private-preview',null,auth.cookie);assert.equal(response.status,200);assert.match(await response.text(),/Private editor content/);assert.match(response.headers.get('Content-Security-Policy'),/^sandbox /);
+ }
+});

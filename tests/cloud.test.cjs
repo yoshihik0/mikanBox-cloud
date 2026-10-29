@@ -103,7 +103,8 @@ test('page saves retain HTML mode, JS, memo, pending and preview token',async()=
   const r=await post(env,auth,{save_action:'save_page',id:'news/item',title:'Item',status:'pending',is_html:'1',content_md:'<h2>Pending</h2>',js:'window.item=1;',memo:'Memo',css:'h2{color:red}',wrapper_comp:'layout'});
   assert.equal(r.data.success,true);const stored=await loadPage(env,'news/item');assert.equal(stored.is_html,true);assert.equal(stored.memo,'Memo');assert.equal(stored.js,'window.item=1;');assert.ok(stored.preview_token);
   assert.equal((await call(env,'/news/item')).status,404);
-  const response=await call(env,`/news/item?preview=${stored.preview_token}`);assert.equal(response.status,200);assert.match(await response.text(),/<h2>Pending<\/h2>/);
+  assert.equal((await call(env,`/news/item?preview=${stored.preview_token}`)).status,404);
+  const response=await call(env,'/preview/news/item',null,auth.cookie);assert.equal(response.status,200);assert.match(await response.text(),/<h2>Pending<\/h2>/);
 });
 test('update makes history, stale edits fail, rename collisions roll back',async()=>{
   const env=environment(),auth=await login(env);
