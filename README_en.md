@@ -142,7 +142,7 @@ The Cloudflare edition is developed to match the PHP editions' UI and operations
 - Because no program runs on the public side, use Google site search if you need on-site search.
 - Published pages are built static files only (there is no "Published (dynamic)").
 - The external-fetch `EXT_MD` tag and video/audio uploads on D1 are not supported.
-- There are no SQLite file import/export or migration tools from the PHP editions; backup and restore use JSON.
+- SQLite files themselves cannot be imported or exported. Use the ZIP, WordPress XML, and CSV import tools to bring data in, and the Cloud-specific JSON for backup and restore (ZIP/XML imports do not bring in images, accounts, or site settings).
 
 See the [Cloud manual](docs/cloud_en.md) for details.
 
