@@ -1,5 +1,7 @@
 # 🍊mikanBox Cloudflare版
 
+[English README →](README_en.md)
+
 **AI時代のパーツ組み立て型・超軽量CMS**
 
 🍊mikanBoxは、使いやすいUIと、Markdownによるコンテンツ管理、コンポーネントを組み合わせて柔軟に構築できる設計をもち、これらをAIによって自在にコントロールできる超軽量CMSです。
