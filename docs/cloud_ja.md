@@ -259,6 +259,8 @@ ZIP全体は20 MBまでで、画像読出し回数にも上限があります。
 
 ## 新規インストールと公開
 
+[画像付きインストールガイド](/mikanbox/guides/install-ja.html)では、画面を見ながら順番に操作できます。
+
 ここでは新しいサイトを作る手順を説明します。既存サイトの更新では、D1やWorkerを新規作成せず、[アップデート手順](#manual-update)を参照してください。
 
 ### 最初に用意するもの
@@ -322,6 +324,8 @@ node -e "const fs=require('node:fs'),c=require('node:crypto'); fs.writeFileSync(
 
 <a id="manual-update"></a>
 ## アップデート
+
+[画像付きアップデートガイド](/mikanbox/guides/update-ja.html)では、GitHubの画面を見ながら設定と更新ができます。
 
 管理画面の「サイト」で、現在のバージョンとGitHub上の最新版を確認できます。「再確認」は最新版の情報を取り直します。管理画面のコードを更新した後は、画面自体を再読み込みして現在のバージョンを確認します。
 
