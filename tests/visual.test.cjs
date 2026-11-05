@@ -38,6 +38,7 @@ test('sign-in, CSRF and same-origin checks',async()=>{
   assert.equal((await api('create',{title:'x'},{origin:'https://evil.test'})).status,403);
   assert.equal(page('about').content_md,'# Hello\n\nfirst\n\nsecond\n','nothing was written');
   assert.equal((await call('/admin/visual?api=save-md&id=about',{method:'GET'})).status,405,'GET cannot write');
+  assert.equal((await call('/admin/visual?api=mtime&id=about')).status,404,'no polling endpoint');
   assert.ok(auth.csrf_token);
 });
 

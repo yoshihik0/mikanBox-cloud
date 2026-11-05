@@ -26,13 +26,6 @@ export async function readPage(env: Env, id: string): Promise<PageRow | null> {
   try { return { raw: row.data, data: JSON.parse(row.data) as PageData, sid: row.sid }; } catch { return null; }
 }
 
-/** Cheap change detector for the screen's polling: no page body is read. */
-export async function changeMark(env: Env, id: string): Promise<string> {
-  const row = await env.DB.prepare("SELECT json_extract(data, '$.revision_tag') AS tag, length(data) AS n, updated_at FROM posts WHERE id = ?")
-    .bind(id).first<{ tag: string | null; n: number; updated_at: string }>();
-  return row ? `${row.tag ?? ''}|${row.n}|${row.updated_at}` : '';
-}
-
 export async function counts(env: Env, id: string): Promise<Counts> {
   const row = await env.DB.prepare(`SELECT
     (SELECT COUNT(*) FROM visual_history WHERE post_id = ? AND kind = 'undo') AS undo,

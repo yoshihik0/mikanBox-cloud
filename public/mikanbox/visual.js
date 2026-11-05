@@ -295,15 +295,6 @@
     e.preventDefault(); openDrawer();
   });
 
-  // ---------------------------------------------------------------- 外部での変更を検知して再読み込み
-  var last = null;
-  setInterval(function () {
-    fetch(API('mtime') + '&id=' + encodeURIComponent(PAGE), { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (j) {
-      if (last !== null && j.t !== last) { sessionStorage.setItem('fv-scroll', String(window.scrollY)); location.reload(); }
-      last = j.t;
-    }).catch(function () {});
-  }, 1000);
-  function syncMtime() { fetch(API('mtime') + '&id=' + encodeURIComponent(PAGE), { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (j) { last = j.t; }); }
   var y0 = sessionStorage.getItem('fv-scroll');
   if (y0) { sessionStorage.removeItem('fv-scroll'); window.addEventListener('load', function () { window.scrollTo(0, +y0); }); }
 
@@ -315,7 +306,7 @@
       var neu = doc.querySelector('.mikan-content-scope'), cur = scopeEl();
       if (!neu || !cur) { location.reload(); return; }
       swapScope(cur, neu); applyLn(cur); rewriteLinks(cur); window.scrollTo(0, y);
-      syncMtime(); refreshHistory();
+      refreshHistory();
     });
   }
 
@@ -512,7 +503,17 @@
       document.body.appendChild(node);
       function setDirty(v) { dirty = v; msg.textContent = v ? T('visual_js_unsaved') : ''; msg.style.color = v ? '#fcd34d' : '#86efac'; }
       // 反映に失敗したら（サーバーの制限・通信の失敗など）、黙って古い表示のままにせず、そう伝える。保存は、反映とは別に動く
-      function runLive() { var sent = full; return K.live(sent).then(function (ok) { if (ok === false && full === sent) { msg.style.color = '#fca5a5'; msg.textContent = T('visual_js_live_failed'); } }); }
+      // 反映は、同時に1つだけ。反映中に入力があれば、終わってから最新の内容で1回だけ反映する（途中の内容は送らない）
+      var liveBusy = false, livePending = false;
+      function runLive() {
+        if (liveBusy) { livePending = true; return; }
+        liveBusy = true; var sent = full;
+        K.live(sent).then(function (ok) {
+          if (ok === false && full === sent) { msg.style.color = '#fca5a5'; msg.textContent = T('visual_js_live_failed'); }
+          liveBusy = false;
+          if (livePending) { livePending = false; runLive(); }
+        });
+      }
       function changed() { setDirty(full !== old); clearTimeout(timer); timer = setTimeout(runLive, 200); }
       active = {
         kind: kind, btn: K.btn, node: node, ta: ta, dirty: function () { return dirty; }, live: function () { runLive(); },
@@ -531,7 +532,7 @@
       function doSave() {
         K.save(old, full).then(function (x) {
           if (!x.ok) { msg.style.color = '#fca5a5'; msg.textContent = x.j.error || T('visual_js_save_failed'); return; }
-          old = full; setDirty(false); msg.textContent = T('visual_js_saved') + (x.j.notice ? ' ' + x.j.notice : ''); syncMtime();   // notice: 版によって、保存後に伝えたいこと（例: Cloud版は公開し直すまで公開サイトに反映されない） refreshHistory();
+          old = full; setDirty(false); msg.textContent = T('visual_js_saved') + (x.j.notice ? ' ' + x.j.notice : '');   // notice: 版によって、保存後に伝えたいこと（例: Cloud版は公開し直すまで公開サイトに反映されない） refreshHistory();
           if (kind === 'md') refreshContent().then(markTarget);
         }).catch(function () { msg.style.color = '#fca5a5'; msg.textContent = T('visual_js_save_failed'); });
       }

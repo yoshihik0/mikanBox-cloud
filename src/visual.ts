@@ -18,7 +18,7 @@ import { imageType, validMediaName, MEDIA_FILE_LIMIT } from './media-policy';
 import { imageSize } from './image-size';
 import { CLOUD_VERSION } from './version';
 import { injectMarkers, applyMarkers, isDoc } from './visual-blocks';
-import { VisualError, readPage, changeMark, counts, points, commit, move, restorePoint, createPage } from './visual-store';
+import { VisualError, readPage, counts, points, commit, move, restorePoint, createPage } from './visual-store';
 import JA from '../lang/ja.json';
 import EN from '../lang/en.json';
 
@@ -181,7 +181,6 @@ export async function handleVisual(request: Request, env: Env): Promise<Response
     }
     try {
       switch (apiName) {
-        case 'mtime': return out({ t: await changeMark(env, id) });
         case 'history': return out(await counts(env, id));
         case 'source': return out({ text: nl(String(row!.data.content_md ?? '')), is_html: !!row!.data.is_html });
         case 'css': return out({ css: nl(String(row!.data.css ?? '')) });
