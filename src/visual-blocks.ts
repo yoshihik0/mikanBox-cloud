@@ -62,17 +62,19 @@ export function splitBlocks(src: string): VisualBlock[] {
   const isListStart = (l: string) => LIST_START.test(l);
   const isIndented = (l: string) => INDENTED.test(l);
   const flush = () => { if (cur) { blocks.push(cur); cur = null; } };
+  // HTML that is still open (the next line is in the same range): a DATA range or code fence closing here does not end the block
+  const inHtml = (i: number) => prot.has(i) && prot.has(i + 1);
   for (let i = 0; i < lines.length; i++) {
     const l = lines[i];
     if (fence) {
       cur!.end = i;
-      if (closingFence(fence, l)) { fence = null; flush(); }
+      if (closingFence(fence, l)) { fence = null; if (!inHtml(i)) flush(); }
       continue;
     }
     if (dataDepth > 0) {
       cur!.end = i;
       dataDepth += count(DATA_OPEN, l) - count(DATA_CLOSE, l);
-      if (dataDepth <= 0) { dataDepth = 0; flush(); }
+      if (dataDepth <= 0) { dataDepth = 0; if (!inHtml(i)) flush(); }
       continue;
     }
     if (blank(l)) {

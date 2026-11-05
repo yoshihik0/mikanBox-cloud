@@ -12,6 +12,8 @@ const cases={
  'lists, data blocks, mixed fences and an unclosed div':['<div>\nopen\n\nafter\n\n```\n<div>\n```\n\n1. a\n\n   b\n\n2. c\n\n{{DATAROW:x}}\n\n{{/DATAROW}}\n\nz','0-1,3-3,5-7,9-13,15-17,19-19'],
  'only ASCII whitespace is blank (full-width and no-break spaces are text)':['a\n　\nb\n\n \nc\n\n~~~js\n\n~~~~\n\n- x\n\n- y\n\n  z\n\n<span>a</span> <a href=\'x\'>t</a>\n\n<p>\n</p>\n','0-2,4-5,7-9,11-15,17-17,19-20'],
  'a DATA range is one block':['{{DATA:a}}\nx\n\ny\n{{/DATA}}\n\nafter {{DATAROW:r}}{{/DATAROW}} one\n\n{{DATA:b}} {{/DATA}}\nlast','0-4,6-6,8-9'],
+ 'a DATA range closing inside open HTML does not split it':["<section class=\"section\">\n<div class=\"container text-center\">\n\n## Latte Art\n\n![ラテアート](coffee_gallery1.webp)\n\n{{DATA:CATCH}}一杯ずつ丁寧にお作りするラテアートです。{{/DATA}}\n\n{{DATA:ITEM:GHOST}}Latte{{/DATA}}\n{{DATA:PRICE:GHOST}}550円{{/DATA}}\n{{DATA:BADGE:GHOST}}人気{{/DATA}}\n\n{{DATAROW:MENU}}\n{{DATA:ITEM}}Latte{{/DATA}}\n{{DATA:PRICE}}550円{{/DATA}}\n{{/DATAROW}}\n\nPhoto by {{DATA:name}}Paul{{/DATA}}\n{{DATA:date:GHOST}}2025-05-01{{/DATA}}\n\n</div>\n</section>",'0-22'],
+ 'a code fence closing inside open HTML does not split it':['<div>\n\n```\nx\n```\n\ntext\n\n</div>','0-8'],
  'comments are not tags':['<div><div>a</div>\n\n<div>b</div></div>\n\n<!-- c -->\n<div>\n<!-- </div> -->\n\nx\n</div>\n','0-2,4-9'],
 };
 for(const [label,[src,want]] of Object.entries(cases))test(label,()=>assert.equal(ranges(src),want));
