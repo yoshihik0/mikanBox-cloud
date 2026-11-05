@@ -893,10 +893,9 @@ if(q)location.replace('https://www.google.com/search?'+new URLSearchParams({q:q,
     return content;
   }
 
+  // One pass over the text (a replace per placeholder made long pages with many code spans quadratic).
+  // Like the PHP renderer's str_replace, every occurrence of a placeholder is restored.
   private restoreCodeSpans(content: string, codeMap: Record<string, string>): string {
-    for (const [key, val] of Object.entries(codeMap)) {
-      content = content.replace(key, val);
-    }
-    return content;
+    return content.replace(/___CODEBLOCK\d+___/g, key => Object.hasOwn(codeMap, key) ? codeMap[key] : key);
   }
 }
