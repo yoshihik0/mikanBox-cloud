@@ -34,9 +34,10 @@ const nonce = () => btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8
 function headers(type: string, n?: string): Headers {
   const h = new Headers({ 'Content-Type': type, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer', 'X-Frame-Options': 'SAMEORIGIN' });
   if (n) {
-    // The page's own scripts (external tags, inline scripts) must not run with the administrator's session.
-    // Only same-site script files (component JS) and this screen's script run.
-    h.set('Content-Security-Policy', `default-src 'self'; script-src 'self' 'nonce-${n}'; `
+    // No script of the page runs here (inline, external, component JS or uploaded JS media): this document holds the
+    // administrator's session, and the Cloud edition keeps site scripts apart from it (as the sandboxed preview does).
+    // Only this screen's own nonce'd scripts run.
+    h.set('Content-Security-Policy', `default-src 'self'; script-src 'nonce-${n}'; `
       + "style-src 'self' 'unsafe-inline' https:; font-src 'self' https: data:; img-src * data: blob:; media-src * data: blob:; "
       + "connect-src 'self'; frame-src 'self' https:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'");
   }

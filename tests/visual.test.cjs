@@ -45,7 +45,8 @@ test('the page: markers, globals, CSP and scripts',async()=>{
   const {call}=await setup();
   const res=await call('/admin/visual?id=about'),html=await res.text();
   assert.equal(res.status,200);
-  const csp=res.headers.get('Content-Security-Policy'),nonce=/script-src 'self' 'nonce-([\w-]+)'/.exec(csp)[1];
+  const csp=res.headers.get('Content-Security-Policy'),nonce=/script-src 'nonce-([\w-]+)';/.exec(csp)[1];
+  assert.ok(!/script-src[^;]*'self'/.test(csp),'same-origin scripts (media, component JS) must not run with the session');
   assert.match(csp,/frame-ancestors 'self'/);assert.match(csp,/object-src 'none'/);
   assert.equal(res.headers.get('Cache-Control'),'no-store');assert.equal(res.headers.get('X-Frame-Options'),'SAMEORIGIN');
   assert.ok(html.includes(`<script nonce="${nonce}" src="/mikanbox/visual.js`));
