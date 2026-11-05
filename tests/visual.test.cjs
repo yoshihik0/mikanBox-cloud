@@ -50,7 +50,7 @@ test('the page: markers, globals, CSP and scripts',async()=>{
   assert.ok(!/script-src[^;]*'self'/.test(csp),'same-origin scripts (media, component JS) must not run with the session');
   assert.match(csp,/frame-ancestors 'self'/);assert.match(csp,/object-src 'none'/);
   assert.equal(res.headers.get('Cache-Control'),'no-store');assert.equal(res.headers.get('X-Frame-Options'),'SAMEORIGIN');
-  assert.ok(html.includes(`<script nonce="${nonce}" src="/mikanbox/visual.js`));
+  assert.ok(html.includes(`<script nonce="${nonce}" src="/mikanbox/visual-live.js`)&&html.indexOf('visual-live.js')<html.indexOf('/mikanbox/visual.js'),'the converter loads before the screen');
   assert.match(html,/window\.__VISUAL_PAGE="about"/);assert.match(html,/window\.__VISUAL_DOC=false/);
   assert.match(html,/window\.__VISUAL_CSRF="[\w-]+"/);assert.match(html,/__VISUAL_ADMIN=\{"api":"\/admin\/visual"/);
   assert.ok(html.includes('<!--fv:0-0-->')&&html.includes('<!--fv:4-4-->')&&html.includes('<!--/fv-->'),'blocks are marked');
@@ -72,8 +72,7 @@ test('draft text renders live without writing, and CSS is scoped',async()=>{
   const r=await api('render',{id:'about',text:'## Live\n\n<div>\n\nx\n\n</div>'});
   assert.equal(r.status,200);assert.ok(r.json.html.includes('<h2>Live</h2>')&&r.json.html.includes('<!--fv:2-6-->'));
   assert.equal(page('about').content_md,'# Hello\n\nfirst\n\nsecond\n');
-  const s=await api('scope-css',{css:'p{color:blue}'});
-  assert.match(s.json.css,/\.mikan-content-scope p\s*\{/);
+  assert.ok([400,404].includes((await api('scope-css',{css:'p{color:blue}'})).status),'CSS is scoped in the browser');
   assert.deepEqual((await api('source',{id:'crlf'})).json,{text:'a\n\nb',is_html:false});
   assert.equal((await api('css',{id:'about'})).json.css,'p{color:red}\n');
 });

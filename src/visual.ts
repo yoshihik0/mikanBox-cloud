@@ -11,7 +11,6 @@ import { loadSettings, listMediaFiles, uploadMedia } from './storage';
 import { authenticatedUser } from './accounts';
 import { verifyCsrf } from './auth';
 import { MikanBoxRenderer } from './renderer';
-import { scopeCss } from './cssScope';
 import { getSystemLanguage, createTranslator } from './i18n';
 import { validId, reservedPageId } from './validation';
 import { imageType, validMediaName, MEDIA_FILE_LIMIT } from './media-policy';
@@ -169,7 +168,7 @@ export async function handleVisual(request: Request, env: Env): Promise<Response
       try { const v = await request.json(); if (v && typeof v === 'object') input = v as Record<string, unknown>; } catch { /* an empty or broken body is treated as no input */ }
     }
     const id = String(input.id ?? url.searchParams.get('id') ?? '');
-    const needId = !['scope-css', 'upload', 'create', 'media'].includes(apiName);
+    const needId = !['upload', 'create', 'media'].includes(apiName);
     const str = (k: string) => String(input[k] ?? '');
     const sid = str('sid');
     const out = (body: unknown, status = 200) => jsonResponse(body, status);
@@ -184,7 +183,6 @@ export async function handleVisual(request: Request, env: Env): Promise<Response
         case 'history': return out(await counts(env, id));
         case 'source': return out({ text: nl(String(row!.data.content_md ?? '')), is_html: !!row!.data.is_html });
         case 'css': return out({ css: nl(String(row!.data.css ?? '')) });
-        case 'scope-css': return out({ css: scopeCss(`.fv-css-start{}\n${nl(String(input.css ?? ''))}\n.fv-css-end{}`, '.mikan-content-scope') });
         case 'render': {
           if (!post) return methodOnly();
           const page = { ...row!.data };
@@ -279,7 +277,7 @@ export async function handleVisual(request: Request, env: Env): Promise<Response
   const v = encodeURIComponent(CLOUD_VERSION);
   const tags = '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,300,0,0&display=block">'
     + `<link rel="stylesheet" href="/mikanbox/visual.css?v=${v}">`
-    + `<script nonce="${n}">${globals}</script><script nonce="${n}" src="/mikanbox/visual.js?v=${v}"></script>`;
+    + `<script nonce="${n}">${globals}</script><script nonce="${n}" src="/mikanbox/visual-live.js?v=${v}"></script><script nonce="${n}" src="/mikanbox/visual.js?v=${v}"></script>`;
   const at = html.search(/<\/body>/i);
   return new Response(at >= 0 ? html.slice(0, at) + tags + html.slice(at) : html + tags, { headers: h });
 }
