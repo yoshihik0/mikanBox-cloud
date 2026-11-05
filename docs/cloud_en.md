@@ -53,7 +53,7 @@ See [Pages](https://yoshihiko.com/mikanbox/help_en.html#page-mgmt) and [Page edi
 - Page lists, search, category filtering, pagination, creation, editing, and deletion.
 - Separate draft, pending, public and DB statuses.
 - Memos, Markdown/HTML input, page CSS/JavaScript, SEO fields, and wrapper selection.
-- Revision recording, selection of the last 50 revisions, edit locks, and stale-edit protection.
+- Revision recording, selection of the last 50 revisions (visual editing keeps one per editing session), edit locks, and stale-edit protection.
 - Draft and pending pages are private. Registered, signed-in editors can preview both; the labels describe workflow state and have identical access permissions.
 - Component CRUD, part/wrapper/AI-document types, memos, CSS, and JavaScript.
 - Site settings, language, site memo, adding and stopping devices, and inviting and deleting users.
@@ -63,6 +63,17 @@ See [Pages](https://yoshihiko.com/mikanbox/help_en.html#page-mgmt) and [Page edi
 - Bulk acquisition for pages, components, search, navigation, feeds, data backups and static builds avoids one query per content item. Platform data/CPU limits still apply.
 - Category deletion also removes the category from affected pages and records revisions. Active edits or concurrent changes cancel the entire operation.
 - D1 snapshots of public_static pages. Published HTML stays unchanged until rebuilt; changing a page to draft immediately prevents public access.
+
+### Visual editing
+
+Usage is the same as in the PHP editions; see [Visual Editing](https://yoshihiko.com/mikanbox/help_en.html#visual-edit). Open it from the visual-edit button in the page list (between the pencil and the preview), from the button at the top right of the page editor, or at `/admin/visual` (a page chooser), next to the management screen. What differs in the Cloud edition:
+
+- **The public site**: a save changes the page on the management side. A published page is a static file, so the public site does not change until you publish it again (see Delivery and withdrawal). Saving a published page shows a note saying so.
+- **History**: the time from opening the page to closing it counts as one editing session, and only the state before it is kept, once, in the page's history (small, frequent saves do not push older history out). Undo and redo cover the last three steps and are discarded when the session changes.
+- **Conflicts and edit locks**: a save is refused unless the page is still as it was read. If another device or the management screen changed it, reload. A page another user is editing (edit lock) cannot be saved. After a visual save, a page editor that is still open holds stale content and cannot save it until reloaded.
+- **Images**: the list is newest first and works the same with D1 or R2 storage. You can add png, jpg, gif and webp images (up to 10 MB and 40 megapixels) by pasting, dragging or choosing.
+- **Safety limits**: it works only while a registered device is signed in. Writes are accepted only from this site's own screen with a CSRF token. Inline scripts and external scripts written in the page do not run on this screen, because they would run with the administrator's session (component JavaScript does run).
+- **Free plan and long pages**: each time typing pauses, the server renders the whole body again, which uses Worker CPU time. The free plan allows 10 ms per request, so a long page (roughly more than 10 KB of Markdown) may update late or fail. Split the page or use a paid plan.
 
 Component JavaScript is available at `/component-js/ID.js`. Page/component JavaScript is administrator-authored code executed on public pages.
 

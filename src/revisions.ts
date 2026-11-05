@@ -22,7 +22,12 @@ export async function saveWithRevision(env: Env, id: string, oldId: string, data
     env.DB.prepare('UPDATE posts SET id=?,data=?,status=?,sort_order=?,updated_at=? WHERE id=? AND data=?')
       .bind(...args, oldId, current.data),
     env.DB.prepare(`UPDATE post_revisions SET post_id = ? WHERE post_id = ?
-      AND EXISTS (SELECT 1 FROM posts WHERE id = ? AND data = ?)` ).bind(id, oldId, id, args[1])
+      AND EXISTS (SELECT 1 FROM posts WHERE id = ? AND data = ?)` ).bind(id, oldId, id, args[1]),
+    // Visual-editing history follows a renamed page.
+    ...(id === oldId ? [] : [
+      env.DB.prepare('UPDATE visual_history SET post_id = ? WHERE post_id = ? AND EXISTS (SELECT 1 FROM posts WHERE id = ? AND data = ?)').bind(id, oldId, id, args[1]),
+      env.DB.prepare('UPDATE OR REPLACE visual_sessions SET post_id = ? WHERE post_id = ? AND EXISTS (SELECT 1 FROM posts WHERE id = ? AND data = ?)').bind(id, oldId, id, args[1])
+    ])
   ]);
   if (!updated.meta.changes) throw new Error('Concurrent update detected.');
 }

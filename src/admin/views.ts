@@ -19,7 +19,7 @@ function getIcon(name: string): string {
     view: 'visibility', upload: 'upload', video: 'videocam', audio: 'music_note',
     cloud: 'cloud_upload', logout: 'logout', globe: 'language', sparkles: 'auto_awesome',
     edit: 'edit', delete: 'delete', download: 'download', arrow_back: 'arrow_back',
-    add: 'add', copy: 'content_copy', open_in_new: 'open_in_new', history: 'history', warning: 'warning', search: 'search', close: 'close', database: 'database', archive: 'archive',
+    add: 'add', copy: 'content_copy', open_in_new: 'open_in_new', history: 'history', warning: 'warning', search: 'search', close: 'close', database: 'database', archive: 'archive', visual: 'edit_square',
   };
   const iconName = icons[name] || '';
   return iconName ? `<span class="material-symbols-outlined icon">${iconName}</span>` : '';
@@ -619,6 +619,7 @@ export function renderPagesView(opts: {
                 <td class="td-narrow">
                     <div class="flex-center" style="gap: 5px;">
                          <a href="?view=pages&amp;edit=${h(pid)}#page-editor" class="btn btn-sm btn-blue">${getIcon('edit')} ${t('btn_edit')}</a>
+                         <a href="/admin/visual?id=${h(encodeURIComponent(pid))}" class="btn btn-sm btn-blue" title="${t('btn_visual_edit')}">${getIcon('visual')}</a>
                          <a href="${h(previewUrl)}" target="_blank" class="btn btn-sm btn-blue" title="${t('btn_preview')}">${getIcon('open_in_new')}</a>
                          ${globeLink(publication?.pages[pid], ja)}
                     </div>
@@ -715,6 +716,7 @@ export function renderPageEditor(opts: {
                                     <input type="text" name="updated_at" form="page-form" value="${h(d.updated_at || new Date().toISOString().slice(0, 19).replace('T', ' '))}" class="last-updated-input" title="YYYY-MM-DD HH:MM:SS">
                                 </div>` : ''}
                         </div>
+                    ${editId?`<a href="/admin/visual?id=${h(encodeURIComponent(editId))}" class="btn btn-sm btn-blue editor-visual-btn" style="display:inline-flex;align-items:center;gap:5px;white-space:nowrap" title="${t('btn_visual_edit')}">${getIcon('visual')} ${t('btn_visual_edit')}</a>`:''}
                     ${editId?`<div class="revisions-select-group" style="display:flex;align-items:center;gap:8px;white-space:nowrap"><span>${getIcon('history')} ${t('label_revisions')}</span><select style="width:auto;min-width:180px" aria-label="${t('label_revisions')}" onchange="location.href=this.value"><option value="?view=pages&edit=${encodeURIComponent(editId)}#page-editor">${t('select_revision')}</option>${(opts.revisions||[]).map(r=>`<option value="?view=pages&edit=${encodeURIComponent(editId)}&rev=${r.id}#page-editor" ${opts.selectedRevision?.id===r.id?'selected':''}>${h(r.created_at)} (${h(r.editor_id)})</option>`).join('')}</select></div>`:''}
                     </div>
                     <div class="editor-container editor-container-transparent">

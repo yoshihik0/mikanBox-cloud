@@ -118,7 +118,7 @@ export async function handleMcp(request:Request,env:Env):Promise<Response> {
       case 'delete_page': {
         const pid=pageId(String(args.id||''));
         if(await env.DB.prepare('SELECT owner FROM edit_locks WHERE post_id=? AND expires_at>?').bind(pid,Date.now()).first())throw new Error('Page is being edited.');
-        await env.DB.batch([env.DB.prepare('DELETE FROM posts WHERE id=?').bind(pid),env.DB.prepare('DELETE FROM post_revisions WHERE post_id=?').bind(pid),env.DB.prepare('DELETE FROM static_pages WHERE id=?').bind(pid)]);data={deleted:pid};break;
+        await env.DB.batch([env.DB.prepare('DELETE FROM posts WHERE id=?').bind(pid),env.DB.prepare('DELETE FROM post_revisions WHERE post_id=?').bind(pid),env.DB.prepare('DELETE FROM visual_history WHERE post_id=?').bind(pid),env.DB.prepare('DELETE FROM visual_sessions WHERE post_id=?').bind(pid),env.DB.prepare('DELETE FROM static_pages WHERE id=?').bind(pid)]);data={deleted:pid};break;
       }
       case 'list_components': {
         const components=(await listComponents(env)).map(({id,data:component})=>({id,is_global:!!component.is_global,is_wrapper:!!component.is_wrapper,is_ai_doc:!!component.is_ai_doc,html_length:new TextEncoder().encode(component.html||'').length}));

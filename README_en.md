@@ -39,6 +39,7 @@ This repository is the **Cloudflare edition** (🍊mikanBox Cloud), which runs o
 
 - **Everything on Cloudflare** — Run the admin screen, MCP, data (D1), and public site together on Cloudflare
 - **Admin and public separated** — The public side is static files only, with no program or data, so viewing a page uses none of your Worker or D1 quota
+- **Visual editing** — Open a page as it looks, pick a part, and edit just that part's body and CSS with live updates (the same screen as the PHP editions)
 - **Modeless UI** — No page transitions; nearly all work completed on a single screen for a snappy experience (developed to match the PHP editions)
 - **Markdown Support** — Easy to edit content, and also well-suited as a content archive
 - **Filter by Category** — Narrow down pages and images by category; use categories as workspaces

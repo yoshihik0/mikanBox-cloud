@@ -3,8 +3,9 @@ export function validId(id: string, component = false): boolean {
   if (!id || id.length > 200 || id.includes('..')) return false;
   return component ? /^[A-Za-z0-9_-]+(?:\.md)?$/.test(id) : /^[A-Za-z0-9_-]+(?:\/[A-Za-z0-9_-]+)*$/.test(id);
 }
+export function reservedPageId(id: string): boolean { return reserved.has(id.split('/')[0].toLowerCase()); }
 export function pageId(id: string): string {
-  if (!validId(id) || reserved.has(id.split('/')[0].toLowerCase()))
+  if (!validId(id) || reservedPageId(id))
     throw new Error('ページIDを確認してください。 / Invalid or reserved page ID.');
   return id;
 }

@@ -214,7 +214,7 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
           const id=pageId(val(form,'old_id')||val(form,'id'));
           const lock=await env.DB.prepare('SELECT owner FROM edit_locks WHERE post_id=? AND expires_at>?').bind(id,Date.now()).first<{owner:string}>();
           if(lock&&lock.owner!==auth.user.username) throw new Error('Another user is editing this page.');
-          await env.DB.batch([env.DB.prepare('DELETE FROM posts WHERE id=?').bind(id),env.DB.prepare('DELETE FROM post_revisions WHERE post_id=?').bind(id),env.DB.prepare('DELETE FROM edit_locks WHERE post_id=?').bind(id),env.DB.prepare('DELETE FROM static_pages WHERE id=?').bind(id)]);editId=null;break;
+          await env.DB.batch([env.DB.prepare('DELETE FROM posts WHERE id=?').bind(id),env.DB.prepare('DELETE FROM post_revisions WHERE post_id=?').bind(id),env.DB.prepare('DELETE FROM visual_history WHERE post_id=?').bind(id),env.DB.prepare('DELETE FROM visual_sessions WHERE post_id=?').bind(id),env.DB.prepare('DELETE FROM edit_locks WHERE post_id=?').bind(id),env.DB.prepare('DELETE FROM static_pages WHERE id=?').bind(id)]);editId=null;break;
         }
         case 'save_comp': {
           const id=componentId(val(form,'id')),oldId=val(form,'old_id'); if(oldId) componentId(oldId);

@@ -3,6 +3,7 @@ import { loadSettings, loadPage, loadComponent, getMediaObject, isPublicStatus }
 import { MikanBoxRenderer } from './renderer';
 import { generateSitemapXml, generateRssXml, generatePodcastXml } from './feeds';
 import { handleAdmin } from './admin/index';
+import { handleVisual } from './visual';
 import { authenticatedUser } from './accounts';
 import { validId } from './validation';
 import { handleMcp } from './mcp';
@@ -15,6 +16,7 @@ async function route(request: Request, env: Env): Promise<Response> {
   if(['/mcp','/mikanBox/mcp','/mikanBox/mcp.php'].includes(pathname))return handleMcp(request,env);
   if(['/public-mcp','/mikanBox/public-mcp.php','/public-help.html'].includes(pathname))return handlePublicHelp(request,env);
   if(['/admin','/admin/','/mikanBox/admin.php'].includes(pathname)) return handleAdmin(request,env);
+  if(['/admin/visual','/admin/visual/'].includes(pathname)) return handleVisual(request,env);
   if(!['GET','HEAD'].includes(request.method)) return new Response('Method Not Allowed',{status:405,headers:{Allow:'GET, HEAD'}});
   if(pathname==='/admin.css'||pathname.startsWith('/mikanbox/')) {
     if(!env.ASSETS) return new Response('Not Found',{status:404});
