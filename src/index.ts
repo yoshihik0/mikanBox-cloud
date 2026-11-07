@@ -74,7 +74,7 @@ async function route(request: Request, env: Env): Promise<Response> {
   if(data&&isPublicStatus(data.status)&&!auth)return new Response('Not Found',{status:404,headers:{'Cache-Control':'no-store'}});
   const result=await renderer.render(id,!!auth);
   const html = preview && result.status === 200 ? await previewMediaUrls(result.html,env,request,renderer.getSiteUrl()) : result.html;
-  return new Response(html,{status:result.status,headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','Referrer-Policy':preview?'no-referrer':'same-origin'}});
+  return new Response(html,{status:result.status,headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','Referrer-Policy':'no-referrer','Content-Security-Policy':PREVIEW_SANDBOX}});
 }
 export default {
   async fetch(request: Request,env: Env):Promise<Response> {

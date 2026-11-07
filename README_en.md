@@ -56,6 +56,8 @@ This repository is the **Cloudflare edition** (🍊mikanBox Cloud), which runs o
 
 ## Requirements
 
+For the PHP editions, the minimum version describes compatibility. Use the latest patched, supported PHP 8.4 or 8.5 for new installations and Internet-facing sites.
+
 - A Cloudflare account
 - A GitHub account
 - Node.js, npm, and a terminal

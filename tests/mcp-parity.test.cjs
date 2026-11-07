@@ -62,9 +62,13 @@ test('MCP AI documents match SQLite suffix, context, byte count, and protected t
 test('MCP settings exclude credentials and demo mode blocks every new write',async()=>{
   let {tool}=await client({password_hash:'secret',mcp_api_key:'other-secret',jwt_secret:'hidden',setup_token:'hidden',memo:'Private',site_name:'Visible'});
   const settings=(await tool('get_settings')).data;assert.equal(settings.site_name,'Visible');
-  for(const key of ['api_key','mcp_api_key','password_hash','jwt_secret','setup_token','memo'])assert.equal(settings[key],undefined);
-  ({tool}=await client({demo_mode:true}));
-  for(const [name,args] of [['create_component',{id:'x'}],['update_ai_doc',{id:'DESIGN',html:'x'}],['upload_media',{filename:'x.png',content_base64:'AAAA'}]])assert.match((await tool(name,args)).data,/Demo mode/);
+  for(const key of ['api_key','mcp_api_key','password_hash','jwt_secret','setup_token'])assert.equal(settings[key],undefined);
+  assert.equal(settings.memo,'Private');
+  const {env:demo}=await client({demo_mode:true});
+  for(const method of ['initialize','tools/list','tools/call']) {
+    const response=await handleMcp(new Request('https://cloud.test/mcp',{method:'POST',headers:{Authorization:'Bearer test-mcp-key','Content-Type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method})}),demo);
+    assert.equal(response.status,403);
+  }
 });
 test('MCP uploads genuine image bytes through D1 and rejects duplicate names and malformed media',async()=>{
   const {env,tool}=await client();

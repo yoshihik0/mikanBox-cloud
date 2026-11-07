@@ -63,6 +63,7 @@ function decodeImage(encoded:string):Uint8Array<ArrayBuffer> {
 }
 export async function handleMcp(request:Request,env:Env):Promise<Response> {
   const settings=await loadSettings(env),key=String(settings.api_key||'');
+  if(settings.demo_mode)return Response.json({error:'Management MCP is disabled in demos.'},{status:403});
   if(!key||!verifyCsrf(request.headers.get('Authorization')?.replace(/^Bearer /,'')||'',key))
     return Response.json({error:'Unauthorized'},{status:401,headers:{'Cache-Control':'no-store'}});
   if(request.method!=='POST')return new Response('Method Not Allowed',{status:405,headers:{Allow:'POST'}});
@@ -141,7 +142,7 @@ export async function handleMcp(request:Request,env:Env):Promise<Response> {
       }
       case 'delete_component':await assertNotPublished(env,['/component-js/'+String(args.id||'')+'.js']);if(!await deleteComponent(env,componentId(String(args.id||''))))throw new Error('Delete failed.');data={deleted:args.id};break;
       case 'get_revisions':data=await revisions(env,pageId(String(args.id||'')));break;
-      case 'get_settings':data=Object.fromEntries(Object.entries(settings).filter(([key])=>!/(?:password|secret|token|api.?key|credential)/i.test(key)&&!['_site_base','memo'].includes(key)));break;
+      case 'get_settings':data=Object.fromEntries(Object.entries(settings).filter(([key])=>!/(?:password|secret|token|api.?key|credential)/i.test(key)&&!['_site_base'].includes(key)));break;
       case 'get_ai_context':case 'list_ai_docs': {
         const docs=(await listComponents(env)).map(({id,data:component})=>({id,...component})).filter(doc=>doc.is_ai_doc);
         data=name==='get_ai_context'?{documents:docs.map(doc=>({id:doc.id,content_md:doc.html||''})),count:docs.length,component_naming:'A leading _ marks a standard component. Omit it for ordinary new or duplicated components; use it only when the user intends standard classification. Preserve existing standard IDs.'}:{ai_docs:docs.map(doc=>({id:doc.id,html_length:new TextEncoder().encode(doc.html||'').length})),count:docs.length};break;

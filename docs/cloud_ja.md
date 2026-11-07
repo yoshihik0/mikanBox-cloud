@@ -1,6 +1,6 @@
 <style>.manual-version{font-size:.5em;font-weight:400;white-space:nowrap}</style>
 
-# 🍊mikanBox Cloudflare版 マニュアル <small class="manual-version">v0.7.0</small>
+# 🍊mikanBox Cloudflare版 マニュアル <small class="manual-version">v0.7.1</small>
 
 このマニュアルはCloudflare版の導入と、PHP版との違いを説明します。共通の操作は[操作マニュアル](https://yoshihiko.com/mikanbox/help_ja.html)も参照してください。flat版・SQLite版との使い分けは、[README](https://github.com/yoshihik0/mikanBox-cloud#readme)を参照してください。
 
@@ -302,7 +302,7 @@ APIキーはサイトの管理操作権限を持つため、公開しないで�
 #### できること
 
 - ページ・コンポーネントの一覧、取得、作成、更新、削除
-- 履歴の取得、サイト設定の取得（APIキー・認証情報・管理メモは返しません）
+- 履歴の取得、サイト設定の取得（APIキー・認証情報は返しません。管理メモは認証済みのAIも読めます）
 - AI指示書（DESIGN.mdなど）の一覧、取得、更新
 - 画像のアップロード
 - 静的HTMLの生成（`build_ssg`）。生成のみで、公開側への配信は管理画面のビルドで行います。
@@ -447,3 +447,8 @@ JSON復元では、転送中のデータを一時領域に置き、全件の検�
 
 - Markdownのリンク先で `{{SITE_URL}}` を使えます。
 - コード例の中のタグは展開しません。
+
+
+### 0.7.1の保護と管理メモ
+
+管理用MCPは認証済みのAIへページ・部品・サイトのメモを返します。備忘録として利用できますが、読む権限は公開する許可を意味しません。メモを公開ページ・公開API・公開ヘルプMCPへ含めません。新規設置・公開用の配置は管理と公開を分離した構成を使用してください。旧構成のプレビューを含め、管理アドレスで描画するサイトHTMLには常にsandboxを適用し、サイト内スクリプトから管理画面へアクセスできないようにします。Cloud版に公開デモの運用機能は提供しません。

@@ -196,3 +196,12 @@ test('draft and pending previews require a registered editing device',async()=>{
   const response=await call(env,'/preview/private-preview',null,auth.cookie);assert.equal(response.status,200);assert.match(await response.text(),/Private editor content/);assert.match(response.headers.get('Content-Security-Policy'),/^sandbox /);
  }
 });
+
+test('legacy configuration also isolates rendered HTML from the management session',async()=>{
+ const env=environment(),auth=await login(env);await savePage(env,'unsafe',page('draft','<script>window.pwned=1</script>'));
+ for(const path of ['/preview/unsafe','/unsafe']) {
+  const response=await call(env,path,null,auth.cookie);assert.equal(response.status,200);
+  assert.match(response.headers.get('Content-Security-Policy'),/^sandbox allow-scripts/);
+  assert.doesNotMatch(response.headers.get('Content-Security-Policy'),/allow-same-origin/);
+ }
+});

@@ -1,6 +1,6 @@
 <style>.manual-version{font-size:.5em;font-weight:400;white-space:nowrap}</style>
 
-# 🍊mikanBox Cloudflare Manual <small class="manual-version">v0.7.0</small>
+# 🍊mikanBox Cloudflare Manual <small class="manual-version">v0.7.1</small>
 
 This manual covers installation and the Cloudflare edition’s differences. For shared operations, see the [operation manual](https://yoshihiko.com/mikanbox/help_en.html).
 
@@ -221,7 +221,7 @@ Generate a Cloud-specific API key in Site settings and connect to `/mcp` using a
 
 Current tools: `get_site_info`, `list_pages`, `get_page`, `create_page`, `update_page`, `delete_page`, `list_components`, `get_component`, `create_component`, `update_component`, `delete_component`, `get_revisions`, `get_settings`, `get_ai_context`, `list_ai_docs`, `get_ai_doc`, `update_ai_doc`, `upload_media`, and `build_ssg`.
 
-SQLite-style flat field arguments and legacy `id` plus `data` are both accepted; do not specify the same field in both. Updates preserve unspecified fields. Call `get_site_info`, then `get_ai_context` on connection. AI document IDs may omit `.md`. `get_settings` excludes credentials, API keys and administrator memos. Editing requires exact IDs rather than public directory aliases.
+SQLite-style flat field arguments and legacy `id` plus `data` are both accepted; do not specify the same field in both. Updates preserve unspecified fields. Call `get_site_info`, then `get_ai_context` on connection. AI document IDs may omit `.md`. `get_settings` excludes credentials and API keys, but includes working notes for authenticated AI clients. Editing requires exact IDs rather than public directory aliases.
 
 `upload_media` accepts `filename` and `content_base64`, up to 10 MB for JPEG, PNG, GIF, WebP and SVG. Optional `category` allows ASCII letters, digits, underscores and hyphens and prefixes the filename. Duplicates fail instead of being overwritten. Large Base64 images have higher transfer and processing costs; use the ordinary media upload form as well. Audio/video and duplicate-name numbering differ from PHP. Administration aliases `/mikanBox/mcp` and `/mikanBox/mcp.php` require the same key.
 
@@ -317,3 +317,8 @@ Files follow the existing D1/R2 media storage setting and keep `/media/filename`
 - `{{EXT_MD:…}}` (fetching external Markdown or data) is not available in the Cloud edition. Nothing is shown where the tag is; only the comment `<!-- EXT_MD is not available in the Cloud edition -->` remains in the HTML. It is not a feature for carrying data over. The editor's tag list and the bundled sample page say so.
 
 You can use `{{SITE_URL}}` in Markdown link destinations. Tags inside code examples remain literal. Renaming an image also requests confirmation when it is used only as the site-wide OGP image.
+
+
+### Protection and management notes in 0.7.1
+
+Authenticated management MCP clients can read page, component and site notes as working context. Reading a note is not permission to publish it. Notes are excluded from public pages, public APIs and public-help MCP. Use separate management and public Workers for new installations and production deployment. Site HTML rendered on the management origin is always sandboxed, including previews with legacy configuration, so its scripts cannot access administration. Cloud does not provide a public demo mode.
