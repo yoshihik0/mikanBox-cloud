@@ -135,7 +135,6 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
       // so a leaked add code cannot be used to lock the original owner out.
       const lockout=['delete_user','restore_d1_time'].includes(action)||(action==='update_user'&&val(form,'old_username')!==auth.user.username)||(action==='restore_backup_json'&&val(form,'restore_users')==='1');
       if(lockout&&onProbation(auth.device))throw new Error(`追加から${PROBATION_DAYS}日間の端末では、この操作はできません。 / A device added within ${PROBATION_DAYS} days cannot do this.`);
-      if(settings.demo_mode) throw new Error(t('msg_demo_mode'));
       switch(action) {
         case 'publication_begin': return json({success:true,...await beginPublication(env,request,auth.user.username,val(form,'rebuild')==='1',JSON.parse(val(form,'excluded')||'[]'),val(form,'media_only'))});
         case 'publication_hashes': await hashPublicationFiles(env,val(form,'publication_lease'),auth.user.username,JSON.parse(val(form,'items')));return json({success:true});

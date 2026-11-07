@@ -52,7 +52,6 @@ export interface Settings {
   ssg_structure?: string;
   ssg_root_url?: string;
   _site_base?: string;
-  demo_mode?: boolean;
 }
 
 export interface Env {

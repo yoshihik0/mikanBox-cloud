@@ -145,7 +145,7 @@ export async function handleVisual(request: Request, env: Env): Promise<Response
   const apiName = url.searchParams.get('api');
   if (!['GET', 'HEAD', 'POST'].includes(request.method)) return new Response('Method Not Allowed', { status: 405, headers: { Allow: 'GET, HEAD, POST' } });
 
-  const auth = settings.demo_mode ? null : await authenticatedUser(request, env);
+  const auth = await authenticatedUser(request, env);
   if (!auth) {
     if (apiName !== null) return jsonResponse({ error: t('visual_err_login'), login: true }, 401);
     return new Response(null, { status: 303, headers: { Location: ADMIN, 'Cache-Control': 'no-store' } });

@@ -63,7 +63,6 @@ function decodeImage(encoded:string):Uint8Array<ArrayBuffer> {
 }
 export async function handleMcp(request:Request,env:Env):Promise<Response> {
   const settings=await loadSettings(env),key=String(settings.api_key||'');
-  if(settings.demo_mode)return Response.json({error:'Management MCP is disabled in demos.'},{status:403});
   if(!key||!verifyCsrf(request.headers.get('Authorization')?.replace(/^Bearer /,'')||'',key))
     return Response.json({error:'Unauthorized'},{status:401,headers:{'Cache-Control':'no-store'}});
   if(request.method!=='POST')return new Response('Method Not Allowed',{status:405,headers:{Allow:'POST'}});
@@ -88,7 +87,6 @@ export async function handleMcp(request:Request,env:Env):Promise<Response> {
       else if(typeof value!==schema.type)throw new Error(`Invalid argument: ${key}`);
     }
     if(!/^(get_|list_)/.test(name))await checkPublicationLock(env);
-    if(settings.demo_mode&&['create_page','update_page','delete_page','create_component','update_component','delete_component','update_ai_doc','upload_media','build_ssg'].includes(name))throw new Error('Demo mode is read-only.');
     let data:unknown;
     switch(name) {
       case 'get_site_info':data={site_id:settings.site_id,site_name:settings.site_name,site_url:settings.site_url||new URL(request.url).origin,environment:settings.site_environment||'unspecified',site_environment:settings.site_environment||'unspecified',edition:'cloud',version:CLOUD_VERSION};break;
