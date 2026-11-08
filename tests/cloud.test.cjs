@@ -382,8 +382,11 @@ test('deployment without R2 offers D1 image uploads and usage information',async
 test('fresh setup installs standard content and AI instruction IDs without overwriting edits',async()=>{
   const {installDefaults}=require('../.test-build/src/defaults.js');
   const env=environment();await login(env);
-  assert.equal(env.sqlite.prepare('SELECT COUNT(*) n FROM posts').get().n,8);
-  assert.equal(env.sqlite.prepare('SELECT COUNT(*) n FROM components').get().n,11);
+  assert.equal(env.sqlite.prepare('SELECT COUNT(*) n FROM posts').get().n,11);
+  assert.equal(env.sqlite.prepare('SELECT COUNT(*) n FROM components').get().n,13);
+  // The sample DB page uses the output format "mikanBox DB" (2.18.0), never the former status.
+  assert.equal(env.sqlite.prepare("SELECT COUNT(*) n FROM posts WHERE status='db'").get().n,0);
+  assert.equal((await loadPage(env,'sample_data')).output_format,'db');
   assert.equal((await loadComponent(env,'DESIGN_sample.md')).is_ai_doc,true);
   assert.equal((await loadComponent(env,'_layout')).is_wrapper,true);
   await savePage(env,'index',{...await loadPage(env,'index'),content_md:'My homepage'});

@@ -1,5 +1,6 @@
 import type { Env, PageData, ComponentData } from './types';
 import { pageId, componentId } from './validation';
+import { OUTPUT_FORMATS, isDataFormat, type OutputFormat } from './output-formats';
 
 export interface ContentPackage {
   pages?: Array<{ id: string; data: PageData }>;
@@ -43,6 +44,11 @@ function validatePackage(input: unknown): ContentPackage {
     const status=['public','public_dynamic'].includes(rawStatus)?'public_static':rawStatus;
     data.status=status;data.sort_order=sortOrder;data.updated_at=typeof source.updated_at==='string'&&source.updated_at?source.updated_at:new Date().toISOString();
     if(status==='pending')data.preview_token=crypto.randomUUID();
+    // Output formats (2.17.0); the former "DB" status is the output format "mikanBox DB" of a public page.
+    if(source.output_format!==undefined){if(!OUTPUT_FORMATS.includes(source.output_format as OutputFormat))throw new Error('Invalid page field: output_format');data.output_format=source.output_format;}
+    if(source.md_footer_comps!==undefined){if(!Array.isArray(source.md_footer_comps)||source.md_footer_comps.length>50||source.md_footer_comps.some(id=>typeof id!=='string'||!/^[A-Za-z0-9_-]+$/.test(id)))throw new Error('Invalid page field: md_footer_comps');data.md_footer_comps=[...source.md_footer_comps];}
+    if(source.expand_tags!==undefined){if(typeof source.expand_tags!=='boolean')throw new Error('Invalid page field: expand_tags');if(isDataFormat(data.output_format))data.expand_tags=source.expand_tags;}
+    if(status==='db'){data.status='public_static';data.output_format='db';delete data.expand_tags;}
     // Map the SQLite legacy field while refusing to copy source preview/revision state.
     if(typeof source.custom_css==='string'&&typeof source.css!=='string')data.css=source.custom_css;
     countBytes({id,data});

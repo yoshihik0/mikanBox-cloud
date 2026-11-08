@@ -9,6 +9,9 @@ export async function saveWithRevision(env: Env, id: string, oldId: string, data
   if (oldId && !current) throw new Error('Page no longer exists.');
   if (current && (JSON.parse(current.data).revision_tag || '') !== expected)
     throw new Error('他の更新があります。再読み込みしてください。 / Reload: this page has changed.');
+  // The former "DB" status is stored as the output format "mikanBox DB" of a public page.
+  if ((data.status as string) === 'db') { data.status = 'public_static'; data.output_format = 'db'; delete data.expand_tags; }
+  if (['public', 'public_dynamic'].includes(data.status)) data.status = 'public_static';
   data.revision_tag = crypto.randomUUID();
   const args = [id, JSON.stringify(data), data.status, data.sort_order || 0, data.updated_at || ''];
   if (!current) {

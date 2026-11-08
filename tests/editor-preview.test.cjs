@@ -1,18 +1,20 @@
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const fs=require('node:fs');
-const vm=require('node:vm');
+const {environment,call,login}=require('./fixtures.cjs');
+const {savePage}=require('../.test-build/src/storage.js');
 
-test('editor preview posts a copy of the current form in a separate tab',()=>{
-  let listener,submitted,removed=false;
-  const editor={entries:[['id','example'],['title','Unsaved title'],['content_md','Unsaved image'],['csrf_token','token'],['save_action','save_page']]};
-  const button={dataset:{editorPreview:'/admin?editor_preview=1'}};
-  const document={addEventListener:(type,fn)=>{if(type==='click')listener=fn;},getElementById:id=>id==='page-form'?editor:null,
-    body:{appendChild(){}},createElement:type=>type==='form'?{fields:[],appendChild(input){this.fields.push(input);},submit(){submitted=this;},remove(){removed=true;}}:{}};
-  class FormDataMock {constructor(form){this.entries=form.entries.map(pair=>pair.slice());}set(key,value){this.entries=this.entries.filter(([k])=>k!==key);this.entries.push([key,value]);}[Symbol.iterator](){return this.entries[Symbol.iterator]();}}
-  vm.runInNewContext(fs.readFileSync('public/mikanbox/preview-editor.js','utf8'),{document,FormData:FormDataMock});
-  let prevented=false;listener({target:{closest:()=>button},preventDefault(){prevented=true;}});
-  assert.ok(prevented&&removed);assert.equal(submitted.method,'post');assert.equal(submitted.target,'_blank');assert.equal(submitted.action,'/admin?editor_preview=1');
-  assert.deepEqual(Object.fromEntries(submitted.fields.map(x=>[x.name,x.value])),{id:'example',title:'Unsaved title',content_md:'Unsaved image',csrf_token:'token',save_action:'preview_page'});
-  assert.equal(editor.entries.at(-1)[1],'save_page');
+// Since 2.17.2 the editor's preview is a link to the saved page (as in the page list);
+// preview-editor.js stays as an inert script for existing script tags.
+test('preview-editor.js is inert and the editor previews the saved page in a new tab',async()=>{
+  assert.doesNotMatch(fs.readFileSync('public/mikanbox/preview-editor.js','utf8'),/addEventListener|fetch\(/);
+  const env=environment(),auth=await login(env);
+  await savePage(env,'about',{title:'About',status:'draft',content_md:'Hello'});
+  await savePage(env,'notes',{title:'Notes',status:'draft',content_md:'# Notes',output_format:'md'});
+  const html=await(await call(env,'/admin?view=pages&edit=about',undefined,auth.cookie)).text();
+  assert.match(html,/<a id="editor-preview-link" href="\/preview\/about" target="_blank"/);
+  const md=await(await call(env,'/admin?view=pages&edit=notes',undefined,auth.cookie)).text();
+  assert.match(md,/<a id="editor-preview-link" href="\/admin\?page_preview=notes" target="_blank"/);
+  const fresh=await(await call(env,'/admin?view=pages&new=1',undefined,auth.cookie)).text();
+  assert.match(fresh,/<span id="editor-preview-link" class="btn btn-gray btn-disabled"/);
 });

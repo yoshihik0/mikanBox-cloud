@@ -6,6 +6,7 @@ import type { Env, PageData, ComponentData, Settings } from './types';
 import {mediaStorageMode,assertMediaUnlocked,MEDIA_UNLOCKED_SQL,MEDIA_MODE_SQL} from './media-mode';
 import {mediaBucket,putImmutableImage,discardImage} from './r2-media';
 import { validId } from './validation';
+import { normalizeLegacyPage } from './output-formats';
 import { MEDIA_FILE_LIMIT,MEDIA_COUNT_LIMIT,MEDIA_CHUNK_SIZE,MEDIA_ZIP_LIMIT,validMediaName } from './media-policy';
 
 // Both published modes and the legacy public status are publicly visible.
@@ -62,13 +63,14 @@ export async function loadPage(env: Env, id: string): Promise<PageData | null> {
     row = await env.DB.prepare('SELECT data FROM posts WHERE id = ?').bind(`${clean}/index`).first<{ data: string }>();
   }
   if (!row) return null;
-  try { return JSON.parse(row.data) as PageData; } catch { return null; }
+  try { return normalizeLegacyPage(JSON.parse(row.data) as PageData); } catch { return null; }
 }
 
 export async function savePage(env: Env, id: string, data: PageData): Promise<boolean> {
   const clean = sanitizeId(id);
   if (!clean) return false;
   try {
+    data = normalizeLegacyPage({ ...data });
     data = { ...data, status: normalizeStatus(data.status || 'draft') };
     const json = JSON.stringify(data, null, 2);
     const status = data.status;
@@ -97,7 +99,17 @@ export async function listPageIds(env: Env): Promise<string[]> {
 
 export async function listPages(env:Env):Promise<Array<{id:string,data:PageData}>> {
   const rows=await env.DB.prepare('SELECT id,data FROM posts ORDER BY sort_order,updated_at DESC,id').all<{id:string,data:string}>();
-  return rows.results.flatMap(row=>{try{return [{id:row.id,data:JSON.parse(row.data) as PageData}];}catch{return [];}});
+  return rows.results.flatMap(row=>{try{return [{id:row.id,data:normalizeLegacyPage(JSON.parse(row.data) as PageData)}];}catch{return [];}});
+}
+/** The admin page list order (as in the PHP editions): pending pages first, then index, then display order and ID. */
+export function sortPagesForAdmin<T extends {id:string,data:PageData}>(pages:T[]):T[] {
+  const order=(page:T)=>Number(page.data.sort_order)||0;
+  return [...pages].sort((a,b)=>{
+    const pendingA=a.data.status==='pending',pendingB=b.data.status==='pending';
+    if(pendingA!==pendingB)return pendingA?-1:1;
+    if(!pendingA){if(a.id==='index'&&b.id!=='index')return -1;if(b.id==='index'&&a.id!=='index')return 1;}
+    return order(a)-order(b)||(a.id<b.id?-1:a.id>b.id?1:0);
+  });
 }
 export async function listComponents(env:Env):Promise<Array<{id:string,data:ComponentData}>> {
   const rows=await env.DB.prepare('SELECT id,data FROM components ORDER BY id').all<{id:string,data:string}>();

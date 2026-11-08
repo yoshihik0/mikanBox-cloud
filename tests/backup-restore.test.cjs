@@ -37,3 +37,13 @@ test('explicit account restore preserves security recovery fields and rejects co
  const src=await source();src.sqlite.prepare('UPDATE users SET security_question=?,security_answer_hash=?').run('Question','answer-hash');const manifest=await exportBackupManifest(src);manifest.media=[];const target=environment();await login(target,'current');let id=await createBackupRestore(target,manifest,{restoreUsers:true});target.sqlite.prepare('UPDATE users SET security_question=?').run('new question');await assert.rejects(commitBackupRestore(target,id),/not applied/);await abortBackupRestore(target,id);id=await createBackupRestore(target,manifest,{restoreUsers:true});await commitBackupRestore(target,id);const user=target.sqlite.prepare('SELECT * FROM users').get();assert.equal(user.security_question,'Question');assert.equal(user.security_answer_hash,'answer-hash');
  const old={...manifest,users:manifest.users.map(({security_question,security_answer_hash,...u})=>u)};id=await createBackupRestore(target,old,{restoreUsers:true});await commitBackupRestore(target,id);assert.equal(target.sqlite.prepare('SELECT security_question FROM users').get().security_question,'');
 });
+test('output formats survive backup and restore, and a former DB status is restored as the mikanBox DB format',async()=>{
+ const src=environment();await savePage(src,'cat',{title:'Cat',status:'public_static',output_format:'json',expand_tags:false,md_footer_comps:[],content_md:'[]'});await savePage(src,'art',{title:'Art',status:'public_static',output_format:'html_md',md_footer_comps:['_md_footer'],content_md:'x'});
+ src.sqlite.exec("INSERT INTO static_pages(id,html,built_at,path,md) VALUES('cat','[]','today','/cat.json',NULL),('art','<p>x</p>','today','/art.html','---\ntitle: \"Art\"\n---\n\nx\n')");
+ const manifest=await exportBackupManifest(src);manifest.pages.push({id:'olddb',data:JSON.stringify({title:'Old',status:'db',content_md:''}),status:'db',sort_order:0,updated_at:''});
+ const target=environment(),id=await createBackupRestore(target,manifest);await commitBackupRestore(target,id);
+ const page=id=>JSON.parse(target.sqlite.prepare('SELECT data FROM posts WHERE id=?').get(id).data);
+ assert.equal(page('cat').output_format,'json');assert.equal(page('cat').expand_tags,false);assert.deepEqual(page('art').md_footer_comps,['_md_footer']);
+ assert.equal(page('olddb').output_format,'db');assert.equal(target.sqlite.prepare("SELECT status FROM posts WHERE id='olddb'").get().status,'public_static');
+ assert.deepEqual(target.sqlite.prepare("SELECT id,path,md IS NOT NULL has_md FROM static_pages ORDER BY id").all().map(r=>({...r})),[{id:'art',path:'/art.html',has_md:1},{id:'cat',path:'/cat.json',has_md:0}]);
+});

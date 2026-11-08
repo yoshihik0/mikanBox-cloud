@@ -16,6 +16,8 @@ import { onProbation, PROBATION_DAYS, createDevice, claimCode, codeKind, issueCo
 import { renderAccountsSection } from './accounts-view';
 import { MikanBoxRenderer } from '../renderer';
 import { previewMediaUrls } from '../preview-media';
+import { pageFormatFields, withFormatFields, validatePageSave, isDataFormat, isApiFormat, formatExtension, pageOutputFormat, adminPreviewUrl } from '../output-formats';
+import { sortPagesForAdmin } from '../storage';
 import { PREVIEW_SANDBOX } from '../site-split';
 import { publicationStatus } from '../publish-status';
 import { pageId, componentId, pageStatus } from '../validation';
@@ -33,6 +35,14 @@ const html = (body: string, status = 200) => new Response(body, {status, headers
 const json = (body: unknown, status = 200) => Response.json(body,{status,headers:{'Cache-Control':'no-store'}});
 const val = (f: FormData, key: string) => String(f.get(key) || '');
 const help = (lang: string) => `/public-help.html?language=${lang}`;
+/** Page fields from the editor form, including the output format fields (2.17.0). */
+async function editorPageWithFormat(env:Env,form:FormData,current:PageData|null):Promise<PageData> {
+  const input:Record<string,unknown>={};
+  if(form.has('output_format'))input.output_format=val(form,'output_format');
+  if(form.has('md_footer_comps'))input.md_footer_comps=val(form,'md_footer_comps');
+  if(form.has('expand_tags_present'))input.expand_tags=form.has('expand_tags');
+  return withFormatFields(editorPage(form,current),await pageFormatFields(input,current,id=>loadComponent(env,id)));
+}
 function editorPage(form:FormData,current:PageData|null):PageData {
   return {title:val(form,'title'),status:pageStatus(val(form,'status')||'draft'),category:val(form,'category').trim(),sort_order:Number(val(form,'sort_order'))||0,
     updated_at:val(form,'updated_at')||new Date().toISOString().slice(0,19).replace('T',' '),wrapper_comp:val(form,'wrapper_comp')||'_layout',memo:val(form,'memo'),
@@ -106,6 +116,15 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
     const object=await getMediaObject(env,key);if(!object)return new Response('Not Found',{status:404});
     return new Response(object.body,{headers:{'Content-Type':isCodeMedia(key)?'text/plain; charset=utf-8':object.httpMetadata?.contentType||'application/octet-stream','X-Content-Type-Options':'nosniff','Cache-Control':'no-store','ETag':object.httpEtag||'', 'Content-Security-Policy':"sandbox; default-src 'none'; style-src 'unsafe-inline'"}});
   }
+  // The preview of a saved page whose output is text (Markdown only, data formats, mikanBox DB):
+  // always UTF-8 plain text, so a static .md/.txt served without a charset never looks garbled.
+  if(request.method==='GET'&&url.searchParams.has('page_preview')) {
+    let id='';try{id=pageId(url.searchParams.get('page_preview')||'');}catch{return new Response('Not Found',{status:404});}
+    const page=await loadPage(env,id);if(!page)return new Response('Not Found',{status:404,headers:{'Cache-Control':'no-store'}});
+    const renderer=new MikanBoxRenderer(env,settings,request),preview=await renderer.renderPreview(id,page);
+    const body=preview.type.startsWith('text/html')?await previewMediaUrls(preview.body,env,request,renderer.getSiteUrl()):preview.body;
+    return new Response(body,{status:preview.status,headers:{'Content-Type':preview.type,'Cache-Control':'no-store','Referrer-Policy':'no-referrer','X-Content-Type-Options':'nosniff','Content-Security-Policy':PREVIEW_SANDBOX}});
+  }
   if(request.method==='GET'&&url.searchParams.has('publication_manifest'))return json(await publicationManifest(env));
   if(request.method==='GET'&&url.searchParams.has('publication_file')) {
     const entry=await readPublicationEntry(env,request,url.searchParams.get('publication_file')||'');
@@ -122,7 +141,7 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
         const id=pageId(val(form,'id').trim()||'preview');
         const oldId=val(form,'old_id');
         const current=oldId?await loadPage(env,pageId(oldId)):null;
-        const data=editorPage(form,current);
+        const data=await editorPageWithFormat(env,form,current);
         const renderer=new MikanBoxRenderer(env,settings,request);
         const rendered=await renderer.render(id,true,data);
         const content=await previewMediaUrls(rendered.html,env,request,renderer.getSiteUrl());
@@ -198,8 +217,9 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
           const current=oldId?await loadPage(env,oldId):null;
           const lock=await env.DB.prepare('SELECT owner FROM edit_locks WHERE post_id=? AND expires_at>?').bind(oldId||id,Date.now()).first<{owner:string}>();
           if(lock&&lock.owner!==auth.user.username) throw new Error('他のユーザーが編集中です。 / Another user is editing this page.');
-          const data:PageData=editorPage(form,current);data.preview_token||=crypto.randomUUID();
+          const data:PageData=await editorPageWithFormat(env,form,current);data.preview_token||=crypto.randomUUID();
           if(!Number.isFinite(data.sort_order)||Math.abs(data.sort_order||0)>2147483647) throw new Error('Invalid sort order.');
+          const formatError=validatePageSave(id,oldId,data,t);if(formatError)throw new Error(formatError);
           await saveWithRevision(env,id,oldId,data,auth.user.username,val(form,'expected_revision')); editId=id;message=t('msg_page_saved',id);
           if(form.has('save_and_preview')) return redirect(`/preview/${id}`);
           break;
@@ -207,6 +227,7 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
         case 'change_status': case 'save_page_status': {
           const id=pageId(val(form,'id')),data=await loadPage(env,id); if(!data) throw new Error('Page not found.');
           const expected=data.revision_tag||'';data.status=pageStatus(val(form,'status'));data.preview_token||=crypto.randomUUID();
+          const formatError=validatePageSave(id,id,data,t);if(formatError)throw new Error(formatError);
           await saveWithRevision(env,id,id,data,auth.user.username,expected);break;
         }
         case 'delete_page': {
@@ -368,14 +389,14 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
     editData=view==='components'?await loadComponent(env,editId):await loadPage(env,editId);
     if(view==='pages'&&url.searchParams.has('rev')) {const r=pageRevisions.find(r=>r.id===Number(url.searchParams.get('rev')));if(r&&editData)editData={...JSON.parse(r.data),revision_tag:(editData as PageData).revision_tag};}
   }
-  const pages=await listPages(env),components=await listComponents(env);
+  const pages=sortPagesForAdmin(await listPages(env)),components=await listComponents(env);
   const files=await listMediaFiles(env),cats=new Set((settings.category_candidates||'').split(',').map(x=>x.trim()).filter(Boolean));
   for(const p of pages)for(const c of(p.data.category||'').split(',').map(x=>x.trim()).filter(Boolean))cats.add(c);
   const allCategories=[...cats].sort(),category=url.searchParams.get('cat')||'',query=url.searchParams.get('q')||'';
   const filtered=pages.filter(p=>(!category||(p.data.category||'').split(',').map(x=>x.trim()).includes(category))&&(!query||`${p.id} ${p.data.title} ${p.data.content_md||''}`.toLowerCase().includes(query.toLowerCase())));
   const perPage=Math.min(500,Math.max(1,Number(settings.pages_per_page)||30)),totalPages=Math.max(1,Math.ceil(filtered.length/perPage)),pageNumber=Math.min(totalPages,Math.max(1,Number(url.searchParams.get('p_pages'))||1));
   const hasNew=url.searchParams.has('new'),helpFile=help(lang);
-  const pageEditorHtml=view==='pages'&&(editId||hasNew)?renderPageEditor({t,editId,editData:editData as PageData|null,csrf,helpFile,wrapperComponents:components.filter(c=>c.data.is_wrapper),allCategories,settings:{...settings,_site_base:url.origin},revisions:pageRevisions,selectedRevision:pageRevisions.find(r=>r.id===Number(url.searchParams.get('rev')))}):'';
+  const pageEditorHtml=view==='pages'&&(editId||hasNew)?renderPageEditor({t,editId,editData:editData as PageData|null,csrf,helpFile,wrapperComponents:components.filter(c=>c.data.is_wrapper),allCategories,publicBase:(env.PUBLIC_SITE_URL||String(settings.ssg_root_url||'')||url.origin).replace(/\/$/,''),settings:{...settings,_site_base:url.origin},revisions:pageRevisions,selectedRevision:pageRevisions.find(r=>r.id===Number(url.searchParams.get('rev')))}):'';
   const designEditorHtml=view==='components'&&(editId||hasNew)?renderDesignEditor({t,editId,editData:editData as ComponentData|null,csrf,helpFile}):'';
   const cloudReady=await cloudConfigured(env);
   const pagesHtml=renderPagesView({t,pages:filtered.slice((pageNumber-1)*perPage,pageNumber*perPage),view,editId,hasNew,csrf,helpFile,settings,query,category,pageNumber,totalPages,lang,publication:await publicationStatus(env,url.origin,pages),cloudReady,publicUrl:env.CLOUDFLARE_PUBLIC_WORKER_NAME ? env.PUBLIC_SITE_URL || '' : ''});

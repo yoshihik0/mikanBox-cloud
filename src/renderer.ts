@@ -13,6 +13,10 @@ import {
   loadPage, loadComponent, getSortedPageIds, isPublicStatus, listPages, getMediaHeader,
 } from './storage';
 import { validMediaName } from './media-policy';
+import {
+  pageOutputFormat, isDataFormat, isApiFormat, formatExtension, formatHasMarkdown, pageExpandsTags, pageIsListed,
+  normalizeLegacyPage, splitCategories, visibleCategories, normalizeFooterComponents, encodePageIdPath, type OutputFormat,
+} from './output-formats';
 
 function resolveMediaPath(url: string): string {
   if (!url) return '';
@@ -28,6 +32,32 @@ function escapeHtml(str: string): string {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
 }
+/** PHP htmlspecialchars($v, ENT_QUOTES): single quotes too. */
+function escapeQuotes(str: string): string {
+  return escapeHtml(str).replace(/'/g, '&#039;');
+}
+/** First 8 hex digits of SHA-256 (PHP: substr(hash('sha256', $v), 0, 8)). */
+async function hash8(text: string): Promise<string> {
+  const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text)));
+  return [...digest.slice(0, 4)].map(b => b.toString(16).padStart(2, '0')).join('');
+}
+/** String.replace with an async replacer, applied to every match in order. */
+async function replaceAsync(text: string, pattern: RegExp, replacer: (...match: string[]) => Promise<string>): Promise<string> {
+  const parts: string[] = [];
+  let last = 0;
+  for (const m of text.matchAll(pattern)) {
+    parts.push(text.slice(last, m.index!));
+    parts.push(await replacer(...(m as unknown as string[])));
+    last = m.index! + m[0].length;
+  }
+  parts.push(text.slice(last));
+  return parts.join('');
+}
+
+type PageEntry = { id: string; data: PageData };
+type NavOptions = { category: string; component: string; sort: '' | 'new' | 'old'; limit: number; sep: string };
+type NavGroup = { label: string | null; items: PageEntry[] };
+const hashStack: string[] = [];
 
 export type ImageSizeCache = Map<string, { width: number; height: number } | null>;
 
@@ -51,6 +81,24 @@ export class MikanBoxRenderer {
   private navigationPages?:Promise<Array<{id:string,data:PageData}>>;
   private snapshot?:{pages:Array<{id:string,data:PageData}>,components:Array<{id:string,data:ComponentData}>};
   private componentCache=new Map<string,Promise<ComponentData|null>>();
+  // Output formats (2.17.0): 'html' renders the page, 'md' its Markdown version,
+  // 'data' the body of a data-format page (json, xml, csv, txt, js, css).
+  private outputMode: 'html' | 'md' | 'data' = 'html';
+  private dataFormat = '';
+  private linkToMarkdown = false;   // in Markdown versions, link to other pages' Markdown versions
+  private currentPageInfo: Partial<PageData> = {};  // stored fields of the page being rendered (for @same)
+  private pageFormats = new Map<string, OutputFormat>();
+  private pageIndexLoaded?: Promise<void>;
+  private dataHashes = new Map<string, string>();  // static build: page ID => hash of its built data output
+  /** Formats of every page, for the link rules (one light query, or the build snapshot). */
+  private loadPageIndex(): Promise<void> {
+    return this.pageIndexLoaded ??= (async () => {
+      if (this.snapshot) { for (const p of this.snapshot.pages) this.pageFormats.set(p.id, pageOutputFormat(p.data)); return; }
+      const rows = await this.env.DB.prepare("SELECT id,status,json_extract(data,'$.output_format') format FROM posts").all<{ id: string; status: string; format: string | null }>();
+      for (const row of rows.results) this.pageFormats.set(row.id, pageOutputFormat({ status: row.status as PageData['status'], output_format: (row.format || undefined) as OutputFormat | undefined }));
+    })().then(() => { if (this.previewPage) this.pageFormats.set(this.previewPage.id, pageOutputFormat(this.previewPage.data)); });
+  }
+  setDataHashes(hashes: Map<string, string>) { this.dataHashes = new Map(hashes); }
   private publicPages() {return this.navigationPages??=Promise.resolve(this.snapshot?.pages||listPages(this.env)).then(pages=>pages.filter(p=>isPublicStatus(p.data.status)));}
   private readPage(id:string) {if(this.previewPage?.id===id)return Promise.resolve(this.previewPage.data);return this.snapshot?Promise.resolve(this.snapshot.pages.find(p=>p.id===id)?.data||this.snapshot.pages.find(p=>p.id===id+'/index')?.data||null):loadPage(this.env,id);}
   private readComponent(id:string) {
@@ -106,10 +154,29 @@ export class MikanBoxRenderer {
     return siteUrl.replace(/\/$/, '') + absLink;
   }
 
+  /**
+   * Root-relative link of a page. Everything with an extension lives at /id.<extension>:
+   * data pages, Markdown-only pages, and (inside Markdown versions) pages that also publish
+   * a Markdown version. mikanBox DB pages live at /api/id.json.
+   */
   getPageLink(postId: string): string {
     const root = this.getSiteBasePath();
+    const format = this.pageFormats.get(postId) ?? 'html';
+    let extension = formatExtension(format);
+    if (extension === null && format === 'html_md' && this.linkToMarkdown) extension = 'md';
+    if (isApiFormat(format)) return root + 'api/' + encodePageIdPath(postId) + '.json';
+    if (extension !== null) return root + encodePageIdPath(postId) + '.' + extension;
     const id = postId === 'index' ? '' : postId;
     return id === '' ? root : root + id + '/';
+  }
+
+  private buildPageUrl(postId: string): string {
+    return this.buildFullUrl(this.getSiteUrl(), this.getPageLink(postId));
+  }
+
+  /** /id.<extension> as an absolute URL (Markdown versions and data pages). */
+  private extensionUrl(pageId: string, extension: string): string {
+    return this.getSiteUrl().replace(/\/$/, '') + '/' + encodePageIdPath(pageId) + '.' + extension;
   }
 
   private resolveAbsoluteUrl(url: string): string {
@@ -119,8 +186,8 @@ export class MikanBoxRenderer {
   }
 
   // ---- Public API: DATA/DATAROWブロックをJSON構造で返す ----
-  async getPageDataBlocks(pageId: string): Promise<object | null> {
-    const postData = await this.readPage( pageId);
+  async getPageDataBlocks(pageId: string, given?: PageData): Promise<object | null> {
+    const postData = given ?? await this.readPage( pageId);
     if (!postData) return null;
     const blocks: Record<string, string> = {};
     this.extractDataBlocks(postData.content_md || '', blocks);
@@ -141,7 +208,11 @@ export class MikanBoxRenderer {
 
   // ---- Main render ----
   async render(pageId: string, allowPrivate = false, previewData?: PageData): Promise<{ html: string; status: number }> {
-    this.previewPage = previewData ? {id:pageId,data:previewData} : undefined;
+    this.previewPage = previewData ? {id:pageId,data:normalizeLegacyPage(previewData)} : undefined;
+    this.outputMode = 'html';
+    this.dataFormat = '';
+    this.linkToMarkdown = false;
+    await this.loadPageIndex();
     this.currentPageId = pageId;
     this.globalCssBuffer = [];
     this.javascriptBuffer.clear();
@@ -167,6 +238,7 @@ export class MikanBoxRenderer {
     if (!isPublicStatus(pageData.status) && !allowPrivate) {
       return { html: '<h1>404 Not Found</h1>', status: 404 };
     }
+    this.currentPageInfo = pageData;
 
     // メタ情報
     const pageTitle = pageData.title
@@ -258,7 +330,7 @@ export class MikanBoxRenderer {
     }
 
     // 5. 基本タグを展開
-    html = this.replaceBasicTags(html, pageData, pageTitle, pageDesc, pageKeywords, ogpImage);
+    html = await this.replaceBasicTags(html, pageData, pageTitle, pageDesc, pageKeywords, ogpImage);
 
     // 6. ナビゲーション・特殊タグを展開
     html = await this.replaceSpecialTags(html);
@@ -275,17 +347,23 @@ export class MikanBoxRenderer {
     trackingHtml = trackingOffset >= 0 ? html.slice(trackingOffset + trackingMarker.length) : '';
     if (trackingOffset >= 0) html = html.slice(0, trackingOffset);
     html = html.replace(/\x04COMMENT(\d+)\x04/g,(_,index)=>comments[Number(index)] || '');
-    html = this.completeHead(html, pageTitle, pageDesc, this.resolveAbsoluteUrl(resolveMediaPath(ogpImage)), trackingCode ? trackingCode.head : trackingHtml);
+    let headExtra = trackingCode ? trackingCode.head : trackingHtml;
+    // A page that also publishes a Markdown version announces it, the way RSS is discovered.
+    if (pageOutputFormat(pageData) === 'html_md') {
+      headExtra = '<link rel="alternate" type="text/markdown" href="' + escapeQuotes(this.extensionUrl(responseStatus === 200 ? pageId : '404', 'md')) + '">' + headExtra;
+    }
+    html = this.completeHead(html, pageTitle, pageDesc, this.resolveAbsoluteUrl(resolveMediaPath(ogpImage)), headExtra);
     if (trackingCode) html = this.insertBodyStart(html, trackingCode.body);
 
     // 8. CSSバッファを処理してHEAD_CSSに差し込む
-    const processedCss = this.globalCssBuffer.map(cssLine => {
-      cssLine = this.replaceBasicTags(cssLine, pageData!, pageTitle, pageDesc, pageKeywords, ogpImage);
+    const processedCss: string[] = [];
+    for (let cssLine of this.globalCssBuffer) {
+      cssLine = await this.replaceBasicTags(cssLine, pageData!, pageTitle, pageDesc, pageKeywords, ogpImage);
       // url(media/x.png) and url(images/x.png) point at the site's media folder from any page (as in the PHP edition)
       const cssMediaBase = this.getSiteBasePath() + 'media/';
       cssLine = cssLine.replace(/url\(\s*(["']?)(?:images|media)\/([^)"']+)\1\s*\)/gi, (_m, quote, path) => `url(${quote}${cssMediaBase}${path}${quote})`);
-      return cssLine;
-    });
+      processedCss.push(cssLine);
+    }
 
     const uniqueCss = [...new Set(processedCss)];
     const cssTag = `<style>\n${uniqueCss.join('\n')}\n</style>`;
@@ -455,46 +533,52 @@ export class MikanBoxRenderer {
   }
 
   // ---- replaceBasicTags ----
-  private replaceBasicTags(
+  private async replaceBasicTags(
     text: string,
     pageData: PageData,
     pageTitle: string,
     pageDesc: string,
     pageKeywords: string,
     ogpImage: string
-  ): string {
+  ): Promise<string> {
     const siteUrl = this.getSiteUrl();
     const id = this.currentPageId;
-    const rootLink = this.getPageLink(id);
-    const pageFullUrl = this.buildFullUrl(siteUrl, rootLink);
+    const value = (v: unknown) => this.escapeValue(String(v ?? ''));
+    const url = (v: unknown) => this.escapeUrl(String(v ?? ''));
+    // Markdown versions and data pages always live at /id.<extension>.
+    const ownExtension = this.outputMode === 'md' ? 'md' : this.outputMode === 'data' ? this.dataFormat : null;
+    const pageFullUrl = ownExtension !== null ? this.extensionUrl(id, ownExtension) : this.buildFullUrl(siteUrl, this.getPageLink(id));
 
-    const replacements: Array<[RegExp, string]> = [
-      [/\{\{\s*SITE_NAME\s*\}\}/g,        escapeHtml(this.siteSettings.site_name || '')],
-      [/\{\{\s*SITE_DESCRIPTION\s*\}\}/g, escapeHtml(this.siteSettings.description || '')],
-      [/\{\{\s*SITE_KEYWORDS\s*\}\}/g,    escapeHtml(this.siteSettings.keywords || '')],
-      [/\{\{\s*SITE_OGP_IMAGE\s*\}\}/g,   this.resolveAbsoluteUrl(resolveMediaPath(this.siteSettings.ogp_image || ''))],
-      [/\{\{\s*PAGE_TITLE\s*\}\}/g,       escapeHtml(pageData.title || '')],
-      [/\{\{\s*PAGE_DESCRIPTION\s*\}\}/g, escapeHtml(pageData.description || '')],
-      [/\{\{\s*PAGE_KEYWORDS\s*\}\}/g,    escapeHtml(pageData.keywords || '')],
-      [/\{\{\s*PAGE_OGP_IMAGE\s*\}\}/g,   this.resolveAbsoluteUrl(resolveMediaPath(pageData.ogp_image || ''))],
-      [/\{\{\s*TITLE\s*\}\}/g,            escapeHtml(pageData.title || (this.siteSettings.site_name || ''))],
-      [/\{\{\s*DESCRIPTION\s*\}\}/g,      escapeHtml(pageDesc)],
-      [/\{\{\s*OGP_IMAGE\s*\}\}/g,        this.resolveAbsoluteUrl(resolveMediaPath(ogpImage))],
-      [/\{\{\s*FULL_TITLE\s*\}\}/g,       escapeHtml(pageTitle)],
-      [/\{\{\s*KEYWORDS\s*\}\}/g,         escapeHtml(pageKeywords)],
-      [/\{\{\s*SITE_URL\s*\}\}/g,         siteUrl],
-      [/\{\{\s*BASE_URL\s*\}\}/g,         siteUrl],
-      [/\{\{\s*PAGE_URL\s*\}\}/g,         pageFullUrl],
-      [/\{\{\s*UPDATE_DATE\s*\}\}/g,      (pageData.updated_at || new Date().toISOString()).slice(0, 10)],
-    ];
+    const replacements: Record<string, string> = {
+      SITE_NAME: value(this.siteSettings.site_name || ''),
+      SITE_DESCRIPTION: value(this.siteSettings.description || ''),
+      SITE_KEYWORDS: value(this.siteSettings.keywords || ''),
+      SITE_OGP_IMAGE: url(this.resolveAbsoluteUrl(resolveMediaPath(this.siteSettings.ogp_image || ''))),
+      PAGE_TITLE: value(pageData.title || ''),
+      PAGE_DESCRIPTION: value(pageData.description || ''),
+      PAGE_KEYWORDS: value(pageData.keywords || ''),
+      PAGE_OGP_IMAGE: url(this.resolveAbsoluteUrl(resolveMediaPath(pageData.ogp_image || ''))),
+      TITLE: value(pageData.title || (this.siteSettings.site_name || '')),
+      DESCRIPTION: value(pageDesc),
+      OGP_IMAGE: url(this.resolveAbsoluteUrl(resolveMediaPath(ogpImage))),
+      FULL_TITLE: value(pageTitle),
+      KEYWORDS: value(pageKeywords),
+      SITE_URL: url(siteUrl),
+      BASE_URL: url(siteUrl),
+      PAGE_URL: url(pageFullUrl),
+      UPDATE_DATE: value((pageData.updated_at || new Date().toISOString()).slice(0, 10)),
+    };
+    text = text.replace(new RegExp('\\{\\{\\s*(' + Object.keys(replacements).join('|') + ')\\s*\\}\\}', 'g'), (_m, key: string) => replacements[key]);
 
-    for (const [pattern, replacement] of replacements) {
-      text = text.replace(pattern, replacement);
-    }
+    // CATEGORY: categories except structural "_" ones; CATEGORY:all includes them.
+    text = text.replace(/\{\{\s*CATEGORY(?::\s*(all)\s*)?\}\}/g, (_m, all) => this.formatCategories(pageData.category || '', !!all));
+
+    // PAGE_URL:ID — URL of another page, with its extension (and ?v= for data pages).
+    text = await replaceAsync(text, /\{\{\s*PAGE_URL:\s*([A-Za-z0-9_\-\/]+)\s*\}\}/g, async (_m, target) => this.escapeUrl(await this.pageUrlTag(target)));
 
     // UPDATE_DATE:JP / UPDATE_DATE:SLASH
     const rawDate = pageData.updated_at || new Date().toISOString();
-    text = text.replace(/\{\{\s*UPDATE_DATE:([A-Z]+)\s*\}\}/g, (_, fmt) => this.formatDate(rawDate, fmt));
+    text = text.replace(/\{\{\s*UPDATE_DATE:([A-Z]+)\s*\}\}/g, (_, fmt) => this.escapeValue(this.formatDate(rawDate, fmt)));
 
     // IS_NEW:N
     text = text.replace(/\{\{\s*IS_NEW:(\d+)\s*\}\}/g, (_, days) =>
@@ -530,20 +614,8 @@ export class MikanBoxRenderer {
       const id=tag[1]||'_search_result_item';
       if(!searchResults.has(id)) searchResults.set(id,await this.generateSearchResults(id));
     }
-    // NAV_LINKS / NAV_CARDS
-    const navMatches = [...html.matchAll(/\{\{\s*(NAV_LINKS|NAV_CARDS)\s*(?::\s*([^:}\s]*)\s*)?(?::\s*([a-zA-Z0-9_\-]+)\s*)?\}\}/gu)];
-    for (const m of navMatches) {
-      const tagType = m[1].trim();
-      const category = (m[2] || '').trim();
-      const compId = (m[3] || '').trim();
-      let replacement: string;
-      if (tagType === 'NAV_LINKS') {
-        replacement = await this.generateNavLinks(category);
-      } else {
-        replacement = await this.generateNavCards(category, compId);
-      }
-      html = html.replace(m[0], () => replacement);
-    }
+    // NAV_LINKS / NAV_CARDS, with named options :sort=new|old, :limit=N, :sep=text, and the @same selector.
+    html = await this.replaceNavTags(html);
 
     const searchTags=[...html.matchAll(/\{\{\s*SEARCH_RESULTS\s*(?::\s*([A-Za-z0-9_-]+)\s*)?\}\}/g)];
     for(const tag of searchTags) html=html.replace(tag[0],()=>searchResults.get(tag[1]||'_search_result_item')||'');
@@ -565,7 +637,7 @@ export class MikanBoxRenderer {
     for (const m of postRowMatches) {
       const postData = await this.readPage( m[1]);
       let replacement = '';
-      if (postData?.content_md && (isPublicStatus(postData.status) || postData.status === 'db')) {
+      if (postData?.content_md && isPublicStatus(postData.status)) {
         const db: Record<string, string> = {};
         this.extractDataBlocks(postData.content_md, db);
         replacement = db[`#${m[2]}:${m[3]}`] || '';
@@ -588,7 +660,7 @@ export class MikanBoxRenderer {
         replacement = this.currentPageData[key] || '';
       } else {
         const postData = await this.readPage( postId);
-        if (postData?.content_md && (isPublicStatus(postData.status) || postData.status === 'db')) {
+        if (postData?.content_md && isPublicStatus(postData.status)) {
           const db: Record<string, string> = {};
           this.extractDataBlocks(postData.content_md, db);
           replacement = db[key] || '';
@@ -603,7 +675,7 @@ export class MikanBoxRenderer {
       const postId = m[1];
       const postData = await this.readPage( postId);
       let replacement = `<!-- Error: Post not found ${postId} -->`;
-      if (postData?.content_md && (isPublicStatus(postData.status) || postData.status === 'db')) {
+      if (postData?.content_md && isPublicStatus(postData.status)) {
         const savedId = this.currentPageId;
         const savedData = { ...this.currentPageData };
         this.currentPageId = postId;
@@ -623,7 +695,7 @@ export class MikanBoxRenderer {
         const postTitle = postData.title
           ? postData.title + ' - ' + (this.siteSettings.site_name || '')
           : (this.siteSettings.site_name || '');
-        embedded = this.replaceBasicTags(
+        embedded = await this.replaceBasicTags(
           embedded, postData, postTitle,
           postData.description || this.siteSettings.description || '',
           postData.keywords || this.siteSettings.keywords || '',
@@ -681,7 +753,8 @@ export class MikanBoxRenderer {
 
   // ---- applyPathCompletion ----
   private async applyPathCompletion(html: string): Promise<string> {
-    const allPosts = this.snapshot ? this.snapshot.pages.map(p=>p.id) : await getSortedPageIds(this.env);
+    await this.loadPageIndex();
+    const allPosts = [...this.pageFormats.keys()];
     const siteUrl = this.getSiteUrl();
 
     // Explicit media URLs are rooted at the site even on nested pages.
@@ -690,24 +763,12 @@ export class MikanBoxRenderer {
 
     // 内部リンクを絶対URLに書き換え (the PHP renderer's rules: page IDs, with ?query and #fragment kept)
     html = html.replace(/href=["'](\.?\/?)([^"']+)["']/gi, (match, prefix, url) => {
-      const original = prefix + url;
-      // external links, anchors, mail and phone links, and root-relative paths stay as written
-      if (/^(?:https?:\/\/|\/\/|#|mailto:|tel:)/i.test(original) || original.startsWith('/')) return match;
-      const parts = original.match(/^([^?#]*)(\?[^#]*)?(#.*)?$/);
-      const path = parts ? parts[1] : original;
-      const suffix = parts ? (parts[2] || '') + (parts[3] || '') : '';
-      let checkId = path.replace(/^\/+|\/+$/g, '');
-      if (/\/index\.html$/i.test(checkId)) checkId = checkId.slice(0, -11);
-      else if (/\.html$/i.test(checkId)) checkId = checkId.slice(0, -5);
-      const found = allPosts.find(pid => pid.toLowerCase() === checkId.toLowerCase());
-      if (found) return `href="${this.buildFullUrl(siteUrl, this.getPageLink(found))}${suffix}"`;
-      // looks like a page ID (letters, digits, - _ /) even if no such page exists yet
-      if (/^[a-z0-9_\-/]+$/i.test(checkId)) return `href="${this.buildFullUrl(siteUrl, this.getPageLink(checkId))}"`;
-      return match;
+      const resolved = this.resolveInternalLink(prefix + url, allPosts);
+      return resolved === null ? match : `href="${resolved}"`;
     });
 
     // ホームリンク "./" をサイトベースURLに
-    html = html.replace(/href=["']\.\//g, `href="${siteUrl}"`);
+    html = html.replace(/href=["']\.\/["']/g, `href="${siteUrl}"`);
 
     // メディアパスを絶対URLに
     const mediaBase = siteUrl.replace(/\/$/, '') + '/media/';
@@ -751,121 +812,6 @@ if(q)location.replace('https://www.google.com/search?'+new URLSearchParams({q:q,
     return '<!DOCTYPE html>\n' + html.replace(/<!DOCTYPE[^>]*>/gi, '').trim();
   }
 
-  // ---- generateNavLinks ----
-  private async generateNavLinks(targetCategory: string): Promise<string> {
-    const postsList = await this.publicPages();
-    let html = '<ul class="nav-links">';
-
-    for (const {id:postId,data:postInfo} of postsList) {
-      if (!postInfo) continue;
-      if (!isPublicStatus(postInfo.status)) continue;
-      if ((postInfo.sort_order ?? 0) < 0) continue;
-
-      const cats = (postInfo.category || '').split(',').map(s => s.trim()).filter(Boolean);
-
-      if (targetCategory !== '') {
-        if (targetCategory !== 'all' && !cats.includes(targetCategory)) continue;
-      } else if (cats.length > 0) continue;
-
-      const title = escapeHtml(postInfo.title || postId);
-      const activeClass = this.currentPageId === postId ? ' class="active"' : '';
-      const link = this.buildFullUrl(this.getSiteUrl(), this.getPageLink(postId));
-      html += `<li${activeClass}><a href="${link}">${title}</a></li>`;
-    }
-
-    html += '</ul>';
-    return html;
-  }
-
-  // ---- generateNavCards ----
-  private async generateNavCards(targetCategory: string, templateCompId: string): Promise<string> {
-    const postsList = await this.publicPages();
-    const effectiveCompId = templateCompId || '_nav_card';
-    const compData = await this.readComponent( effectiveCompId);
-    let customTemplate: string | null = null;
-    let prefixClass = '';
-
-    if (compData) {
-      customTemplate = compData.html || '';
-      const compCss = compData.css || '';
-      if (compCss) {
-        if (compData.is_global) {
-          this.globalCssBuffer.push(`/* Nav Card (Global): ${effectiveCompId} */\n${compCss}`);
-        } else {
-          prefixClass = `cmp-${effectiveCompId}`;
-          this.globalCssBuffer.push(
-            `/* Nav Card: ${effectiveCompId} */\n${scopeCss(compCss, '.' + prefixClass)}`
-          );
-        }
-      }
-    }
-
-    let innerHtml = '';
-
-    for (const {id:postId,data:postInfo} of postsList) {
-      if (!postInfo) continue;
-      if (!isPublicStatus(postInfo.status)) continue;
-      if ((postInfo.sort_order ?? 0) < 0) continue;
-
-      const cats = (postInfo.category || '').split(',').map(s => s.trim()).filter(Boolean);
-
-      if (targetCategory !== '') {
-        if (targetCategory !== 'all' && !cats.includes(targetCategory)) continue;
-      } else if (cats.length > 0) continue;
-
-      const title = escapeHtml(postInfo.title || postId);
-      const desc = escapeHtml(postInfo.description || '');
-      let rawImg = resolveMediaPath(postInfo.ogp_image || '');
-      if (rawImg && !/^(?:https?:\/\/|data:)/.test(rawImg)) {
-        rawImg = this.getSiteUrl().replace(/\/$/, '') + '/' + rawImg.replace(/^\//, '');
-      }
-      if (!rawImg) {
-        rawImg = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='210'%3E%3Crect width='400' height='210' fill='%23e0e0e0'/%3E%3C/svg%3E";
-      }
-      const img = escapeHtml(rawImg);
-      const link = this.buildFullUrl(this.getSiteUrl(), this.getPageLink(postId));
-      const updateDate = (postInfo.updated_at || new Date().toISOString()).slice(0, 10);
-      const isActive = this.currentPageId === postId ? 'active' : '';
-
-      if (customTemplate) {
-        let itemHtml = customTemplate
-          .replace(/\{\{TITLE\}\}/g, title)
-          .replace(/\{\{DESCRIPTION\}\}/g, desc)
-          .replace(/\{\{LINK\}\}/g, link)
-          .replace(/\{\{OGP_IMAGE\}\}/g, img)
-          .replace(/\{\{PAGE_URL\}\}/g, link)
-          .replace(/\{\{UPDATE_DATE\}\}/g, updateDate)
-          .replace(/\{\{IS_ACTIVE\}\}/g, isActive);
-
-        const rawDate = postInfo.updated_at || new Date().toISOString();
-        itemHtml = itemHtml.replace(/\{\{UPDATE_DATE:([A-Z]+)\}\}/g, (_, fmt) => this.formatDate(rawDate, fmt));
-        itemHtml = itemHtml.replace(/\{\{IS_NEW:(\d+)\}\}/g, (_, d) =>
-          this.isNew(rawDate, parseInt(d, 10)) ? 'new' : ''
-        );
-
-        // POST_MD:: タグを展開
-        if (postInfo.content_md) {
-          const cardDataBlocks: Record<string, string> = {};
-          this.extractDataBlocks(postInfo.content_md, cardDataBlocks);
-          itemHtml = itemHtml.replace(/\{\{POST_MD::#([a-zA-Z0-9_\-]+):([a-zA-Z][a-zA-Z0-9_]*)\}\}/g,
-            (_, rowId, key) => cardDataBlocks[`#${rowId}:${key}`] || ''
-          );
-          itemHtml = itemHtml.replace(/\{\{POST_MD::([a-zA-Z][a-zA-Z0-9_]*)\}\}/g,
-            (_, key) => cardDataBlocks[key] || ''
-          );
-        }
-
-        innerHtml += itemHtml;
-      } else {
-        const imgHtml = img ? `<div class="nav-card-img"><img src="${img}" alt="" loading="lazy" decoding="async"></div>` : '';
-        innerHtml += `<a href="${link}" class="nav-card">${imgHtml}<div class="nav-card-content"><h3 class="nav-card-title">${title}</h3>${desc ? `<p class="nav-card-desc">${desc}</p>` : ''}</div></a>`;
-      }
-    }
-
-    const output = `<div class="nav-cards">${innerHtml}</div>`;
-    return prefixClass ? `<div class="${prefixClass}">${output}</div>` : output;
-  }
-
   // ---- コードスパン保護 ----
   // Restore URL tags in Markdown link attributes without activating code examples.
   private restoreMarkdownUrlTags(html: string): string {
@@ -873,7 +819,7 @@ if(q)location.replace('https://www.google.com/search?'+new URLSearchParams({q:q,
       href.replace(/\u200B?&lt;!--MKNTG([a-zA-Z0-9+/=]+)--&gt;\u200B?/g, (placeholder, b64: string) => {
         try {
           const tag = decodeURIComponent(escape(atob(b64)));
-          return /^\{\{\s*(?:SITE_URL|BASE_URL|PAGE_URL)\s*\}\}$/.test(tag) ? tag : placeholder;
+          return /^\{\{\s*(?:SITE_URL|BASE_URL|PAGE_URL(?::[A-Za-z0-9_\-\/]+)?)\s*\}\}$/.test(tag) ? tag : placeholder;
         } catch { return placeholder; }
       }) + '"');
   }
@@ -897,5 +843,553 @@ if(q)location.replace('https://www.google.com/search?'+new URLSearchParams({q:q,
   // Like the PHP renderer's str_replace, every occurrence of a placeholder is restored.
   private restoreCodeSpans(content: string, codeMap: Record<string, string>): string {
     return content.replace(/___CODEBLOCK\d+___/g, key => Object.hasOwn(codeMap, key) ? codeMap[key] : key);
+  }
+
+  // ==========================================
+  // Navigation lists: NAV_LINKS / NAV_CARDS
+  // ==========================================
+
+  private replaceNavTags(text: string): Promise<string> {
+    return replaceAsync(text, /\{\{\s*(NAV_LINKS|NAV_CARDS)\s*((?::[^:}]*)*)\}\}/gu, async (whole, tagType, args) => {
+      const options = this.parseNavArguments(args);
+      if (options === null) return whole;
+      return this.renderNav(tagType, options);
+    });
+  }
+
+  /**
+   * Positional arguments (category, card component) followed by named options.
+   * A value runs to the next ":" or "}}"; in sep, \n and \t mean newline and tab.
+   */
+  private parseNavArguments(argumentString: string): NavOptions | null {
+    const options: NavOptions = { category: '', component: '', sort: '', limit: 0, sep: '' };
+    const positional: string[] = [];
+    const tokens = argumentString === '' ? [] : argumentString.slice(1).split(':');
+    for (const token of tokens) {
+      const named = token.match(/^\s*(sort|limit|sep)=([\s\S]*)$/);
+      if (named) {
+        if (named[1] === 'sort') {
+          const sort = named[2].trim();
+          options.sort = sort === 'new' || sort === 'old' ? sort : '';
+        } else if (named[1] === 'limit') {
+          options.limit = Math.max(0, parseInt(named[2].trim(), 10) || 0);
+        } else {
+          options.sep = named[2].replace(/\\n/g, '\n').replace(/\\t/g, '\t');
+        }
+        continue;
+      }
+      if (token.includes('=')) continue; // unknown option
+      positional.push(token.trim());
+    }
+    options.category = positional[0] ?? '';
+    options.component = positional[1] ?? '';
+    if (options.component !== '' && !/^[A-Za-z0-9_\-]+$/.test(options.component)) return null;
+    return options;
+  }
+
+  /** Listable pages in display order, matching a category ('' = none, 'all' = every page). */
+  private async navCandidates(category: string, options: NavOptions): Promise<PageEntry[]> {
+    let items: PageEntry[] = [];
+    for (const { id, data } of await this.publicPages()) {
+      if (!data) continue;
+      if ((data.sort_order ?? 0) < 0) continue;
+      // Data-format pages are parts of a site, not content, so lists never show them.
+      if (!pageIsListed(data)) continue;
+      const cats = splitCategories(data.category);
+      if (category !== '') {
+        if (category !== 'all' && !cats.includes(category)) continue;
+      } else if (cats.length > 0) continue;
+      items.push({ id, data });
+    }
+    if (options.sort !== '') {
+      // Array.prototype.sort is stable, so pages with the same date keep their display order.
+      const direction = options.sort === 'new' ? -1 : 1;
+      const key = (item: PageEntry) => String(item.data.updated_at ?? '');
+      items.sort((a, b) => direction * (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0));
+    }
+    if (options.limit > 0) items = items.slice(0, options.limit);
+    return items;
+  }
+
+  private async renderNav(tagType: string, options: NavOptions): Promise<string> {
+    if (options.category !== '@same') {
+      return this.renderNavGroups(tagType, options, [{ label: null, items: await this.navCandidates(options.category, options) }]);
+    }
+    // @same: pages sharing a non-structural category with the page being shown.
+    const groups: NavGroup[] = [];
+    for (const category of visibleCategories(this.currentPageInfo.category)) {
+      let items = (await this.navCandidates(category, { ...options, limit: 0 })).filter(item => item.id !== this.currentPageId);
+      if (options.limit > 0) items = items.slice(0, options.limit);
+      groups.push({ label: category, items });
+    }
+    if (!groups.length) return '';
+    if (groups.length === 1) groups[0].label = null;
+    return this.renderNavGroups(tagType, options, groups);
+  }
+
+  /** groups: one unlabelled group for a flat list, or labelled groups per category. */
+  private async renderNavGroups(tagType: string, options: NavOptions, groups: NavGroup[]): Promise<string> {
+    const grouped = groups[0].label !== null;
+    const sep = options.sep;
+
+    if (this.outputMode !== 'html') {
+      const isMarkdown = this.outputMode === 'md';
+      let template: string | null = null;
+      const effectiveCompId = options.component || '_nav_card';
+      if (tagType === 'NAV_CARDS' && !isMarkdown) {
+        const compData = await this.readComponent(effectiveCompId);
+        template = compData ? String(compData.html ?? '') : null;
+      }
+      const parts: string[] = [];
+      for (const group of groups) {
+        const lines: string[] = [];
+        for (const item of group.items) {
+          if (template !== null) {
+            lines.push(this.renderCardItem(item.id, item.data, template));
+          } else {
+            const line = '- [' + this.escapeMarkdownLinkText(item.data.title || item.id) + '](' + this.escapeMarkdownUrl(this.buildPageUrl(item.id)) + ')';
+            lines.push((grouped ? '  ' : '') + (isMarkdown ? line : this.escapeValue(line)));
+          }
+        }
+        let joined = lines.join(sep !== '' ? sep : (template !== null ? '' : '\n'));
+        if (grouped && isMarkdown) {
+          joined = '- ' + this.escapeMarkdownLinkText(group.label!) + (joined !== '' ? '\n' + joined : '');
+        }
+        parts.push(joined);
+      }
+      return parts.filter(part => part !== '').join(sep !== '' && !isMarkdown ? sep : '\n');
+    }
+
+    if (tagType === 'NAV_LINKS') {
+      const renderLinks = (items: PageEntry[]) => items.map(item => {
+        const title = escapeQuotes(item.data.title || item.id);
+        const activeClass = this.currentPageId === item.id ? ' class="active"' : '';
+        return `<li${activeClass}><a href="${this.buildPageUrl(item.id)}">${title}</a></li>`;
+      }).join(sep);
+      if (!grouped) return '<ul class="nav-links">' + renderLinks(groups[0].items) + '</ul>';
+      let html = '<ul class="nav-links">';
+      for (const group of groups) {
+        html += '<li class="nav-group"><span class="nav-group-label">' + escapeQuotes(group.label!) + '</span>'
+          + '<ul class="nav-links">' + renderLinks(group.items) + '</ul></li>';
+      }
+      return html + '</ul>';
+    }
+
+    // NAV_CARDS in HTML
+    const effectiveCompId = options.component || '_nav_card';
+    const compData = await this.readComponent(effectiveCompId);
+    let customTemplate: string | null = null;
+    let prefixClass = '';
+    if (compData) {
+      customTemplate = compData.html || '';
+      const compCss = compData.css || '';
+      if (compCss) {
+        if (compData.is_global) {
+          this.globalCssBuffer.push(`/* Nav Card (Global): ${effectiveCompId} */\n${compCss}`);
+        } else {
+          prefixClass = `cmp-${effectiveCompId}`;
+          this.globalCssBuffer.push(`/* Nav Card: ${effectiveCompId} */\n${scopeCss(compCss, '.' + prefixClass)}`);
+        }
+      }
+    }
+    const renderCards = (items: PageEntry[]) => {
+      const cards = items.map(item => this.renderCardItem(item.id, item.data, customTemplate));
+      if (items.length && customTemplate && compData?.js && !compData.is_ai_doc) this.javascriptBuffer.set(effectiveCompId, compData.js);
+      return cards.join(sep);
+    };
+    let output: string;
+    if (!grouped) {
+      output = '<div class="nav-cards">' + renderCards(groups[0].items) + '</div>';
+    } else {
+      output = '';
+      for (const group of groups) {
+        output += '<div class="nav-group"><div class="nav-group-label">' + escapeQuotes(group.label!) + '</div>'
+          + '<div class="nav-cards">' + renderCards(group.items) + '</div></div>';
+      }
+    }
+    return prefixClass ? `<div class="${prefixClass}">${output}</div>` : output;
+  }
+
+  /** One card: the item component filled with this page's values, escaped for the output. */
+  private renderCardItem(postId: string, postInfo: PageData, customTemplate: string | null): string {
+    const isHtml = this.outputMode === 'html';
+    const esc = isHtml ? (v: string) => escapeQuotes(v) : (v: string) => this.escapeValue(v);
+    const title = esc(postInfo.title || postId);
+    const desc = esc(postInfo.description || '');
+    let rawImg = resolveMediaPath(postInfo.ogp_image || '');
+    if (rawImg && !/^(?:https?:\/\/|data:)/.test(rawImg)) rawImg = this.resolveAbsoluteUrl(rawImg);
+    if (!rawImg && isHtml) {
+      rawImg = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='210'%3E%3Crect width='400' height='210' fill='%23e0e0e0'/%3E%3C/svg%3E";
+    }
+    const img = esc(rawImg);
+    let link = this.buildPageUrl(postId);
+    if (!isHtml) link = this.escapeValue(link);
+    const updateDate = (postInfo.updated_at || new Date().toISOString()).slice(0, 10);
+    const isActive = this.currentPageId === postId ? 'active' : '';
+
+    if (!customTemplate) {
+      const imgHtml = img ? `<div class="nav-card-img"><img src="${img}" alt="" loading="lazy" decoding="async"></div>` : '';
+      return `<a href="${link}" class="nav-card">${imgHtml}<div class="nav-card-content"><h3 class="nav-card-title">${title}</h3>${desc ? `<p class="nav-card-desc">${desc}</p>` : ''}</div></a>`;
+    }
+    const values: Record<string, string> = { TITLE: title, DESCRIPTION: desc, LINK: link, OGP_IMAGE: img, PAGE_URL: link, UPDATE_DATE: updateDate, IS_ACTIVE: isActive };
+    let itemHtml = customTemplate.replace(/\{\{(TITLE|DESCRIPTION|LINK|OGP_IMAGE|PAGE_URL|UPDATE_DATE|IS_ACTIVE)\}\}/g, (_m, key: string) => values[key]);
+    itemHtml = itemHtml.replace(/\{\{\s*CATEGORY(?::\s*(all)\s*)?\}\}/g, (_m, all) => this.formatCategories(postInfo.category || '', !!all));
+    const rawDate = postInfo.updated_at || new Date().toISOString();
+    itemHtml = itemHtml.replace(/\{\{UPDATE_DATE:([A-Z]+)\}\}/g, (_, fmt) => this.formatDate(rawDate, fmt));
+    itemHtml = itemHtml.replace(/\{\{IS_NEW:(\d+)\}\}/g, (_, d) => this.isNew(rawDate, parseInt(d, 10)) ? 'new' : '');
+    // Expand POST_MD:: tags using this card's own DATA blocks
+    if (postInfo.content_md) {
+      const cardDataBlocks: Record<string, string> = {};
+      this.extractDataBlocks(postInfo.content_md, cardDataBlocks);
+      const valueOut = isHtml ? (v: string) => v : (v: string) => this.escapeValue(v);
+      itemHtml = itemHtml.replace(/\{\{POST_MD::#([a-zA-Z0-9_\-]+):([a-zA-Z][a-zA-Z0-9_]*)\}\}/g, (_, rowId, key) => valueOut(cardDataBlocks[`#${rowId}:${key}`] || ''));
+      itemHtml = itemHtml.replace(/\{\{POST_MD::([a-zA-Z][a-zA-Z0-9_]*)\}\}/g, (_, key) => valueOut(cardDataBlocks[key] || ''));
+    }
+    return itemHtml;
+  }
+
+  // ==========================================
+  // Escaping by output
+  // ==========================================
+
+  /** A text value: HTML-escaped in HTML, as it is in Markdown, escaped for the data format otherwise. */
+  private escapeValue(value: string): string {
+    if (this.outputMode === 'html') return escapeHtml(value);
+    if (this.outputMode === 'md') return value;
+    return this.escapeForData(value);
+  }
+
+  /** A URL value: as it is in HTML and Markdown, escaped for the data format otherwise. */
+  private escapeUrl(value: string): string {
+    return this.outputMode === 'data' ? this.escapeForData(value) : value;
+  }
+
+  private escapeForData(value: string): string {
+    switch (this.dataFormat) {
+      case 'json':
+        // PHP json_encode with JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES (line separators stay escaped).
+        return JSON.stringify(String(value)).slice(1, -1).split(String.fromCharCode(0x2028)).join('\\u2028').split(String.fromCharCode(0x2029)).join('\\u2029');
+      case 'xml':
+        return String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;');
+      case 'csv':
+        return /[",\r\n]/.test(value) ? '"' + String(value).replace(/"/g, '""') + '"' : String(value);
+      default:
+        return String(value);
+    }
+  }
+
+  private escapeMarkdownLinkText(text: string): string {
+    return String(text).replace(/\\/g, '\\\\').replace(/\[/g, '\\[').replace(/\]/g, '\\]');
+  }
+
+  private escapeMarkdownUrl(url: string): string {
+    return String(url).replace(/ /g, '%20').replace(/\(/g, '%28').replace(/\)/g, '%29');
+  }
+
+  /** {{CATEGORY}}: spans in HTML, comma-separated elsewhere. */
+  private formatCategories(category: string, includeStructural: boolean): string {
+    const cats = includeStructural ? splitCategories(category) : visibleCategories(category);
+    if (this.outputMode === 'html') return cats.map(c => '<span class="category">' + escapeQuotes(c) + '</span>').join(' ');
+    return this.escapeValue(cats.join(', '));
+  }
+
+  // ==========================================
+  // {{PAGE_URL:ID}}
+  // ==========================================
+
+  /** The page's URL with its extension; data and DB pages carry ?v=<hash of content>. */
+  private async pageUrlTag(targetId: string): Promise<string> {
+    const target = await this.readPage(targetId);
+    if (!target) return '';
+    let url = this.buildPageUrl(targetId);
+    const format = pageOutputFormat(target);
+    if (isDataFormat(format) || isApiFormat(format)) url += '?v=' + await this.dataVersion(targetId, target);
+    return url;
+  }
+
+  /** Static builds hash the built output; previews (never cached) hash the body. */
+  private async dataVersion(pageId: string, pageData: PageData): Promise<string> {
+    if (!this.snapshot) return hash8(String(pageData.content_md ?? ''));
+    const known = this.dataHashes.get(pageId);
+    if (known) return known;
+    if (hashStack.includes(pageId)) return hash8(String(pageData.content_md ?? ''));
+    hashStack.push(pageId);
+    let output: string | null;
+    try {
+      const builder = new MikanBoxRenderer(this.env, this.siteSettings, this.request, this.snapshot, { imageSizes: false });
+      builder.setDataHashes(this.dataHashes);
+      output = isApiFormat(pageOutputFormat(pageData)) ? await builder.renderApi(pageId) : await builder.renderData(pageId);
+    } finally {
+      hashStack.pop();
+    }
+    const value = await hash8(String(output ?? ''));
+    this.dataHashes.set(pageId, value);
+    return value;
+  }
+
+  static dataHash(output: string): Promise<string> { return hash8(output); }
+
+  // ==========================================
+  // Markdown versions, data pages and mikanBox DB
+  // ==========================================
+
+  private async beginOutput(pageId: string, mode: 'md' | 'data', format: string, pageData: PageData, previewData?: PageData) {
+    this.previewPage = previewData ? { id: pageId, data: normalizeLegacyPage(previewData) } : this.previewPage;
+    await this.loadPageIndex();
+    if (previewData) this.pageFormats.set(pageId, pageOutputFormat(previewData));
+    this.outputMode = mode;
+    this.dataFormat = format;
+    this.linkToMarkdown = mode === 'md';
+    this.currentPageId = pageId;
+    this.currentPageData = {};
+    this.currentPageInfo = pageData;
+    this.globalCssBuffer = [];
+    this.javascriptBuffer.clear();
+    this.includedComponentIds.clear();
+  }
+
+  private endOutput() {
+    this.outputMode = 'html';
+    this.dataFormat = '';
+    this.linkToMarkdown = false;
+  }
+
+  /** Public pages are readable by everyone; drafts and pending pages only when the caller allows private content. */
+  private accessible(pageData: PageData, allowPrivate: boolean): boolean {
+    return isPublicStatus(pageData.status) || allowPrivate;
+  }
+
+  /**
+   * mikanBox DB: the DATA/DATAROW data of a published page as JSON, the body of /api/ID.json
+   * (and its alias /api/ID). Returns null for other formats and unpublished pages.
+   */
+  async renderApi(pageId: string, previewData?: PageData): Promise<string | null> {
+    const pageData = normalizeLegacyPage(previewData ?? await this.readPage(pageId));
+    if (!pageData || !isApiFormat(pageOutputFormat(pageData)) || !isPublicStatus(pageData.status)) return null;
+    // PHP json_encode(JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT): the same bytes in every edition ("/" is written "\/").
+    return JSON.stringify(await this.getPageDataBlocks(pageId, pageData), null, 4).replace(/\//g, '\\/');
+  }
+
+  /**
+   * The body of a data-format page, as it is, with tags expanded when the page asks for it.
+   * Returns null when the page does not exist, is not a data page, or is private.
+   */
+  async renderData(pageId: string, previewData?: PageData, allowPrivate = false): Promise<string | null> {
+    const pageData = normalizeLegacyPage(previewData ?? await this.readPage(pageId));
+    if (!pageData) return null;
+    const format = pageOutputFormat(pageData);
+    if (!isDataFormat(format) || !this.accessible(pageData, allowPrivate)) return null;
+    let body = String(pageData.content_md ?? '');
+    if (!pageExpandsTags(pageData)) return body;
+    await this.beginOutput(pageId, 'data', format, pageData, previewData);
+    try {
+      body = this.extractDataBlocks(body, this.currentPageData);
+      body = await this.includeComponentsAsText(body);
+      body = this.removeFunctionalTags(body);
+      body = await this.replaceBasicTags(body, pageData, ...this.pageMeta(pageData));
+      body = await this.replaceNavTags(body);
+      body = await this.replaceTextContentTags(body);
+      return body;
+    } finally {
+      this.endOutput();
+    }
+  }
+
+  /**
+   * The Markdown version: front matter, the saved Markdown with tags handled for Markdown
+   * readers, then the chosen footer components. Every URL is absolute. Returns null when the
+   * page has no Markdown version or is private.
+   */
+  async renderMarkdown(pageId: string, previewData?: PageData, allowPrivate = false): Promise<string | null> {
+    const pageData = normalizeLegacyPage(previewData ?? await this.readPage(pageId));
+    if (!pageData) return null;
+    if (!formatHasMarkdown(pageOutputFormat(pageData)) || !this.accessible(pageData, allowPrivate)) return null;
+    await this.beginOutput(pageId, 'md', '', pageData, previewData);
+    try {
+      const body = await this.markdownText(String(pageData.content_md ?? ''), pageData);
+      const footers: string[] = [];
+      for (const componentId of await normalizeFooterComponents(pageData.md_footer_comps ?? [], id => this.readComponent(id))) {
+        const component = await this.readComponent(componentId);
+        const footer = (await this.markdownText(String(component?.html ?? ''), pageData)).trim();
+        if (footer !== '') footers.push(footer);
+      }
+      const quote = (v: unknown) => '"' + String(v ?? '').replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\r\n|\r|\n/g, '\\n') + '"';
+      const front = ['---', 'title: ' + quote(pageData.title ?? pageId), 'date: ' + String(pageData.updated_at || new Date().toISOString()).slice(0, 10)];
+      if (String(pageData.description ?? '').trim() !== '') front.push('description: ' + quote(String(pageData.description).trim()));
+      if (pageOutputFormat(pageData) === 'html_md') {
+        this.linkToMarkdown = false;
+        front.push('url: ' + quote(this.buildPageUrl(pageId)));
+        this.linkToMarkdown = true;
+      }
+      const categories = visibleCategories(pageData.category);
+      if (categories.length) front.push('categories: ' + quote(categories.join(', ')));
+      front.push('---');
+      let output = front.join('\n') + '\n\n' + body.trim();
+      if (footers.length) output += '\n\n' + footers.join('\n\n');
+      return output + '\n';
+    } finally {
+      this.endOutput();
+    }
+  }
+
+  /** Output for the editor preview: what the page actually publishes (drafts included). */
+  async renderPreview(pageId: string, pageData: PageData): Promise<{ type: string; body: string; status: number }> {
+    const format = pageOutputFormat(pageData);
+    const published = { ...normalizeLegacyPage(pageData), status: 'public_static' } as PageData;
+    if (isApiFormat(format)) return { type: 'text/plain; charset=utf-8', body: String(await this.renderApi(pageId, published) ?? ''), status: 200 };
+    if (isDataFormat(format)) return { type: 'text/plain; charset=utf-8', body: String(await this.renderData(pageId, published) ?? ''), status: 200 };
+    if (format === 'md') return { type: 'text/plain; charset=utf-8', body: String(await this.renderMarkdown(pageId, published) ?? ''), status: 200 };
+    const result = await this.render(pageId, true, pageData);
+    return { type: 'text/html; charset=utf-8', body: result.html, status: result.status };
+  }
+
+  /** Tag handling and link completion for Markdown text (the page body or a footer component). */
+  private async markdownText(text: string, pageData: PageData, depth = 0): Promise<string> {
+    text = text.replace(/\r\n|\r/g, '\n');
+    // Code and HTML comments stay exactly as written. Code first, so "<!--" inside a code span does not start a comment.
+    const codeMap: Record<string, string> = {};
+    text = this.protectCodeSpans(text, codeMap);
+    text = text.replace(/<!--[\s\S]*?-->/g, m => {
+      const key = `\x02MDKEEP${Object.keys(codeMap).length}\x03`;
+      codeMap[key] = m;
+      return key;
+    });
+    text = this.extractDataBlocks(text, this.currentPageData);
+    // Components are design: only the chosen footer components reach the Markdown version.
+    text = text.replace(/\{\{\s*COMPONENT:[^}]*\}\}/g, '');
+    text = this.removeFunctionalTags(text);
+    text = await this.replaceBasicTags(text, pageData, ...this.pageMeta(pageData));
+    text = await this.replaceNavTags(text);
+    text = await this.replaceTextContentTags(text, depth);
+    text = this.completeMarkdownLinks(text);
+    // Removed tags can leave runs of empty lines; code blocks are still protected here.
+    text = text.replace(/\n[ \t]*\n(?:[ \t]*\n)+/g, '\n\n');
+    // Restore in reverse order: a comment may contain a code placeholder.
+    for (const [key, original] of Object.entries(codeMap).reverse()) text = text.split(key).join(original);
+    return text;
+  }
+
+  private pageMeta(pageData: PageData): [string, string, string, string] {
+    const site = this.siteSettings;
+    const siteName = String(site.site_name || '');
+    return [
+      pageData.title !== undefined ? pageData.title + ' - ' + siteName : siteName,
+      pageData.description || String(site.description || ''),
+      pageData.keywords || String(site.keywords || ''),
+      pageData.ogp_image || String(site.ogp_image || ''),
+    ];
+  }
+
+  /** Functions and decoration that mean nothing outside an HTML page. */
+  private removeFunctionalTags(text: string): string {
+    return text.replace(/\{\{\s*(?:AI_QUESTION(?::[^}]*)?|SEARCH_RESULTS(?::[^}]*)?|CONTENT|HEAD_CSS|IS_ACTIVE)\s*\}\}/gu, '');
+  }
+
+  /** In data pages, a component is inserted as plain text (no scope wrapper, CSS or JS). */
+  private includeComponentsAsText(text: string, visited: string[] = []): Promise<string> {
+    return replaceAsync(text, /\{\{COMPONENT:([a-zA-Z0-9_\-]+)\}\}/g, async (_m, id) => {
+      if (visited.includes(id) || visited.length > 32) return '';
+      const component = await this.readComponent(id);
+      if (!component || component.is_ai_doc) return '';
+      return this.includeComponentsAsText(String(component.html ?? ''), [...visited, id]);
+    });
+  }
+
+  /** POST_MD and media tags for Markdown versions and data pages. EXT_MD is not available in the Cloud edition. */
+  private async replaceTextContentTags(text: string, depth = 0): Promise<string> {
+    const isMarkdown = this.outputMode === 'md';
+    const out = (v: string) => isMarkdown ? String(v) : this.escapeValue(String(v));
+    const mediaUrl = (file: string) => this.resolveAbsoluteUrl('media/' + file);
+
+    text = text.replace(/\{\{IMAGE:([a-zA-Z0-9_\-\.]+)\}\}/g, (_m, file) => isMarkdown ? '![](' + this.escapeMarkdownUrl(mediaUrl(file)) + ')' : out(mediaUrl(file)));
+    text = text.replace(/\{\{(?:AUDIO|VIDEO):([a-zA-Z0-9_\-\.]+)\}\}/g, (_m, file) => isMarkdown ? '[' + this.escapeMarkdownLinkText(file) + '](' + this.escapeMarkdownUrl(mediaUrl(file)) + ')' : out(mediaUrl(file)));
+    text = text.replace(/\{\{EXT_MD:[^}]+\}\}/g, '');
+
+    const pageBlocks = async (pageId: string): Promise<Record<string, string>> => {
+      const postData = await this.readPage(pageId);
+      if (!postData?.content_md || !isPublicStatus(postData.status)) return {};
+      const blocks: Record<string, string> = {};
+      this.extractDataBlocks(postData.content_md, blocks);
+      return blocks;
+    };
+    text = await replaceAsync(text, /\{\{POST_MD:([a-zA-Z0-9_\-\/]+)#([a-zA-Z0-9_\-]+):([a-zA-Z][a-zA-Z0-9_]*)\}\}/g, async (_m, id, row, key) => out((await pageBlocks(id))[`#${row}:${key}`] ?? ''));
+    text = text.replace(/\{\{POST_MD::#([a-zA-Z0-9_\-]+):([a-zA-Z][a-zA-Z0-9_]*)\}\}/g, (_m, row, key) => out(this.currentPageData[`#${row}:${key}`] ?? ''));
+    text = await replaceAsync(text, /\{\{POST_MD:([a-zA-Z0-9_\-\/]*):([a-zA-Z][a-zA-Z0-9_]*)\}\}/g, async (_m, id, key) =>
+      out(id === '' ? (this.currentPageData[key] ?? '') : ((await pageBlocks(id))[key] ?? '')));
+    // POST_MD:ID — the other page's body
+    text = await replaceAsync(text, /\{\{POST_MD:([a-zA-Z0-9_\-\/]+)\}\}/g, async (_m, id) => {
+      const postData = await this.readPage(id);
+      if (!postData?.content_md || !isPublicStatus(postData.status) || depth >= 5) return '';
+      if (!isMarkdown) {
+        const blocks: Record<string, string> = {};
+        return out(this.extractDataBlocks(String(postData.content_md), blocks));
+      }
+      const savedId = this.currentPageId, savedData = this.currentPageData;
+      this.currentPageId = id;
+      this.currentPageData = {};
+      try {
+        return (await this.markdownText(String(postData.content_md), postData, depth + 1)).trim();
+      } finally {
+        this.currentPageId = savedId;
+        this.currentPageData = savedData;
+      }
+    });
+    return text;
+  }
+
+  /** Markdown links and images: internal links resolve like HTML links; everything becomes absolute. */
+  private completeMarkdownLinks(text: string): string {
+    const allPosts = [...this.pageFormats.keys()];
+    const siteUrl = this.getSiteUrl().replace(/\/$/, '');
+    const origin = siteUrl.match(/^(https?:\/\/[^/]+)/i)?.[1] ?? siteUrl;
+    return text.replace(/(!?)\[((?:\\.|[^\[\]\n\\])*)\]\(\s*([^)\s]+)((?:\s+"[^"\n]*")?)\s*\)/gu, (whole, bang, label, url, title) => {
+      if (/^(?:[a-z][a-z0-9+.\-]*:|\/\/|#)/i.test(url)) return whole;
+      let resolved: string | null;
+      if (bang === '!') {
+        const path = url.split(/[?#]/)[0] || url;
+        resolved = siteUrl + '/media/' + (path.replace(/\/+$/, '').split('/').pop() || path);
+      } else {
+        resolved = this.resolveInternalLink(url, allPosts);
+        if (resolved === null) {
+          if (url === './' || url === '.') resolved = siteUrl + '/';
+          else if (url.startsWith('/')) resolved = origin + url;
+          else resolved = siteUrl + '/' + url.replace(/^(?:\.\/)+/, '');
+        }
+      }
+      return bang + '[' + label + '](' + this.escapeMarkdownUrl(resolved) + title + ')';
+    });
+  }
+
+  /**
+   * Shared by HTML (href="…") and Markdown ([…](…)) link completion: which page a written
+   * link target means, and the URL it should point at. Returns null to leave the link as written.
+   */
+  private resolveInternalLink(originalUrl: string, allPosts: string[]): string | null {
+    // external links, anchors, mail and phone links stay as written
+    if (/^(?:https?:\/\/|\/\/|#|mailto:|tel:)/i.test(originalUrl)) return null;
+    const markdownRoot = this.outputMode === 'md' && originalUrl.startsWith('/');
+    // root-relative paths stay as written in HTML
+    if (!markdownRoot && originalUrl.startsWith('/')) return null;
+    const parts = originalUrl.match(/^([^?#]*)(\?[^#]*)?(#.*)?$/);
+    let path = parts ? parts[1] : originalUrl;
+    const suffix = parts ? (parts[2] || '') + (parts[3] || '') : '';
+    if (markdownRoot && path.startsWith('/')) {
+      const basePath = this.getSiteBasePath().replace(/^\/+|\/+$/g, '');
+      path = path.replace(/^\/+/, '');
+      if (basePath !== '' && (path === basePath || path.startsWith(basePath + '/'))) path = path.slice(basePath.length).replace(/^\/+/, '');
+    }
+    if (this.outputMode === 'md') path = path.replace(/^(?:(?:\.\/)|(?:\.\.\/))+/, '');
+    // Normalize generated URL forms for comparison with page IDs.
+    let checkId = path.replace(/^\/+|\/+$/g, '');
+    const lower = checkId.toLowerCase();
+    if (lower.endsWith('/index.html')) checkId = checkId.slice(0, -11);
+    else if (lower.endsWith('.html')) checkId = checkId.slice(0, -5);
+    else if (lower.endsWith('.md')) checkId = checkId.slice(0, -3);
+    if (checkId === '' && this.outputMode === 'md') checkId = 'index';
+    const found = allPosts.find(pid => pid.toLowerCase() === checkId.toLowerCase());
+    if (found) return this.buildPageUrl(found) + suffix;
+    // looks like a page ID (letters, digits, - _ /) even if no such page exists yet
+    if (/^[a-z0-9_\-/]+$/i.test(checkId)) return this.buildPageUrl(checkId);
+    return null;
   }
 }

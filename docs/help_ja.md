@@ -19,6 +19,8 @@
 - <a href="#tags">利用可能なタグ一覧</a>
 - <a href="#init-comps">初期コンポーネント一覧</a>
 - <a href="#data-embedding">データの埋め込み、読み込み、API</a>
+- <a href="#output-formats">出力形式（Markdown版・データ）</a>
+- <a href="#catalog-pager">目録とページ一覧</a>
 - <a href="#site-mapfeed">サイトマップ・RSS・API</a>
 - <a href="#podcast">ポッドキャスト</a>
 - <a href="#ai-guide">AIデザインの公開方法</a>
@@ -54,7 +56,7 @@
 }
 </style>
 
-# 🍊mikanBox 操作マニュアル <small class="manual-version">v2.16.10</small>
+# 🍊mikanBox 操作マニュアル <small class="manual-version">v2.18.1</small>
 
 🍊mikanBoxには、SQLiteデータベースを使う**🍊mikanBox** [SQLite版]{.type-badge .badge-sqlite}と、データベースを使わないJSONファイルベースの**🍊mikanBox flat** [flat版]{.type-badge .badge-flat}があります。基本的な使い方は共通なので、このヘルプは両方に対応しています。バージョンによって内容が異なる箇所には、上記のバッジで区別を示します。
 
@@ -350,6 +352,8 @@ GPTの起動文には人が読む公式マニュアルURLを含めます。Claud
 - [[add]{.material-symbols-outlined}新規]{.m-btn .m-btn-blue} — 新しいカテゴリ名を直接入力して追加します。まだどのページにも設定されていないカテゴリでも、この時点でクラウドに表示されます。
 - [[delete]{.material-symbols-outlined}削除]{.m-btn .m-btn-gray} — クリックすると各カテゴリタグに削除用の「×」が表示される「削除モード」に切り替わります。
 
+「_」で始まるカテゴリ（`_nav`、`_sample` など）は、サイトを組み立てるための構造用の印です。一覧では通常のカテゴリのあとに薄く表示されます。詳しくはページ編集の[カテゴリ](#page-edit)を参照してください。
+
 ### キーワード検索 [SQLite版のみ]{.type-badge .badge-sqlite}
 
 #### 検索ボックス
@@ -375,7 +379,6 @@ GPTの起動文には人が読む公式マニュアルURLを含めます。Claud
 - **承認待ち** — [SQLite版のみ]{.type-badge .badge-sqlite} 非公開ですが、推測不可能な確認用URL（`?preview=トークン`、有効期限7日）を知っている人だけが内容を確認できます。承認者へのレビュー依頼に使います。承認待ちのページは一覧の先頭に表示されます。
 - **公開(動的)** — PHPで動的に表示します。
 - **公開(静的)** — サイト画面の静的サイト生成 (SSG)の設定に従ったディレクトリ、ファイル設定で静的HTMLファイルとして公開します。
-- **DB** — ページとしては非公開になり、`{{DATAROW}}`のデータが、`サイトURL/api/ページID`のアドレスのAPIとして読み取れるようになります。
 
 公開(静的)のページをそれ以外の公開設定に設定すると、静的HTMLファイルは削除されます。
 
@@ -397,7 +400,11 @@ GPTの起動文には人が読む公式マニュアルURLを含めます。Claud
 
 #### カテゴリ
 
-ページに設定されたカテゴリが表示されます。`{{NAV_LINKS:カテゴリ}}` などで絞り込みに利用されます。
+ページに設定されたカテゴリが表示されます。`{{NAV_LINKS:カテゴリ}}` などで絞り込みに利用されます。「_」で始まるカテゴリは薄く表示されます。
+
+#### 出力形式のラベル
+
+出力形式がHTML以外のページには、タイトルの横に小さなラベル（HTML + Markdownは `+MD`、Markdownは `MD`、データ形式は `JSON`・`JS` など）が付きます。プレビューボタンは、Markdownだけのページとデータ形式のページでは、そのまま出るテキストを管理画面を通して開きます（静的ファイルをサーバーが文字コードなしで返して文字化けすることを避けるため）。ビジュアル編集のボタンは、HTMLを出さないページではグレーになり、押せません。
 
 ### 静的サイトビルドボタン
 
@@ -433,7 +440,6 @@ GPTの起動文には人が読む公式マニュアルURLを含めます。Claud
 - **承認待ち** — [SQLite版のみ]{.type-badge .badge-sqlite} 非公開ですが、推測不可能な確認用の共有URL（`?preview=トークン`、有効期限7日）が自動生成され、この画面にも表示されます。URLを知らせるだけで、承認者に管理画面へログインさせずに内容を確認してもらえます。
 - **公開(動的)** — PHPで動的に表示します。
 - **公開(静的)** — サイト画面の静的サイト生成 (SSG)の設定に従ったディレクトリ、ファイル設定で静的HTMLファイルとして公開します。
-- **DB** — ページとしては非公開になり、`{{DATAROW}}`のデータが、`サイトURL/api/ページID`のアドレスのAPIとして読み取れるようになります。
 
 公開(静的)のページをそれ以外の公開設定に設定すると、静的HTMLファイルは削除されます。
 
@@ -449,15 +455,29 @@ mikanBox 2.9.5以降、このURLには7日間の有効期限があります。�
 
 #### ID
 
-URLになるページの識別記号（スラッグ）です。半角英数字とハイフンが使用できます。ページのURLは `サイトのURL/ID` の形になります。既存のIDと同じものを指定して保存すると、その内容で上書きされますのでご注意ください。indexページのIDは変更できません。ID自体に「/」を使用することもできます。静的サイトの際、IDに「/」が含まれていると、その部分がディレクトリとして扱われます。また、動的サイトの場合も擬似的にディレクトリ構造が作られます。例えば、`news/2024` のようなIDを設定すると、`サイトのURL/news/2024` のようなURLになります。
+URLになるページの識別記号（スラッグ）です。半角英数字とハイフンが使用できます。ドット（`.`）は使えません（拡張子は[出力形式](#output-formats)から付きます）。ページのURLは `サイトのURL/ID` の形になります。既存のIDと同じものを指定して保存すると、その内容で上書きされますのでご注意ください。indexページのIDは変更できません。ID自体に「/」を使用することもできます。静的サイトの際、IDに「/」が含まれていると、その部分がディレクトリとして扱われます。また、動的サイトの場合も擬似的にディレクトリ構造が作られます。例えば、`news/2024` のようなIDを設定すると、`サイトのURL/news/2024` のようなURLになります。
+
+#### 出力形式
+
+ページの出力形式を、HTML / HTML + Markdown / Markdown / データ（JSON・XML・CSV・テキスト・JavaScript・CSS・[mikanBox DB](#mikanbox-db)）から1つ選びます。既定はHTMLです。すぐ下に、実際に出るURL（例 `https://example.com/news-list.json`）が表示されます。選んだ形式で使わない欄は隠れます（Markdownではデザインコンポーネントとページ専用CSS・JS、データ形式ではさらにOGP画像・概要・キーワード）。公開URLがないときは、Markdownを含む形式は選べません。詳しくは[出力形式](#output-formats)を参照してください。
 
 #### デザインコンポーネント
 
 このページのレイアウトに使用するページコンポーネントを選択します。「デザイン」メニューで「ページコンポーネントとして使用する」にチェックを入れたコンポーネントが選択肢として表示されます。
 
+#### Markdown版の末尾コンポーネント
+
+出力形式がHTML + Markdown・Markdownのときに表示されます。[Markdown版](#markdown-version)の最後に付けるコンポーネントのIDを、付ける順にカンマ区切りで入力します。空欄なら何も付けません。デザインコンポーネント（ページコンポーネント）とAI指示は使えません。
+
+#### タグを展開する
+
+出力形式がデータ形式のときに表示されます。本文の `{{ }}` タグを展開するかどうかを切り替えます。JSON・XML・CSV・テキストは既定でオン、JavaScript・CSSは既定でオフです。値は形式に合わせてエスケープされます（[データ形式](#data-formats)）。
+
 #### カテゴリ（カンマ区切り）
 
 ページを分類するカテゴリをカンマ区切りで自由に入力します。入力欄の下に現在使用中のカテゴリが表示されます。カテゴリの一覧ページは自動では作成されません。必要な場合は、ページを作成し、`{{NAV_LINKS:カテゴリ}}` や `{{NAV_CARDS:カテゴリ:コンポーネントID}}` を配置してください。
+
+「_」で始まるカテゴリ（`_nav`、`_sample`、`_temp` など）は、サイトを組み立てるための構造用の印として扱います。実用的なカテゴリ（`coffee` など）と文字1つで区別でき、いくつでも付けられます。`{{NAV_LINKS:_nav}}` のような明示の指定には使えますが、[`@same`](#navigation) の判定、`{{CATEGORY}}`、[Markdown版](#markdown-version)の `categories` には使いません（`{{CATEGORY:all}}` には出ます）。「@」で始まるカテゴリ名は、`@same` などの特別な指定と区別するため予約されていて使えません。
 
 #### 表示順
 
@@ -475,9 +495,11 @@ SNSでシェアされた際や、カード一覧などで表示される画像�
 
 ページの概要となる説明文を設定します。 `{{DESCRIPTION}}` で出力され、検索結果のタイトル下に表示される紹介文として利用されます。本文欄とすき間なく接続して表示され、ひと続きの内容として編集できます。
 
-#### 本文 (Markdown or HTML)
+#### 本文
 
 ページのメインコンテンツを Markdown 記法やHTMLで記述します。MarkdownとHTMLは混在できます。AIが生成した複雑なHTMLをそのまま貼り付けても正常に動作します。利用できるMarkdown記法と独自タグは編集画面下部のガイドを参照してください。詳しくは [Markdown](#markdown)・[コンポーネント（タグ）](#components) の項目を参照してください。
+
+欄の見出しは出力形式に合わせて、「本文 (Markdown or HTML)」「本文 (Markdown)」「本文 (JSON)」のように変わります。データ形式では、本文がそのまま出力されます（[データ形式](#data-formats)）。
 
 #### ページ専用CSS
 
@@ -497,7 +519,7 @@ JavaScriptにはCSSのスコープ設定は適用されません。JS欄ではMa
 
 #### [open_in_new]{.material-symbols-outlined} プレビュー{.m-btn .m-btn-blue}
 
-保存していない本文・CSS・JavaScriptなど、編集画面の現在の内容を新しいタブで確認します。プレビューでは保存や公開は行いません。内容をさらに変更した場合は、もう一度プレビューを開いてください。新規ページでも利用できます。
+保存済みの内容を、ページ一覧のプレビューボタンと同じく新しいタブで開きます。HTMLを出すページ（HTML・HTML + Markdown）は公開設定に応じたURLでページを、Markdownだけのページとデータ形式のページは、そのまま出るテキストを表示します（管理画面を通して文字コードUTF-8で表示するため、文字化けしません）。変更を確認するときは、先に保存してください。新規ページは、一度保存するとボタンが使えるようになります。
 
 #### [arrow_back]{.material-symbols-outlined} 一覧へ戻る{.m-btn .m-btn-gray}
 
@@ -512,6 +534,8 @@ JavaScriptにはCSSのスコープ設定は適用されません。JS欄ではMa
 ## ビジュアル編集 {#visual-edit}
 
 ページを、**実際の見た目のまま**開いて、本文やページ専用CSSを、その場で直せる画面です。サイトのレイアウト・CSS・画像がそのまま表示されるので、仕上がりを見ながら、Markdownを書き換えられます。管理画面と同じログインが必要で、ログインしていないときは、管理画面のログインへ移ります。公開デモ（デモモード）のサイトでは使えません。
+
+ビジュアル編集は、HTMLを出すページ（出力形式がHTML・HTML + Markdown）だけで使えます。Markdownだけのページとデータ形式のページでは、ボタンがグレーになり、押せません。ビジュアル編集の画面のページ選択にも出ません。
 
 #### 開き方
 
@@ -637,6 +661,8 @@ mikanBoxは、PHPで動的にページを表示するだけでなく、サイト
 
 ディレクトリ型は、動的公開と同じURLで公開できます。切り替えてもリンク切れが起こりません。ファイル名型は、URLに拡張子が含まれ、シンプルなファイル構成で公開できます。
 
+URL形式が影響するのはHTMLだけです。Markdown版とデータ形式のページは、どちらの形式でも `ID.md`・`ID.json` のように `ID.拡張子` で書き出します。Markdownだけのページは `/ID.md` でだけ読めます。`.htaccess` は書き出しません（[URLの規則](#output-urls)）。
+
 初期値は、「サーバー内で静的ページを生成」ではディレクトリ型、「アップロード用フォルダを作成」ではファイル名型です。作成方法ごとに最後に選んだ出力構成を記憶するため、切り替えてもそれぞれの設定が保たれます。
 
 #### [auto_awesome]{.material-symbols-outlined} 保存して静的サイトをビルド{.m-btn .m-btn-blue}
@@ -652,6 +678,8 @@ mikanBoxは、PHPで動的にページを表示するだけでなく、サイト
 `sitemap.xml` `rss.xml` `podcast.xml` は、通常はアクセスのたびにPHPがその場で最新の内容を生成します（後述の[サイトマップ・RSS・API](#site-mapfeed)を参照）。SSGでサイトマップやRSSをファイル出力するには絶対URLが必要なため、公開先ルートURLが設定されている場合に生成します。「サーバー内で静的ページを生成」では、未設定時に現在のサイトURLを使用します。生成後にページを追加・変更しても、次に静的サイトをビルドし直すまでは内容が更新されません。
 
 404ページ（ページID `404`）は、サイトマップにもRSSにも含めません。エラー応答であってコンテンツではないため、検索エンジンや読者に案内する対象ではないからです。これは静的・動的のどちらの生成でも同じです。
+
+[データ形式](#data-formats)のページも、サイトマップ・RSSに含めません。Markdownだけのページは、`/ID.md` のURLで載せます。サイトマップは、1ページだけを書き出したときも、「公開(静的)」のすべてのページで作り直します。
 
 ### 言語 {#site-lang}
 
@@ -686,6 +714,8 @@ mikanBoxの管理用MCPサーバーは、ステートレスな **MCP 2026-07-28*
 Claudeのカスタムコネクタ画面が扱う認証は「認証なし」またはOAuthです。表示されるOAuth Client IDとOAuth Client シークレットは管理用APIキーの入力欄ではありません。mikanBoxがOAuthに対応するまでは、管理用MCPをClaudeカスタムコネクタへ安全に登録できません。APIキーをClient ID／シークレット欄へ貼り付けないでください。認証不要の公開ヘルプMCPは、カスタムコネクタへURLだけで登録できます。
 
 APIキーはパスワードと同じように扱い、公開リポジトリや共有ファイルへ記録しないでください。複数のmikanBoxサイトを接続している場合、AIは初回接続時と書き込み前に `get_site_info` を呼び、対象サイトを確認します。
+
+ページの[出力形式](#output-formats)は、`create_page`・`update_page` の `output_format`（`html` / `html_md` / `md` / `json` / `xml` / `csv` / `txt` / `js` / `css` / `db`）、`md_footer_comps`（末尾コンポーネントのIDの配列）、`expand_tags`（データ形式でタグを展開するか。省略時は形式ごとの既定）で設定します。`get_page`・`list_pages` の結果にも `output_format` が入ります。`update_page` で公開済みのページを更新しても、更新日（`updated_at`）は変わりません。非公開から公開へ切り替えたときだけ現在時刻になります（2.17.0から管理画面と同じ動きです）。`status` は `draft` / `public_dynamic` / `public_static` です。2.17までの `db` を渡すと、`output_format` を `db` にして公開(動的)で保存します。
 
 mikanBox 2.5.1以降では、MCPの接続指示によりAIは初回接続時に `get_ai_context` を呼びます。このツールは `DESIGN.md`、`BRAND.md`、`CONTENTS.md` など、登録されているすべての [AI指示]{.type-badge .badge-ai} コンポーネントを一度に返します。AIは受け取った内容をそのサイト固有のプロジェクト指示として、コンテンツ・デザイン・コードの変更に適用します。指示コンポーネントを更新すれば、次回取得時からAIへの指示も更新されます。
 
@@ -736,7 +766,7 @@ CSVファイルを選択します。エンコーディング（UTF-8 / Shift-JIS
 - フィールド名（1行目）は英数字で記述してください。
 - 価格の位取りカンマ（例: `1,000`）はExcelが自動的にクォートするため正しく読み込めます。
 - データ専用ページは**下書き**にしておくことを推奨します。訪問者には見えませんが、`{{POST_MD:pageID#rowID:FIELD}}` や `{{NAV_CARDS}}` からは参照できます。
-- 公開設定を**DB**にすると、ページとしては非公開になり、`{{DATAROW}}`のデータが、`サイトURL/api/ページID`のアドレスのAPIとして読み取れるようになります。
+- 出力形式を**mikanBox DB**にして公開すると、ページとしては表示せず、`{{DATA}}`・`{{DATAROW}}`のデータを `サイトURL/api/ページID.json` のAPI（JSON）として読み取れるようになります（[mikanBox DB](#mikanbox-db)）。
 
 ### データ管理 [SQLite版のみ]{.type-badge .badge-sqlite} {#site-data-mgmt}
 
@@ -1379,15 +1409,44 @@ Material Symbolsなどのアイコンフォントのアイコンを、ボタン�
 `{{AUDIO:ファイル名}}` → `<audio src="media/ファイル名" controls></audio>`
 `{{VIDEO:ファイル名}}` → `<video src="media/ファイル名" controls></video>`
 
-### ナビゲーション
+### ナビゲーション {#navigation}
 
 リンクの一覧は `{{NAV_LINKS:カテゴリ}}` はリスト形式 `<li>` で出力されます。
 
 画像付きのカードなどで出力したい場合は、 `{{NAV_CARDS:カテゴリ:コンポーネントID}}` で出力できます。カードのデザインは、コンポーネントで定義できます。コンポーネントIDを省略すると、標準的なデザイン（`_nav_card`コンポーネント）で出力されます。
 
-リストやカードの順番はページの「表示順」で指定できます。表示順が0より小さい場合は、表示されません。
+リストやカードの順番はページの「表示順」で指定できます。表示順が0より小さいページと、[データ形式](#data-formats)のページは表示されません。
 
 どちらも、カテゴリを「all」にすると全ページのリスト、未設定にするとカテゴリのないページのリストが出力されます。ページのカテゴリは複数設定できるので、カテゴリを適切に設定することで、多様な形でのナビゲーションを設定することができます。
+
+#### 一覧のオプション
+
+位置の引数（カテゴリ、カードのコンポーネントID）のあとに、`名前=値` を `:` でつないで指定できます。
+
+```
+{{NAV_LINKS:news:limit=5}}
+{{NAV_CARDS:news:_nav_card:limit=5:sort=new}}
+{{NAV_CARDS:news:sort=old}}
+```
+
+|オプション|意味|
+|---|---|
+|`sort=new`|更新日の新しい順（同じ日時なら表示順）|
+|`sort=old`|更新日の古い順（同じ日時なら表示順）|
+|`limit=N`|先頭からN件まで（`@same` ではカテゴリごと）|
+|`sep=文字列`|項目と項目のあいだに入れる区切り（主にデータ形式でJSONの配列を作るため）。値は次の `:` か `}}` までをそのまま使い、`\n`（改行）と `\t`（タブ）だけを特別に解釈します|
+
+更新日は、作成時に設定され、非公開から公開に切り替えた時点で更新され、公開後の編集では変わりません。実質的に公開日なので `sort=new` に使えます。オフセットや自動のページャーはありません。全件の一覧ページを作ってそこへリンクするか、[目録データとJavaScript](#catalog-pager)で作ります。
+
+#### 関連ページ `@same`
+
+`{{NAV_LINKS:@same}}`・`{{NAV_CARDS:@same:コンポーネントID}}` は、表示中のページと「_」以外のカテゴリが1つ以上重なるページ（自分自身を除く）を出します。表示中のページの「_」以外のカテゴリが、0個なら何も出さず、1個なら平らなリスト、2個以上ならカテゴリごとにまとめます。両方に属するページは両方に出ます（関連の理由が見えるためです）。並び順は表示順で、`sort` があればそれに従います。
+
+まとめたときのHTMLは、`NAV_LINKS` が入れ子の `<ul>`（`li.nav-group` の中に `span.nav-group-label` とリンクの `ul`）、`NAV_CARDS` がカテゴリごとの `div.nav-group`（`div.nav-group-label` とカード群）です。Markdown版では入れ子のリストになります。
+
+#### カテゴリの表示 `{{CATEGORY}}`
+
+`{{CATEGORY}}` は、ページのカテゴリを「_」で始まるものを除いて書いた順に出します。HTMLでは1つずつ `<span class="category">coffee</span>` で囲み、Markdown版とデータ形式ではカンマ区切り（`coffee, tokyo`）です。`{{CATEGORY:all}}` は「_」で始まるものも含めます。カード用コンポーネントの中では、そのカードのページのカテゴリを出します。
 
 ### 他のページの埋め込み
 
@@ -1421,6 +1480,9 @@ GitHubなど、他のサイトに設置したMarkdown文書を `{{EXT_MD:url}}` 
 |`{{ KEYWORDS }}`|ページのキーワード|
 |`{{ OGP_IMAGE }}`|ページサムネール・OGP画像URL|
 |`{{ PAGE_URL }}`|ページURL|
+|`{{ PAGE_URL:ID }}`|指定したページのURL（出力形式の拡張子付き。データ形式のページは `?v=` 付き）。[詳しく](#page-url-id)|
+|`{{ CATEGORY }}`|ページのカテゴリ（「_」で始まるものを除く）|
+|`{{ CATEGORY:all }}`|ページのすべてのカテゴリ|
 |`{{ SITE_URL }}`|サイトURL。Markdownのリンク先にも使えます（例：`[詳細]({{SITE_URL}}/about)`）|
 |`{{ SITE_NAME }}`|サイトのタイトル|
 |`{{ SITE_DESCRIPTION }}`|サイトの共通説明|
@@ -1437,6 +1499,8 @@ GitHubなど、他のサイトに設置したMarkdown文書を `{{EXT_MD:url}}` 
 |`{{ NAV_CARDS:カテゴリ:コンポーネントID（省略可）}}`|指定したカテゴリのページをカード形式で表示|
 |`{{ NAV_CARDS:all:コンポーネントID（省略可）}}`|すべてのページをカード形式で表示|
 |`{{ NAV_CARDS:未設定:コンポーネントID（省略可）}}`|カテゴリのないページをカード形式で表示|
+|`{{ NAV_LINKS:カテゴリ:sort=new:limit=N }}`|オプション付きの一覧。`sort=new`・`sort=old`・`limit=N`・`sep=文字列`（NAV_CARDSも同じ）。[詳しく](#navigation)|
+|`{{ NAV_LINKS:@same }}`|表示中のページと「_」以外のカテゴリが重なるページ（NAV_CARDSも同じ）|
 |`{{ POST_MD:ID }}`|指定したIDのページをMarkdownとして埋め込む|
 |`{{ EXT_MD:url }}`|指定したURLのMarkdownを埋め込む（Cloud版では使用不可）|
 |`{{DATA:key}}値{{/DATA}}`|データを定義（表示）。key（大文字小文字を区別しない）は半角英数字・アンダースコアのみ。値は日本語可。|
@@ -1464,9 +1528,11 @@ GitHubなど、他のサイトに設置したMarkdown文書を `{{EXT_MD:url}}` 
 |---|---|---|
 |`_layout`|[ページ]{.type-badge .badge-page}|標準的な共通レイアウト。`{{COMPONENT:_global_head}}` `{{COMPONENT:_header}}` `{{CONTENT}}` `{{COMPONENT:_footer}}` `{{HEAD_CSS}}` を組み合わせた基本構成です。通常のMarkdownページはこれを選択します。|
 |`_global_head`|[パーツ]{.type-badge .badge-part}|HTMLの`<head>`セクション内に挿入する共通タグ集。Google AnalyticsやWebフォントの読み込みなど、全ページ共通の`head`タグをここに記述します。初期設定では、`{{`HEAD_CSS`}}`が配置されており、CSSの挿入位置を明示できます。CSSスコープ化は無効(グローバル)。|
-|`_header`|[パーツ]{.type-badge .badge-part}|サイト共通のヘッダー。サイト名・ナビゲーションリンクを含む標準的なヘッダーコンポーネントです。|
+|`_header`|[パーツ]{.type-badge .badge-part}|サイト共通のヘッダー。サイト名・ナビゲーションリンクを含む標準的なヘッダーコンポーネントです。ナビゲーションには `{{NAV_LINKS:_nav}}`（構造用カテゴリ `_nav` のページ）を使います。|
 |`_footer`|[パーツ]{.type-badge .badge-part}|サイト共通のフッター。コピーライト・フッターナビゲーション等を含む標準的なフッターコンポーネントです。|
 |`_nav_card`|[パーツ]{.type-badge .badge-part}|カード型ナビゲーションでコンポーネントIDを省略した場合に使用される標準カードデザインです。サムネイル画像・タイトル・概要・日付を表示するカードを出力します。|
+|`_md_footer`|[パーツ]{.type-badge .badge-part}|[Markdown版](#markdown-version)の末尾コンポーネントのサンプル。`{{NAV_LINKS:@same:limit=5}}` で関連ページのリストを付けます。ページ編集の「Markdown版の末尾コンポーネント」で選んだときだけ使われます（既定にはしません）。|
+|`json_item`|[パーツ]{.type-badge .badge-part}|JSONの目録の1件分のサンプル。`{{NAV_CARDS:カテゴリ:json_item:sep=,}}` で使います（[目録とページ一覧](#catalog-pager)）。|
 |`_ai_question`|[パーツ]{.type-badge .badge-part}|公開ページ用のAI質問ボックス。`{{COMPONENT:_ai_question}}` で配置し、質問、現在のページ、公式公開マニュアルを外部AIへ案内します。|
 |`_search_box`|[パーツ]{.type-badge .badge-part}|検索ボックスのデザイン。フォーム内に `<input type="hidden" name="page" value="search">` が書かれているため、送信すると「search」ページ（`_search_result_item` を使って検索結果を表示するページ）に遷移する仕組みです。|
 |`_search_result_item`|[パーツ]{.type-badge .badge-part}|検索結果の１件ごとの表示デザイン。`{{SEARCH_RESULTS:_search_result_item}}` の形で検索結果ページに配置します。|
@@ -1554,9 +1620,9 @@ PHP版はサイト画面、Cloud版はデータ移行・インポート画面の
 
 ### ヘッドレスCMSにもなる
 
-`{{DATAROW}}`を埋め込んだページを、公開設定「DB」で公開することで、外部からAPIで読み取ることができるようになります。
+`{{DATAROW}}`を埋め込んだページを、出力形式「[mikanBox DB](#mikanbox-db)」にして公開すると、外部からAPIで読み取ることができるようになります。
 
-`https://yoursite.com/api/pageID`
+`https://yoursite.com/api/pageID.json`（動的表示では `/api/pageID` でも読めます）
 
 例：[https://yoshihiko.com/mikanbox/demo/api/sample-DB](https://yoshihiko.com/mikanbox/demo/api/sample-DB)
 
@@ -1579,6 +1645,185 @@ PHP版はサイト画面、Cloud版はデータ移行・インポート画面の
 |`{{POST_MD::date}}`|データの表示|
 |`{{POST_MD::#test:book}}`|データの表示ROW|
 |`{{IS_ACTIVE}}`|現在のページなら active、それ以外は空|
+
+## 出力形式（Markdown版・データ） {#output-formats}
+
+ページごとに「出力形式」を1つ選べます。既定はHTMLで、これまでのページは何も変わりません。mikanBox本体はプレーンなデータ（Markdown版・JSONなど）を出すところまでを受け持ち、見せ方はJavaScriptや外部のレンダラーに任せます。
+
+|出力形式|出力|主な用途|
+|---|---|---|
+|HTML|HTMLだけ（従来どおり）|通常のページ|
+|HTML + Markdown|HTMLとMarkdown版|読み物のページ|
+|Markdown|Markdown版だけ|Markdownの読者・AI向けの文書、Markdownだけのサイト|
+|JSON・XML・CSV・テキスト・JavaScript・CSS|本文をそのまま|目録、カテゴリ別RSS、データの書き出し、`llms.txt`、サイトのJS・CSS|
+|mikanBox DB|本文の `{{DATA}}`・`{{DATAROW}}` のデータをJSONで（`/api/ID.json`）|ページに埋め込んだデータを読ませるAPI|
+
+### URLの規則 {#output-urls}
+
+ページ `/ID` に対して、拡張子のあるものはすべて `/ID.拡張子` になります。
+
+|種類|ディレクトリ型|ファイル名型|
+|---|---|---|
+|HTML|`/ID/`|`/ID.html`|
+|Markdown版|`/ID.md`|`/ID.md`|
+|データ形式|`/ID.json` など|`/ID.json` など|
+
+- URL形式の設定（[出力構成](#site-ssg)）が影響するのはHTMLだけです。トップページのMarkdown版は `/index.md`、階層のあるID `coffee/gallery` のMarkdown版は `/coffee/gallery.md` です。
+- ページIDにはドット（`.`）を使えません。拡張子は出力形式から付きます。ドットを含む既存のページは、IDを変えない限りそのまま表示・編集できます。
+- 動的表示では、Markdownだけのページは `/ID` でもMarkdown版を返し、`/ID.html` は404になります。データ形式のページは `/ID.拡張子` でだけ読めます。
+- 静的書き出しでは、HTMLと並べて `ID.md` を、データ形式は `ID.拡張子` を書き出します。Markdownだけのページは `/ID/` にファイルがないため `/ID.md` でだけ読めます（サイト内のリンクは常に `/ID.md` を明示して出力します）。`.htaccess` は書き出しません（サーバーに置いた `.htaccess` を上書きしないためです）。
+- `rss`・`sitemap`・`podcast` をXML形式にすると、システムのファイル（`/rss.xml` など）と重なるため保存できません。`404` ページの出力形式はHTMLだけです。
+- 静的に置いた `.md`・`.txt`・`.csv` を文字化けさせないため、初回設定で作るサイト直下の `.htaccess` に、文字コードの設定（`AddCharset utf-8 .md .txt .csv` と `AddType text/markdown .md`）を入れています。システム更新のときに、この設定がなければ末尾に追記します（既存の行は変えません。書き込めないときは、更新後のメッセージで案内します）。静的書き出しを別のサーバーに置くときは、そのサーバーの `.htaccess` などに同じ2行を書いてください。`.json` はUTF-8が決まりで、`.xml` はファイル内の宣言で文字コードを示せるため、設定は要りません。
+
+### Markdown版 {#markdown-version}
+
+出力形式が「HTML + Markdown」または「Markdown」のページは、Markdown版を `/ID.md`（`Content-Type: text/markdown; charset=utf-8`）で出します。生のMarkdownではJavaScriptは動かず、リンク先や画像の読み込み元もすべて読者に見えます。
+
+```
+---
+title: "ページタイトル"
+date: 2026-11-08
+description: "ページの概要"
+url: "https://example.com/page/"
+categories: "coffee, tokyo"
+---
+
+本文…
+
+（末尾コンポーネント）
+```
+
+- frontmatterは、`title`、`date`（更新日）、`description`（ページ自身に概要があるときだけ）、`url`（HTML版のURL。Markdownだけのページでは省略）、`categories`（「_」で始まるものを除く。なければ省略）です。
+- ラッパー（`_layout`・ヘッダー・フッター）は通しません。本文は保存されているMarkdownをそのまま出し、HTMLには変換しません。本文中のHTMLも文字のまま出ます。
+- **公開URLが必要です。** Markdown版はすべて絶対URLで書くためです。相対リンクのアップロード用フォルダで公開先ルートURLが空欄のときは、Markdownを含む出力形式を選べません。
+- HTML + MarkdownのページのHTML版には `<link rel="alternate" type="text/markdown" href="…/ID.md">` が入ります。RSSの自動検出と同じしくみで、ツールやAIがMarkdown版を見つけられます。
+
+#### Markdown版でのタグの扱い
+
+|扱い|タグ|
+|---|---|
+|展開する|`NAV_LINKS`・`NAV_CARDS`（`- [タイトル](URL)` のリスト。カードもリストにします。`@same` で2カテゴリ以上なら入れ子のリスト）、`POST_MD`（全形式）、`EXT_MD`（全形式）、`{{DATA:key}}値{{/DATA}}`（値だけ）、`IMAGE`（`![](絶対URL)`）、`AUDIO`・`VIDEO`（`[ファイル名](絶対URL)` のリンク）、`CATEGORY`、`PAGE_URL:ID`|
+|文字に置き換える|`TITLE`、`FULL_TITLE`、`UPDATE_DATE`（全形式）、`IS_NEW`、`DESCRIPTION`、`KEYWORDS`、`OGP_IMAGE`、`PAGE_URL`、`SITE_URL`、`SITE_NAME`、`SITE_DESCRIPTION`、`SITE_OGP_IMAGE`（HTML用のエスケープはしません）|
+|取り除く|`COMPONENT`（末尾コンポーネントは除く）、`AI_QUESTION`、`SEARCH_RESULTS`、`CONTENT`、`HEAD_CSS`、`IS_ACTIVE`、`DATAROW` ブロック、GHOSTデータ|
+
+コードブロック・インラインコード・HTMLコメントの中は、書いたまま出します。
+
+#### リンクと画像
+
+すべて絶対URLにします。`![](ogp.jpg)` や `media/…` はメディアの絶対URLに、`[説明](about)` のようなサイト内リンクは、リンク先がMarkdown版を出していれば `/ID.md` に、HTMLだけならHTMLのURLに直します。外部リンク・`#`・`mailto:`・`tel:` はそのままです。リンク先のページを照合する処理はHTML版と共通です。リンク先の出力形式を変えたら静的サイトをビルドし直すと、リンク元のMarkdown版も新しいURLになります。
+
+#### 末尾コンポーネント
+
+ページごとに0個以上のコンポーネントを選び、Markdown版の最後に順番どおり付けられます（既定はなし）。中身はMarkdownで書き、上の表と同じ規則でタグを処理します。サンプルとして `_md_footer` を同梱しています。
+
+```
+## 関連ページ
+{{NAV_LINKS:@same:limit=5}}
+```
+
+### データ形式 {#data-formats}
+
+出力形式がJSON・XML・CSV・テキスト・JavaScript・CSSのページは、本文を、ラッパーもHTMLの補完もMarkdownの変換もせず、そのまま `/ID.拡張子` で出します。
+
+|形式|拡張子|Content-Type|
+|---|---|---|
+|JSON|`.json`|`application/json; charset=utf-8`|
+|XML|`.xml`|`application/xml; charset=utf-8`|
+|CSV|`.csv`|`text/csv; charset=utf-8`|
+|テキスト|`.txt`|`text/plain; charset=utf-8`|
+|JavaScript|`.js`|`text/javascript; charset=utf-8`|
+|CSS|`.css`|`text/css; charset=utf-8`|
+
+どの形式にも `X-Content-Type-Options: nosniff` を付けます。
+
+- **タグの展開**はページごとに切り替えられます。既定は、JSON・XML・CSV・テキストは展開し、JavaScript・CSSは展開しません（`{{ }}` を使うコードを壊さないためです）。展開するとき、値は形式に合わせてエスケープします。JSONは文字列として、XMLは `&` `<` `>` `"` `'` を実体参照に、CSVは区切り・引用符・改行を含む値を `"…"` で囲みます。テキストはそのままです。`NAV_CARDS` の項目用コンポーネントに埋め込む値も同じです。`COMPONENT` は、CSSやスコープなしで中身だけを挿入します。
+- JavaScript・CSSは本文に書きます。ページ専用CSS・JS欄、デザインコンポーネント、OGP画像、概要、キーワードは使わないため、編集画面に表示されません。
+- データ形式のページは中身ではなく部品なので、`NAV_LINKS`・`NAV_CARDS`（`all` を含む）、`@same`、`sitemap.xml`、`rss.xml`、検索結果に含まれません。公開設定は通常のページと同じで、下書きは出さず、静的書き出しでは「公開(静的)」のページだけを出します。
+- プレビューでは、実際に出る生のテキストを表示します。[ビジュアル編集](#visual-edit)は、HTMLを出すページだけで使えます。
+- 本文の表データ（`{{DATAROW}}`）をAPIとして読ませたいときは、出力形式「[mikanBox DB](#mikanbox-db)」を使います。
+
+### mikanBox DB {#mikanbox-db}
+
+出力形式を「mikanBox DB」にすると、本文の `{{DATA}}`・`{{DATAROW}}` のデータを、決まった形のJSONにして `/api/ID.json` で返します。ページとしての表示（HTML・Markdown版）は出しません。2.17まで公開設定にあった「DB」を、出力形式に移したものです。
+
+返すJSONの形は次のとおりです。`fields` は `{{DATAROW}}` の外にある `{{DATA:key}}`（GHOSTを含む）、`rows` は `{{DATAROW}}` の各行です。**見出しや地の文など、データの外にある本文はJSONに含まれません。**
+
+```json
+{
+    "id": "sample_data",
+    "title": "データサンプル",
+    "fields": { "BOOK_TITLE": "Macbeth", "AUTHOR": "Shakespeare" },
+    "rows": [
+        { "id": 1, "GOODS": "Apple", "PRICE": "300" },
+        { "id": 2, "GOODS": "Banana", "PRICE": "200" }
+    ]
+}
+```
+
+- 公開設定は通常のページと同じです。「公開(動的)」「公開(静的)」でAPIが動き、「下書き」にすると止まります。
+- 静的書き出しでは `api/ID.json` のファイルを書き出し、下書きにすると消します。動的表示では `/api/ID.json` に加えて、従来の `/api/ID` でも同じJSONを返します（静的書き出しでは `/api/ID.json` だけです）。
+- 出力形式の下に表示されるURLは `/api/ID.json` です。`{{PAGE_URL:ID}}` でこのページを指すと `/api/ID.json` になり、ほかのデータ形式と同じく `?v=` が付きます。編集画面のプレビューでは、APIが返すJSONを表示します。
+- 一覧・sitemap・RSS・検索には含まれません。`{{POST_MD:ID:key}}`・`{{POST_MD:ID#rowID:key}}` で、ほかのページから値を読むことはこれまでどおりできます。
+- 2.17までに公開設定「DB」で保存したページは、「出力形式 mikanBox DB＋公開(動的)」として読み、次に保存したときにその形で保存します。`/api/ID` のURLはそのまま使えます。MCPで `status` に `db` を渡したときも同じに扱います。
+
+|形|出るもの|URL|
+|---|---|---|
+|mikanBox DB|本文の `{{DATA}}`・`{{DATAROW}}` のデータを、決まった形に変換したJSON|`/api/ID.json`|
+|データ形式（JSONなど）|本文そのもの（自分で書いた形。タグを展開できる）|`/ID.拡張子`|
+
+ページに埋め込んだデータをそのままAPIで読ませるなら「mikanBox DB」、出すファイルの形を自分で書くなら「JSON」などのデータ形式を選びます。
+
+### ページのURLを埋め込む `{{PAGE_URL:ID}}` {#page-url-id}
+
+```html
+<link rel="stylesheet" href="{{PAGE_URL:site-style}}">
+<script src="{{PAGE_URL:site}}"></script>
+→ <script src="https://example.com/site.js?v=3f9a2c1b"></script>
+```
+
+指定したIDのページのURLを、その出力形式の拡張子付きで出します。データ形式のページには `?v=` に中身のハッシュが付くので、中身が変わるとブラウザのキャッシュが自動で切り替わります。静的書き出しでは書き出した中身から（目録のように、ほかのページの変更で中身が変わるページも正しく変わります）、動的表示では本文から計算します。HTML・Markdownのページには `?v=` を付けません。引数なしの `{{PAGE_URL}}` は、これまでどおり表示中のページのURLです。
+
+外部ライブラリ（自分では編集しないファイル）は[メディア](#media-mgmt)に置き、自分のサイトのコードはJavaScript・CSS形式のページに書く、という使い分けをおすすめします。コンポーネントのJS欄（`/component-js/ID.js`）も、これまでどおり使えます。
+
+---
+
+## 目録データとJavaScriptでページ一覧を作る {#catalog-pager}
+
+mikanBox本体には、ページャー（ページ送り）や目録ファイルの専用機能はありません。[データ形式](#data-formats)のページとJavaScriptのページを組み合わせて作ります。静的書き出しでもファイルとして出るので、PHPのないサーバーでも動きます。サンプル（`sample_list`・`json_item`・`sample_pager`・`sample_list_page`）を同梱しています。
+
+#### 1. 目録のページ
+
+出力形式をJSONにしたページを作ります（ID例 `news-list` → `/news-list.json`）。
+
+```
+[{{NAV_CARDS:news:json_item:sort=new:sep=,}}]
+```
+
+項目用コンポーネント `json_item` には、1件分の形を書きます。
+
+```
+{"title":"{{TITLE}}","url":"{{PAGE_URL}}","date":"{{UPDATE_DATE}}","categories":"{{CATEGORY:all}}"}
+```
+
+値はJSONに合わせてエスケープされます。`sep=,` で項目のあいだにカンマが入り、正しいJSONの配列になります。
+
+#### 2. JavaScriptのページ
+
+出力形式をJavaScriptにしたページ（ID例 `pager` → `/pager.js`）で、目録を読み込み、20件ずつ表示してページ送りを付けます。同梱の `sample_pager` がそのまま使えます。
+
+#### 3. 一覧を見せるページ
+
+```html
+<div class="mikan-pager" data-src="{{PAGE_URL:news-list}}" data-per-page="20"></div>
+<script src="{{PAGE_URL:pager}}"></script>
+```
+
+- 全ページの目録（`all`）も、大きなサイトならカテゴリ別や `limit` 付きの軽い目録も、自由に作れます。
+- HTMLの目録（`<li data-date="…">` など）にして、JavaScriptから `DOMParser` で読むこともできます。
+- `rss.xml` は全体の最新20件だけでカテゴリの指定もないため、一覧の元には向きません。カテゴリ別のRSSは、XML形式のページで作れます。
+- 一覧のオプション（`sort`・`limit`・`sep`）は[ナビゲーション](#navigation)を参照してください。
+
+---
 
 ## ポッドキャスト配信 {#podcast}
 
@@ -1640,6 +1885,8 @@ PHP版はサイト画面、Cloud版はデータ移行・インポート画面の
 
 例：[https://yoshihiko.com/mikanbox/demo/sitemap.xml](https://yoshihiko.com/mikanbox/demo/sitemap.xml)
 
+[データ形式](#data-formats)のページはサイトマップ・RSS・Podcast RSSに含めません。Markdownだけのページは `/ID.md` のURLで載せます。
+
 ### RSS
 
 以下のURLでRSSフィードが出力されます。
@@ -1658,9 +1905,9 @@ PHP版はサイト画面、Cloud版はデータ移行・インポート画面の
 
 ### API
 
-`{{DATAROW}}`を埋め込んだページを、公開設定「DB」で公開することで、外部からAPIで読み取ることができるようになります。
+`{{DATAROW}}`を埋め込んだページを、出力形式「[mikanBox DB](#mikanbox-db)」にして公開すると、外部からAPIで読み取ることができるようになります。
 
-`https://yoursite.com/api/pageID`
+`https://yoursite.com/api/pageID.json`（動的表示では `/api/pageID` でも読めます）
 
 例：[https://yoshihiko.com/mikanbox/demo/api/sample-DB](https://yoshihiko.com/mikanbox/demo/api/sample-DB)
 

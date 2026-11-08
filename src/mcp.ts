@@ -7,10 +7,18 @@ import { pageId, componentId, pageStatus } from './validation';
 import { verifyCsrf } from './auth';
 import { saveWithRevision, revisions } from './revisions';
 import { buildStatic } from './ssg';
+import { OUTPUT_FORMATS, pageFormatFields, withFormatFields, validatePageSave, pageOutputFormat, isDataFormat, pageExpandsTags } from './output-formats';
+import { createTranslator, getSystemLanguage } from './i18n';
+import { isPublicStatus } from './storage';
+const OUTPUT_FORMATS_GUIDE='Each page has an output_format: html (default) / html_md (HTML plus a Markdown version at /id.md) / md (Markdown version only, also answered at /id and /id/) / json / xml / csv / txt / js / css (data formats: the body as it is at /id.<extension>) / db (mikanBox DB: the DATA/DATAROW data as JSON at /api/ID.json, /api/ID is an alias; replaces the former status "db"). Page IDs never contain dots. Data formats and db are not listed in NAV lists, sitemap or RSS. Put site JS and CSS in js/css pages and load them with {{PAGE_URL:ID}} (data pages get ?v=<hash> automatically). Lists: {{NAV_LINKS:category:sort=new:limit=5}}; related pages: {{NAV_LINKS:@same}}. Categories starting with _ are structural (not used by @same or {{CATEGORY}}). A paged list is a catalogue JSON page ([{{NAV_CARDS:category:item_component:sort=new:sep=,}}]) plus a js page. EXT_MD is not available in the Cloud edition.';
 const string={type:'string'};
 const boolean={type:'boolean'};
 const pageFields=Object.fromEntries(['title','category','description','keywords','ogp_image','content_md','css','js','wrapper_comp','memo','updated_at'].map(key=>[key,string]));
-const pageProperties={id:string,...pageFields,status:{type:'string',enum:['draft','pending','public_dynamic','public_static','db']},is_html:boolean,exclude_tracking:boolean,sort_order:{type:'number'},data:{type:'object'},expected_revision:string};
+const pageProperties={id:string,...pageFields,status:{type:'string',enum:['draft','pending','public_dynamic','public_static','db'],description:'draft / pending / public_static (public_dynamic is stored as public_static; db is accepted for older clients and saved as output_format db, public)'},
+  output_format:{type:'string',enum:OUTPUT_FORMATS,description:OUTPUT_FORMATS_GUIDE},
+  md_footer_comps:{type:'array',items:string,description:'Component IDs appended to the Markdown version, in order (none by default; wrappers and AI documents are not allowed).'},
+  expand_tags:{type:'boolean',description:'Data formats only: expand tags (default: json/xml/csv/txt yes, js/css no).'},
+  is_html:boolean,exclude_tracking:boolean,sort_order:{type:'number'},data:{type:'object'},expected_revision:string};
 const componentProperties={id:string,...Object.fromEntries(['html','css','js','memo'].map(key=>[key,string])),is_global:boolean,is_wrapper:boolean,is_ai_doc:boolean,data:{type:'object'}};
 const tool=(name:string,description:string,properties:Record<string,unknown>={},required:string[]=[])=>({name,description,inputSchema:{type:'object',properties,required,additionalProperties:false},annotations:{readOnlyHint:/^(?:get_|list_)/.test(name),destructiveHint:/^(?:update_|delete_)/.test(name),idempotentHint:/^(?:update_|delete_)/.test(name)||name==='build_ssg',untrustedContentHint:/^(?:get_|list_)/.test(name)&&!['get_site_info','get_settings'].includes(name),openWorldHint:false}});
 const tools=[
@@ -18,7 +26,7 @@ const tools=[
   tool('list_pages','List pages, including draft and pending pages.'),
   tool('get_page','Get an editable page.',{id:string},['id']),
   tool('create_page','Create a page. Pass fields directly, or in the legacy data object.',pageProperties,['id']),
-  tool('update_page','Update selected page fields; preserve unspecified fields.',pageProperties,['id']),
+  tool('update_page','Update selected page fields; preserve unspecified fields. updated_at moves to now only when a page goes from not public to public; editing a published page keeps its date.',pageProperties,['id']),
   tool('delete_page','Delete a page and its history.',{id:string},['id']),
   tool('list_components','List components.'),
   tool('get_component','Get a component.',{id:string},['id']),
@@ -84,17 +92,23 @@ export async function handleMcp(request:Request,env:Env):Promise<Response> {
       const schema=definition.inputSchema.properties[key] as {type:string}|undefined;
       if(!schema)throw new Error(`Unknown argument: ${key}`);
       if(schema.type==='object')object(value);
+      else if(schema.type==='array'){if(!Array.isArray(value)||value.some(item=>typeof item!=='string'))throw new Error(`Invalid argument: ${key}`);}
       else if(typeof value!==schema.type)throw new Error(`Invalid argument: ${key}`);
+      const allowed=(schema as {enum?:unknown[]}).enum;if(allowed&&!allowed.includes(value))throw new Error(`Invalid argument: ${key}`);
     }
     if(!/^(get_|list_)/.test(name))await checkPublicationLock(env);
     let data:unknown;
     switch(name) {
       case 'get_site_info':data={site_id:settings.site_id,site_name:settings.site_name,site_url:settings.site_url||new URL(request.url).origin,environment:settings.site_environment||'unspecified',site_environment:settings.site_environment||'unspecified',edition:'cloud',version:CLOUD_VERSION};break;
       case 'list_pages': {
-        const pages=(await listPages(env)).map(({id,data:page})=>({id,title:page.title||'',status:page.status||'draft',category:page.category||'',sort_order:page.sort_order||0,updated_at:page.updated_at||''}));
+        const pages=(await listPages(env)).map(({id,data:page})=>({id,title:page.title||'',status:page.status||'draft',output_format:pageOutputFormat(page),category:page.category||'',sort_order:page.sort_order||0,updated_at:page.updated_at||''}));
         data={pages,count:pages.length};break;
       }
-      case 'get_page':data=await exactPage(env,pageId(String(args.id||'')));if(!data)throw new Error('Page not found.');data={id:args.id,...data};break;
+      case 'get_page': {
+        const page=await exactPage(env,pageId(String(args.id||'')));if(!page)throw new Error('Page not found.');
+        const format=pageOutputFormat(page);
+        data={id:args.id,...page,status:(page.status as string)==='db'?'public_static':page.status,output_format:format,md_footer_comps:[...(page.md_footer_comps||[])],...(isDataFormat(format)?{expand_tags:pageExpandsTags(page)}:{})};break;
+      }
       case 'create_page':case 'update_page': {
         const pid=pageId(String(args.id||'')),incoming=fields(args,pageProperties),previous=await exactPage(env,pid);
         if(name==='create_page'&&previous)throw new Error('Page already exists.');
@@ -110,7 +124,18 @@ export async function handleMcp(request:Request,env:Env):Promise<Response> {
         if('exclude_tracking'in incoming){if(typeof incoming.exclude_tracking!=='boolean')throw new Error('Invalid exclude_tracking');next.exclude_tracking=incoming.exclude_tracking;}
         if('is_html'in incoming){if(typeof incoming.is_html!=='boolean')throw new Error('Invalid is_html');next.is_html=incoming.is_html;}
         if('sort_order'in incoming){if(typeof incoming.sort_order!=='number'||!Number.isFinite(incoming.sort_order))throw new Error('Invalid sort order');next.sort_order=incoming.sort_order;}
-        next.preview_token||=crypto.randomUUID();if(!('updated_at' in incoming))next.updated_at=new Date().toISOString();
+        if('md_footer_comps' in incoming&&(!Array.isArray(incoming.md_footer_comps)||incoming.md_footer_comps.some(id=>typeof id!=='string')))throw new Error('Invalid field: md_footer_comps');
+        if('expand_tags' in incoming&&typeof incoming.expand_tags!=='boolean')throw new Error('Invalid field: expand_tags');
+        if('output_format' in incoming&&!OUTPUT_FORMATS.includes(incoming.output_format as never))throw new Error('Invalid field: output_format');
+        const formatInput=Object.fromEntries(['output_format','md_footer_comps','expand_tags'].filter(key=>key in incoming).map(key=>[key,incoming[key]]));
+        let saved=withFormatFields(next,await pageFormatFields(formatInput,previous,id=>loadComponent(env,id)));
+        if((saved.status as string)==='db'){saved={...saved,status:'public_static',output_format:'db'};delete saved.expand_tags;}
+        const formatError=validatePageSave(pid,previous?pid:'',saved,createTranslator(getSystemLanguage(settings)));if(formatError)throw new Error(formatError);
+        Object.keys(next).forEach(key=>delete (next as unknown as Record<string,unknown>)[key]);Object.assign(next,saved);
+        // Same rule as the admin screen and the PHP editions: the date moves to now only when a page
+        // goes from not public to public, so fixing an old notice does not bring it to the top of sort=new lists.
+        next.preview_token||=crypto.randomUUID();
+        if(!('updated_at' in incoming)&&(!previous||(!isPublicStatus(previous.status)&&(previous.status as string)!=='db'&&isPublicStatus(next.status))||!next.updated_at))next.updated_at=new Date().toISOString();
         const expected=typeof args.expected_revision==='string'?args.expected_revision:previous?.revision_tag||'';
         await saveWithRevision(env,pid,previous?pid:'',next,'MCP',expected);data={success:true,id:pid,...next};break;
       }
@@ -143,7 +168,7 @@ export async function handleMcp(request:Request,env:Env):Promise<Response> {
       case 'get_settings':data=Object.fromEntries(Object.entries(settings).filter(([key])=>!/(?:password|secret|token|api.?key|credential)/i.test(key)&&!['_site_base'].includes(key)));break;
       case 'get_ai_context':case 'list_ai_docs': {
         const docs=(await listComponents(env)).map(({id,data:component})=>({id,...component})).filter(doc=>doc.is_ai_doc);
-        data=name==='get_ai_context'?{documents:docs.map(doc=>({id:doc.id,content_md:doc.html||''})),count:docs.length,component_naming:'A leading _ marks a standard component. Omit it for ordinary new or duplicated components; use it only when the user intends standard classification. Preserve existing standard IDs.'}:{ai_docs:docs.map(doc=>({id:doc.id,html_length:new TextEncoder().encode(doc.html||'').length})),count:docs.length};break;
+        data=name==='get_ai_context'?{documents:docs.map(doc=>({id:doc.id,content_md:doc.html||''})),count:docs.length,output_formats:OUTPUT_FORMATS_GUIDE,component_naming:'A leading _ marks a standard component. Omit it for ordinary new or duplicated components; use it only when the user intends standard classification. Preserve existing standard IDs.'}:{ai_docs:docs.map(doc=>({id:doc.id,html_length:new TextEncoder().encode(doc.html||'').length})),count:docs.length};break;
       }
       case 'get_ai_doc': {
         const cid=aiId(args.id),current=await loadComponent(env,cid);if(!current?.is_ai_doc)throw new Error('AI document not found.');data={id:cid,...current};break;

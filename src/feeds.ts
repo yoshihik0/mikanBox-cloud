@@ -5,6 +5,7 @@
 import type { Env, Settings } from './types';
 import { loadPage, listPages, isPublicStatus } from './storage';
 import { MikanBoxRenderer } from './renderer';
+import { pageIsListed, feedPageUrl } from './output-formats';
 
 // The 404 page is an error response, not content to visit (as in the PHP editions).
 const notListed = (_env: Env, id: string) => id === '404';
@@ -32,8 +33,8 @@ export async function generateSitemapXml(env: Env, settings: Settings, request: 
 
   for (const {id:pageId,data} of allPosts) {
     if (!data) continue;
-    if (!isPublicStatus(data.status) || notListed(env, pageId)) continue;
-    const loc = esc(siteUrl + '/' + (pageId === 'index' ? '' : pageId));
+    if (!isPublicStatus(data.status) || notListed(env, pageId) || !pageIsListed(data)) continue;
+    const loc = esc(feedPageUrl(siteUrl, pageId, data));
     const lastmod = (data.updated_at || '').slice(0, 10);
     xml += `  <url>\n    <loc>${loc}</loc>\n${lastmod ? `    <lastmod>${lastmod}</lastmod>\n` : ''}  </url>\n`;
   }
@@ -53,7 +54,7 @@ export async function generateRssXml(env: Env, settings: Settings, request: Requ
   const items: Item[] = [];
   for (const {id:pageId,data} of allPosts) {
     if (!data) continue;
-    if (!isPublicStatus(data.status) || notListed(env, pageId)) continue;
+    if (!isPublicStatus(data.status) || notListed(env, pageId) || !pageIsListed(data)) continue;
     items.push({ id: pageId, data });
   }
   items.sort((a, b) => {
@@ -71,7 +72,7 @@ export async function generateRssXml(env: Env, settings: Settings, request: Requ
     const d = item.data!;
     const title = esc(d.title || item.id);
     const desc = esc(d.description || '');
-    const link = esc(siteUrl + '/' + (item.id === 'index' ? '' : item.id));
+    const link = esc(feedPageUrl(siteUrl, item.id, d));
     const pubDate = rfc822(d.updated_at || '');
     xml += `  <item>\n    <title>${title}</title>\n    <link>${link}</link>\n`;
     xml += `    <description>${desc}</description>\n${pubDate ? `    <pubDate>${pubDate}</pubDate>\n` : ''}`;
@@ -99,7 +100,7 @@ export async function generatePodcastXml(env: Env, settings: Settings, request: 
 
   for (const {id:pageId,data} of allPosts) {
     if (!data) continue;
-    if (!isPublicStatus(data.status) || notListed(env, pageId)) continue;
+    if (!isPublicStatus(data.status) || notListed(env, pageId) || !pageIsListed(data)) continue;
     const cats = (data.category || '').split(',').map(s => s.trim()).filter(Boolean);
     if (!cats.includes('podcast')) continue;
     items.push({ id: pageId, data });

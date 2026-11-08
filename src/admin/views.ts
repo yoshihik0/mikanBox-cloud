@@ -11,6 +11,7 @@ import {CLOUD_VERSION} from '../version';
 import {trackingConfigured} from '../tracking';
 import type {PublicationStatus,PublicState} from '../publish-status';
 import {cloudUpdateUrl,type CloudRelease} from '../cloud-release';
+import {pageOutputFormat,formatHasHtml,isDataFormat,isApiFormat,formatBadge,adminPreviewUrl,isStructuralCategory,sortCategories,pageExpandsTags,expandTagsDefault,DATA_FORMATS} from '../output-formats';
 
 // PHP版と同じMaterial Iconsマッピング
 function getIcon(name: string): string {
@@ -35,7 +36,10 @@ function csrfField(token: string): string {
 }
 
 // The Cloud edition publishes statically only, so 'public_static' is simply "public".
-const statuses = ['draft','pending','public_static','db'];
+// The former "DB" status is now the output format "mikanBox DB" (2.18.0).
+const statuses = ['draft','pending','public_static'];
+/** A category list with structural "_" categories after the others, shown faded. */
+const categoryList = (cats: string[]) => sortCategories(cats).map(c => isStructuralCategory(c) ? `<span class="category-structural">${h(c)}</span>` : h(c)).join(', ');
 function statusClass(status: string) { return ({public_dynamic:'static',public:'static',public_static:'static'} as Record<string,string>)[status] || status; }
 function statusLabel(t: (key:string)=>string, status: string) {
   // The shared label reads "公開(静的)" / "Public (static)"; drop the mode in parentheses.
@@ -186,7 +190,7 @@ ${opts.mediaEnabled?`<div id="drop-zone">${getIcon('cloud')} ${t('hint_drop_uplo
 
     ${view==='import'?'':`    <div class="category-cloud-wrap"><div class="category-cloud"><span class="category-cloud-label">${t('category_cloud_label')}</span>
     <a href="?cat=" class="category-cloud-tag ${!opts.category?'active':''}">${t('all_pages')}</a>
-    ${(opts.allCategories||[]).map(cat=>`<a href="?cat=${encodeURIComponent(cat)}" class="category-cloud-tag ${opts.category===cat?'active':''}">${h(cat)}</a>`).join('')}
+    ${sortCategories(opts.allCategories||[]).map(cat=>`<a href="?cat=${encodeURIComponent(cat)}" class="category-cloud-tag ${opts.category===cat?'active':''}${isStructuralCategory(cat)?' is-structural':''}"${isStructuralCategory(cat)?` title="${h(t('category_structural_hint'))}"`:''}>${h(cat)}</a>`).join('')}
     <button type="button" class="category-cloud-tag" data-add-category>${getIcon('add')} ${t('btn_add')}</button></div></div>
     ${pagesHtml}
 
@@ -495,10 +499,9 @@ ${opts.mediaEnabled?`<div id="drop-zone">${getIcon('cloud')} ${t('hint_drop_uplo
                 showToast(json.message || ${JSON.stringify(opts.t('msg_update_success'))});
                 const selectEl = document.querySelector(\`select[onchange*="'\${id}'"]\`);
                 if (selectEl) {
-                    selectEl.classList.remove('static', 'dynamic', 'draft', 'db');
+                    selectEl.classList.remove('static', 'dynamic', 'draft', 'pending', 'db');
                     if (newStatus === 'public_static') selectEl.classList.add('static');
                     else if (newStatus === 'pending') selectEl.classList.add('pending');
-                    else if (newStatus === 'db') selectEl.classList.add('db');
                     else selectEl.classList.add('draft');
                 }
             } else {
@@ -613,13 +616,16 @@ export function renderPagesView(opts: {
   const rows = pages.map(({ id: pid, data: d }) => {
     const status=['public','public_dynamic'].includes(d.status) ? 'public_static' : d.status || 'draft';
     const cls=statusClass(status);
-    const previewUrl = `/preview/${pid}`;
+    const format = pageOutputFormat(d);
+    const previewUrl = adminPreviewUrl(pid, d);
 
     return `<tr>
                 <td class="td-narrow">
                     <div class="flex-center" style="gap: 5px;">
-                         <a href="?view=pages&amp;edit=${h(pid)}#page-editor" class="btn btn-sm btn-blue">${getIcon('edit')} ${t('btn_edit')}</a>
-                         <a href="/admin/visual?id=${h(encodeURIComponent(pid))}" class="btn btn-sm btn-blue" title="${t('btn_visual_edit')}">${getIcon('visual')}</a>
+                         <a href="?view=pages&amp;edit=${h(pid)}#page-editor" class="btn btn-sm btn-blue" title="${t('btn_edit')}">${getIcon('edit')}</a>
+                         ${formatHasHtml(format)
+                           ? `<a href="/admin/visual?id=${h(encodeURIComponent(pid))}" class="btn btn-sm btn-blue" title="${t('btn_visual_edit')}">${getIcon('visual')}</a>`
+                           : `<span class="btn btn-sm btn-gray btn-disabled" aria-disabled="true" title="${h(t('visual_err_not_html'))}">${getIcon('visual')}</span>`}
                          <a href="${h(previewUrl)}" target="_blank" class="btn btn-sm btn-blue" title="${t('btn_preview')}">${getIcon('open_in_new')}</a>
                          ${globeLink(publication?.pages[pid], ja)}
                     </div>
@@ -635,11 +641,12 @@ export function renderPagesView(opts: {
                 <td>
                     <div class="title-cell-flex">
                          <a href="?view=pages&amp;edit=${h(pid)}#page-editor" class="title-link">${h(d.title || 'No Title')}</a>
+                         ${format !== 'html' ? `<span class="format-badge ${isDataFormat(format) || isApiFormat(format) ? 'format-data' : 'format-md'}" title="${h(t('label_output_format') + ': ' + t('output_format_' + format))}">${formatBadge(format)}</span>` : ''}
                     </div>
                 </td>
                 <td class="td-narrow text-sub">${h((d.updated_at || '').slice(0, 10))}</td>
                 <td class="td-narrow text-sub text-center">${h(d.sort_order ?? 0)}</td>
-                <td style="font-size: 0.85rem; color: var(--text-sub);">${h((d.category || '').split(',').map(s => s.trim()).filter(Boolean).join(', '))}</td>
+                <td style="font-size: 0.85rem; color: var(--text-sub);">${(d.category || '').split(',').map(s => s.trim()).filter(Boolean).map(c => isStructuralCategory(c) ? `<span class="category-structural">${h(c)}</span>` : h(c)).join(', ')}</td>
             </tr>`;
   }).join('');
 
@@ -693,9 +700,19 @@ export function renderPageEditor(opts: {
   settings: Settings;
   revisions?: Revision[];
   selectedRevision?: Revision;
+  /** Public site URL without a trailing slash, for the output URL shown under the format. */
+  publicBase?: string;
 }): string {
   const { t, editId, editData, csrf, helpFile, wrapperComponents, allCategories } = opts;
   const d = editData || {} as PageData;
+  const currentFormat = pageOutputFormat(d);
+  const isErrorPage = editId === '404';
+  const visualAvailable = formatHasHtml(currentFormat);
+  const expandTags = isDataFormat(currentFormat) ? pageExpandsTags(d) : expandTagsDefault(currentFormat);
+  const publicBase = (opts.publicBase || '').replace(/\/$/, '');
+  // The body heading names what the body is for the chosen output format.
+  const contentLabels: Record<string, string> = { html: t('label_content'), html_md: t('label_content'), md: t('label_content_md') };
+  for (const f of [...DATA_FORMATS, 'db']) contentLabels[f] = t('label_content_data', t('output_format_' + f));
   const status=['public','public_dynamic'].includes(d.status) ? 'public_static' : d.status||'draft';
 
   const wrapperOptions = wrapperComponents.map(c =>
@@ -716,8 +733,10 @@ export function renderPageEditor(opts: {
                                     <input type="text" name="updated_at" form="page-form" value="${h(d.updated_at || new Date().toISOString().slice(0, 19).replace('T', ' '))}" class="last-updated-input" title="YYYY-MM-DD HH:MM:SS">
                                 </div>` : ''}
                         </div>
-                    ${editId?`<a href="/admin/visual?id=${h(encodeURIComponent(editId))}" class="btn btn-sm btn-blue editor-visual-btn" style="display:inline-flex;align-items:center;gap:5px;white-space:nowrap" title="${t('btn_visual_edit')}">${getIcon('visual')} ${t('btn_visual_edit')}</a>`:''}
-                    ${editId?`<div class="revisions-select-group" style="display:flex;align-items:center;gap:8px;white-space:nowrap"><span>${getIcon('history')} ${t('label_revisions')}</span><select style="width:auto;min-width:180px" aria-label="${t('label_revisions')}" onchange="location.href=this.value"><option value="?view=pages&edit=${encodeURIComponent(editId)}#page-editor">${t('select_revision')}</option>${(opts.revisions||[]).map(r=>`<option value="?view=pages&edit=${encodeURIComponent(editId)}&rev=${r.id}#page-editor" ${opts.selectedRevision?.id===r.id?'selected':''}>${h(r.created_at)} (${h(r.editor_id)})</option>`).join('')}</select></div>`:''}
+                    <div class="editor-header-actions">
+                    ${editId?`<div id="editor-revisions-container"><div class="revisions-select-group" style="display:flex;align-items:center;gap:8px;white-space:nowrap"><span>${getIcon('history')} ${t('label_revisions')}</span><select style="width:auto;min-width:180px" aria-label="${t('label_revisions')}" onchange="location.href=this.value"><option value="?view=pages&edit=${encodeURIComponent(editId)}#page-editor">${t('select_revision')}</option>${(opts.revisions||[]).map(r=>`<option value="?view=pages&edit=${encodeURIComponent(editId)}&rev=${r.id}#page-editor" ${opts.selectedRevision?.id===r.id?'selected':''}>${h(r.created_at)} (${h(r.editor_id)})</option>`).join('')}</select></div></div>`:''}
+                    ${editId?`<a href="/admin/visual?id=${h(encodeURIComponent(editId))}" id="editor-visual-btn" class="btn btn-sm editor-visual-btn ${visualAvailable?'btn-blue':'btn-gray btn-disabled'}" ${visualAvailable?'':'aria-disabled="true" tabindex="-1"'} data-saved-html="${visualAvailable?'1':'0'}" data-title-on="${h(t('btn_visual_edit'))}" data-title-off="${h(t('visual_err_not_html'))}" title="${h(visualAvailable?t('btn_visual_edit'):t('visual_err_not_html'))}">${getIcon('visual')} ${t('btn_visual_edit')}</a>`:''}
+                    </div>
                     </div>
                     <div class="editor-container editor-container-transparent">
                         ${opts.selectedRevision?`<div id="revision-warning-banner" class="alert alert-warning" role="status" style="background:#fffbeb;border:1px solid #fef3c7;color:#b45309;padding:12px 16px;border-radius:8px;margin-bottom:20px;font-size:.9rem;line-height:1.5"><strong>${opts.settings.system_lang==='en'?'Viewing revision':'過去の版を表示中'}:</strong> ${h(opts.selectedRevision.created_at)} (${h(opts.selectedRevision.editor_id)})<br>${opts.settings.system_lang==='en'?'Saving will restore this revision as the current version.':'保存すると、この版が現在のページとして復元されます。'}</div>`:''}
@@ -739,59 +758,85 @@ export function renderPageEditor(opts: {
                          </div></div>
                     <div class="form-group form-group-memo grid-span-2"><label class="sub-label">${t('label_memo')}</label><textarea name="memo" class="textarea-xs textarea-memo" placeholder="${t('memo_hint')}">${h(d.memo||'')}</textarea></div>
                     </div>
-                    <div class="page-edit-grid">
+                    <div class="page-edit-grid" id="page-format-grid" data-format="${h(currentFormat)}">
                         <div class="form-group grid-span-1">
                             <label class="sub-label">${t('label_slug')}</label>
                             <input type="text" name="id" value="${h(editId || '')}" ${(editId && editId === 'index') ? 'readonly' : ''} placeholder="profile" class="input-height">
                             <small class="sub-text sub-text-block">${t('page_id_hint')} ${editId === 'index' ? t('hint_slug_index') : ''}</small>
                         </div>
                         <div class="form-group grid-span-1">
-                            <label class="sub-label">${t('label_design_component')}</label>
-                            <select name="wrapper_comp">
-                                <option value="__none" ${d.wrapper_comp==='__none'?'selected':''}>${t('wrapper_none')}</option>
-                                ${wrapperOptions}
+                            <label class="sub-label" for="output-format-select">${t('label_output_format')}</label>
+                            <select name="output_format" id="output-format-select" class="output-format-select" data-dynamic-base="${h(publicBase)}" data-static-base="${h(publicBase)}" data-structure="directory">
+                                ${(['html','html_md','md'] as const).map(f=>`<option value="${f}" ${currentFormat===f?'selected':''} ${f!=='html'&&isErrorPage?'disabled':''}>${t('output_format_'+f)}</option>`).join('')}
+                                <optgroup label="${h(t('output_format_data_group'))}">
+                                    ${DATA_FORMATS.map(f=>`<option value="${f}" data-expand="${expandTagsDefault(f)?'1':'0'}" ${currentFormat===f?'selected':''} ${isErrorPage?'disabled':''}>${t('output_format_'+f)} (.${f})</option>`).join('')}
+                                    <option value="db" ${currentFormat==='db'?'selected':''} ${isErrorPage?'disabled':''}>${t('output_format_db')} (/api/*.json)</option>
+                                </optgroup>
                             </select>
-                            <small class="sub-text sub-text-block">${t('head_completion_hint')}</small>
-                            ${trackingConfigured(opts.settings) ? `<input type="hidden" name="tracking_option_present" value="1"><label class="checkbox-label tracking-exclusion"><input type="checkbox" name="exclude_tracking" value="1" ${d.exclude_tracking?'checked':''}> ${t('exclude_tracking_label')}</label>` : ''}
+                            <small class="sub-text sub-text-block output-url-line">${t('output_url_label')}: <code id="output-format-url"></code></small>
+                            <small class="sub-text sub-text-block" data-formats="json xml csv txt js css">${t('output_format_data_hint')}</small>
+                            <small class="sub-text sub-text-block" data-formats="db">${t('output_format_db_hint')}</small>
                         </div>
                         <div class="form-group grid-span-1">
                             <label class="sub-label">${t('label_category')} ${t('hint_comma_separated')}</label>
                             <input type="text" name="category" value="${h(d.category || '')}" placeholder="news, blog, ...">
                             <small class="sub-text sub-text-block">
                                 ${t('hint_existing_categories')}:
-                                ${allCategories.length > 0 ? h(allCategories.join(', ')) : (opts.settings.system_lang==='en'?'(none)':'(なし)')}
+                                ${allCategories.length > 0 ? categoryList(allCategories) : t('label_none')}
                             </small>
+                        </div>
+                        <div class="form-group grid-span-1" data-formats="html html_md">
+                            <label class="sub-label">${t('label_design_component')}</label>
+                            <select name="wrapper_comp">
+                                <option value="__none" ${d.wrapper_comp==='__none'?'selected':''}>${t('wrapper_none')}</option>
+                                ${wrapperOptions}
+                            </select>
+                            ${trackingConfigured(opts.settings) ? `<input type="hidden" name="tracking_option_present" value="1"><label class="checkbox-label tracking-exclusion"><input type="checkbox" name="exclude_tracking" value="1" ${d.exclude_tracking?'checked':''}> ${t('exclude_tracking_label')}</label>` : ''}
+                        </div>
+                        <div class="form-group grid-span-2" data-formats="html_md md">
+                            <label class="sub-label">${t('label_md_footer_comps')}</label>
+                            <input type="text" name="md_footer_comps" value="${h((d.md_footer_comps || []).join(', '))}" placeholder="_md_footer">
+                            <small class="sub-text sub-text-block">${t('md_footer_comps_hint')}</small>
+                        </div>
+                        <div class="form-group grid-span-1" data-formats="json xml csv txt js css">
+                            <input type="hidden" name="expand_tags_present" value="1">
+                            <label class="checkbox-label expand-tags-label"><input type="checkbox" name="expand_tags" id="expand-tags-checkbox" value="1" ${expandTags?'checked':''}> ${t('label_expand_tags')}</label>
+                            <small class="sub-text sub-text-block">${t('expand_tags_hint')}</small>
                         </div>
                          <div class="form-group grid-span-1">
                              <label class="sub-label">${t('label_sort_order')}</label>
                              <input type="number" name="sort_order" value="${h(d.sort_order ?? 0)}" placeholder="0" class="input-full">
                          </div>
-                        <div class="form-group grid-span-2">
+                        <div class="form-group grid-span-2" data-formats="html html_md md">
                             <label class="sub-label">${t('label_ogp_image')}</label>
                             <input type="text" name="ogp_image" value="${h(d.ogp_image || '')}" placeholder="ogp.jpg">
                         </div>
-                        <div class="form-group grid-span-2">
+                        <div class="form-group grid-span-2" data-formats="html html_md md">
                             <label class="sub-label">${t('label_keywords')}</label>
                             <input type="text" name="keywords" value="${h(d.keywords || '')}" placeholder="AI, CMS, mikanBox...">
                         </div>
                     </div>
 
                     <div class="form-group">
+                        <div data-formats="html html_md md">
                         <label class="sub-label">${t('label_description')}</label>
                         <textarea name="description" class="textarea-xs textarea-description">${h(d.description || '')}</textarea>
-                        <label>${t('label_content')}</label>
-                        <label class="checkbox-label" style="font-size:0.85em; margin-bottom:4px; display:flex; align-items:center; gap:6px; font-weight:normal;"><input type="checkbox" name="is_html" value="1" ${d.is_html?'checked':''}> ${t('label_raw_html')}</label>
+                        </div>
+                        <label id="content-label" data-labels="${h(JSON.stringify(contentLabels))}">${h(contentLabels[currentFormat] || t('label_content'))}</label>
+                        <label data-formats="html html_md" class="checkbox-label" style="font-size:0.85em; margin-bottom:4px; display:flex; align-items:center; gap:6px; font-weight:normal;"><input type="checkbox" name="is_html" value="1" ${d.is_html?'checked':''}> ${t('label_raw_html')}</label>
                         <textarea name="content_md" class="textarea-lg textarea-mono">${h(d.content_md || '')}</textarea>
                     </div>
-                    <div class="form-group">
+                    <div class="form-group" data-formats="html html_md">
                         <label>${t('label_css')}</label>
                         <textarea name="css" class="textarea-sm textarea-mono">${h(d.css || '')}</textarea>
                     </div>
-                    <details class="form-group js-accordion" ${d.js?'open':''}><summary>${t('label_page_js')} <span class="accordion-arrow">▼</span></summary><small class="sub-text sub-text-block">${t('page_js_hint')}</small><textarea name="js" aria-label="${t('label_page_js')}" class="textarea-sm textarea-mono" rows="10">${h(d.js||'')}</textarea></details>
+                    <details data-formats="html html_md" class="form-group js-accordion" ${d.js?'open':''}><summary>${t('label_page_js')} <span class="accordion-arrow">▼</span></summary><small class="sub-text sub-text-block">${t('page_js_hint')}</small><textarea name="js" aria-label="${t('label_page_js')}" class="textarea-sm textarea-mono" rows="10">${h(d.js||'')}</textarea></details>
                     <div class="flex-row flex-between mt-10">
                         <div class="flex-row">
                             <button type="submit" form="page-form" name="save_action" value="save_page" class="btn btn-blue">${getIcon('save')} ${t('btn_save')}</button>
-                            <button type="button" class="btn btn-blue" data-editor-preview="/admin?editor_preview=1">${getIcon('view')} ${t('btn_preview')}</button>
+                            ${editId
+                              ? `<a id="editor-preview-link" href="${h(adminPreviewUrl(editId, d))}" target="_blank" rel="noopener" class="btn btn-blue" title="${h(t('preview_saved_hint'))}">${getIcon('view')} ${t('btn_preview')}</a>`
+                              : `<span id="editor-preview-link" class="btn btn-gray btn-disabled" aria-disabled="true" title="${h(t('preview_saved_hint'))}">${getIcon('view')} ${t('btn_preview')}</span>`}
                             <a href="/admin#pages" class="btn btn-gray">${getIcon('arrow_back')} ${t('btn_back_to_list')}</a>
                         </div>
                         ${(editId && editId !== 'index') ? `
@@ -864,8 +909,61 @@ export function renderPageEditor(opts: {
                 ${renderTagGuide}
                     </div>
                 </div>
-            </div>`;
+            </div>
+<script>${EDITOR_FORMAT_SCRIPT}</script>`;
 }
+
+// Output format: show only the fields that format uses, and the URL it publishes at (shared/views/page-editor.php).
+// The Cloud edition publishes statically: HTML at /id/, everything with an extension at /id.<extension>.
+const EDITOR_FORMAT_SCRIPT = `(function () {
+    const select = document.getElementById('output-format-select');
+    const grid = document.getElementById('page-format-grid');
+    const form = document.getElementById('page-form');
+    if (!select || !grid || !form) return;
+    const urlCode = document.getElementById('output-format-url');
+    const expand = document.getElementById('expand-tags-checkbox');
+    const idInput = form.querySelector('input[name="id"]');
+    let expandTouched = false;
+    if (expand) expand.addEventListener('change', () => { expandTouched = true; });
+    function pageUrl(format) {
+        const id = (idInput && idInput.value.trim()) || 'page';
+        const base = select.dataset.staticBase;
+        if (format === 'db') return base + '/api/' + id + '.json';
+        const ext = format === 'md' ? 'md' : (['html', 'html_md'].includes(format) ? '' : format);
+        if (ext) return base + '/' + id + '.' + ext;
+        if (id === 'index') return base + '/';
+        return base + '/' + id + '/';
+    }
+    function update(changed) {
+        const format = select.value;
+        grid.dataset.format = format;
+        form.querySelectorAll('[data-formats]').forEach((el) => {
+            el.hidden = !el.dataset.formats.split(' ').includes(format);
+        });
+        if (urlCode) urlCode.textContent = pageUrl(format) + (format === 'html_md' ? '  ·  ' + pageUrl('md') : '');
+        const contentLabel = document.getElementById('content-label');
+        if (contentLabel) {
+            try { contentLabel.textContent = JSON.parse(contentLabel.dataset.labels)[format] || contentLabel.textContent; } catch (e) {}
+        }
+        const visual = document.getElementById('editor-visual-btn');
+        if (visual) {
+            const on = ['html', 'html_md'].includes(format) && visual.dataset.savedHtml === '1';
+            visual.classList.toggle('btn-blue', on);
+            visual.classList.toggle('btn-gray', !on);
+            visual.classList.toggle('btn-disabled', !on);
+            if (on) { visual.removeAttribute('aria-disabled'); visual.removeAttribute('tabindex'); }
+            else { visual.setAttribute('aria-disabled', 'true'); visual.setAttribute('tabindex', '-1'); }
+            visual.title = on ? visual.dataset.titleOn : visual.dataset.titleOff;
+        }
+        const option = select.selectedOptions[0];
+        if (changed && expand && !expandTouched && option && option.dataset.expand !== undefined) {
+            expand.checked = option.dataset.expand === '1';
+        }
+    }
+    select.addEventListener('change', () => update(true));
+    if (idInput) idInput.addEventListener('input', () => update(false));
+    update(false);
+})();`;
 
 // ===== デザイン一覧 (views/design.php) =====
 export function renderDesignView(opts: {
@@ -1391,6 +1489,9 @@ function buildTagGuide(
                         <li><code>{{KEYWORDS}}</code> : ${t('label_keywords')}</li>
                         <li><code>{{OGP_IMAGE}}</code> : ${t('page_thumbnail_ogp_image')}</li>
                         <li><code>{{PAGE_URL}}</code> : ${t('page_full_url')}</li>
+                        <li><code>{{PAGE_URL:ID}}</code> : ${t('hint_page_url_id')}</li>
+                        <li><code>{{CATEGORY}}</code> : ${t('hint_category')}</li>
+                        <li><code>{{CATEGORY:all}}</code> : ${t('hint_category_all')}</li>
                         <li><code>{{SITE_URL}}</code> : ${t('site_root_url')}</li>
                         <li><code>{{SITE_NAME}}</code> : ${t('site_title')}</li>
                         <li><code>{{SITE_DESCRIPTION}}</code> : ${t('site_description')}</li>
@@ -1416,9 +1517,12 @@ function buildTagGuide(
                         <li><code>{{EXT_MD:url}}</code> : ${t('hint_ext_md')}${t('cloud_unavailable_note')}</li>
                         <li><code>{{NAV_LINKS:category}}</code> : ${t('link_list')}<span class="hint-desc"> — li.active</span></li>
                         <li><code>{{NAV_CARDS:category:componentID}}</code> : ${t('card_list')}</li>
+                        <li><code>{{NAV_LINKS:@same}}</code> : ${t('hint_nav_same')}</li>
+                        <li><code>{{NAV_CARDS:news:_nav_card:sort=new:limit=5}}</code></li>
+                        <li class="hint-note">${t('hint_nav_options')}</li>
                         <li class="hint-note">${t('nav_links_cards_hint')}</li>
                         <li style="margin-top:8px"><span class="hint-section-label">${t('nav_cards_template_vars')}</span></li>
-                        <li><code>{{PAGE_URL}}</code> <code>{{TITLE}}</code> <code>{{DESCRIPTION}}</code> <code>{{OGP_IMAGE}}</code> <code>{{UPDATE_DATE}}</code> <code>{{IS_NEW:N}}</code> <code>{{POST_MD::key}}</code> <code>{{POST_MD::#rowID:key}}</code></li>
+                        <li><code>{{PAGE_URL}}</code> <code>{{TITLE}}</code> <code>{{CATEGORY}}</code> <code>{{DESCRIPTION}}</code> <code>{{OGP_IMAGE}}</code> <code>{{UPDATE_DATE}}</code> <code>{{IS_NEW:N}}</code> <code>{{POST_MD::key}}</code> <code>{{POST_MD::#rowID:key}}</code></li>
                         <li><code>{{IS_ACTIVE}}</code> : ${t('hint_is_active')}</li>
                     </ul>
                 </div>
@@ -1446,6 +1550,8 @@ function buildTagGuide(
                         <li><code>{{EXT_MD:url#rowID:key}}</code> : ${t('hint_datarow_ext_table')}${t('cloud_unavailable_note')}</li>
                         <li style="margin-top:6px" class="hint-note">${t('hint_db_api_hidden')}</li>
                         <li class="hint-note">${t('hint_db_api_public')}</li>
+                        <li style="margin-top:8px"><span class="hint-section-label">${t('label_output_formats_head')}</span></li>
+                        <li class="hint-note">${t('hint_output_formats')} <a href="${h(helpFile)}#output-formats" target="_blank">${t('admin_help')}</a></li>
                     </ul>
                 </div>
             </div>

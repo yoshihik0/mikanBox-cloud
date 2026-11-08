@@ -66,7 +66,7 @@ test('file metadata and asset downloads enforce the 25MiB per-file limit',async(
 });
 test('publication generator retrieves one page body at a time',async()=>{
   const value=env();await snapshot(value,'a','A');await snapshot(value,'b','B');let bodies=0;
-  const prepare=value.DB.prepare.bind(value.DB);value.DB.prepare=sql=>{if(sql.startsWith('SELECT s.html'))bodies++;return prepare(sql);};
+  const prepare=value.DB.prepare.bind(value.DB);value.DB.prepare=sql=>{if(sql.includes('s.html,s.md'))bodies++;return prepare(sql);};
   const generator=publicationEntries(value,request);assert.equal(bodies,0);
   assert.equal((await generator.next()).value.path,'/a.html');assert.equal(bodies,1);
   assert.equal((await generator.next()).value.path,'/b.html');assert.equal(bodies,2);

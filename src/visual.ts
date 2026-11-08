@@ -15,6 +15,7 @@ import { getSystemLanguage, createTranslator } from './i18n';
 import { validId, reservedPageId } from './validation';
 import { imageType, validMediaName, MEDIA_FILE_LIMIT } from './media-policy';
 import { imageSize } from './image-size';
+import { pageOutputFormat, formatHasHtml } from './output-formats';
 import { CLOUD_VERSION } from './version';
 import { injectMarkers, applyMarkers, isDoc } from './visual-blocks';
 import { VisualError, readPage, counts, points, commit, move, restorePoint, createPage } from './visual-store';
@@ -102,9 +103,11 @@ a.btn:hover,.row:hover{background:#e3f3fc;border-color:#8cc7e8}
 .ic{font-family:'Material Symbols Outlined';font-size:20px;line-height:1;font-feature-settings:'liga'}`;
 
 async function pageList(env: Env): Promise<Array<{ id: string; title: string; status: string }>> {
-  const rows = await env.DB.prepare("SELECT id, COALESCE(json_extract(data, '$.title'), '') AS title, status FROM posts ORDER BY sort_order, updated_at DESC, id")
-    .all<{ id: string; title: string; status: string }>();
-  return rows.results.map(r => ({ id: r.id, title: String(r.title ?? ''), status: r.status }));
+  // Visual editing works on the HTML of a page, so pages without HTML (Markdown only, data formats, mikanBox DB) are left out.
+  const rows = await env.DB.prepare("SELECT id, COALESCE(json_extract(data, '$.title'), '') AS title, status, json_extract(data, '$.output_format') AS format FROM posts ORDER BY sort_order, updated_at DESC, id")
+    .all<{ id: string; title: string; status: string; format: string | null }>();
+  return rows.results.filter(r => formatHasHtml(pageOutputFormat({ status: r.status as PageData['status'], output_format: (r.format || undefined) as PageData['output_format'] })))
+    .map(r => ({ id: r.id, title: String(r.title ?? ''), status: r.status }));
 }
 
 function pickerPage(t: Translator, lang: string, pages: Awaited<ReturnType<typeof pageList>>): Response {
@@ -177,6 +180,7 @@ export async function handleVisual(request: Request, env: Env): Promise<Response
     if (needId) {
       row = ID_PATTERN(id) ? await readPage(env, id) : null;
       if (!row) return out({ error: t('visual_err_page_not_found') }, 400);
+      if (!formatHasHtml(pageOutputFormat(row.data))) return out({ error: t('visual_err_not_html') }, 400);
     }
     try {
       switch (apiName) {
@@ -265,6 +269,7 @@ export async function handleVisual(request: Request, env: Env): Promise<Response
   if (id === '') return pickerPage(t, lang, await pageList(env));
   const row = validId(id) ? await readPage(env, id) : null;
   if (!row) return dieHtml(t, t('visual_err_page_not_found_id', id), 404);
+  if (!formatHasHtml(pageOutputFormat(row.data))) return dieHtml(t, t('visual_err_not_html'), 400);
   const html = await renderVisual(env, settings, request, id, row.data);
   const n = nonce(), h = headers('text/html; charset=utf-8', n);
   if (url.searchParams.has('fv-frame')) return new Response(html, { headers: h });   // for checking widths (no editing)

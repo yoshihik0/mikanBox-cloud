@@ -10,6 +10,10 @@ import { handleMcp } from './mcp';
 import { handlePublicHelp } from './public-help';
 import { splitMode, PREVIEW_SANDBOX } from './site-split';
 import { previewMediaUrls, verifyPreviewMedia } from './preview-media';
+import { pageOutputFormat, formatHasHtml, formatHasMarkdown, isDataFormat, isApiFormat, contentTypeForExtension } from './output-formats';
+
+const notFoundText=()=>new Response('Not Found',{status:404,headers:{'Content-Type':'text/plain; charset=utf-8','Cache-Control':'no-store'}});
+const textOutput=(body:string,type:string)=>new Response(body,{headers:{'Content-Type':type,'Cache-Control':'no-store','Referrer-Policy':'no-referrer','Content-Security-Policy':PREVIEW_SANDBOX}});
 
 async function route(request: Request, env: Env): Promise<Response> {
   const url=new URL(request.url),pathname=url.pathname;
@@ -59,20 +63,42 @@ async function route(request: Request, env: Env): Promise<Response> {
   const settings=await loadSettings(env),renderer=new MikanBoxRenderer(env,settings,request);
   const preview=pathname.startsWith('/preview/');
   const pagePath=preview?pathname.slice(8):pathname;
-  const id=pathname==='/index.php' ? (url.searchParams.get('page')||'index') : (decodeURIComponent(pagePath).replace(/^\/+|\/+$/g,'').replace(/\.html$/,'')||'index');
-  if(id.startsWith('api/')) {
-    const target=id.slice(4),data=await loadPage(env,target);
-    if(!data||data.status!=='db')return Response.json({error:'not found'},{status:404});
-    return Response.json(await renderer.getPageDataBlocks(target),{headers:{'Access-Control-Allow-Origin':'*','Cache-Control':'no-store'}});
+  let rawId:string;try{rawId=pathname==='/index.php' ? (url.searchParams.get('page')||'index') : (decodeURIComponent(pagePath).replace(/^\/+|\/+$/g,'')||'index');}catch{return new Response('Not Found',{status:404});}
+  if(rawId.startsWith('api/')) {
+    // mikanBox DB: /api/ID.json, and the older /api/ID as its alias.
+    let target=rawId.slice(4);if(target.endsWith('.json')&&!await loadPage(env,target))target=target.slice(0,-5);
+    const data=validId(target)?await loadPage(env,target):null;
+    const apiHeaders={'Access-Control-Allow-Origin':'*','Cache-Control':'no-store'};
+    if(!data||!isApiFormat(pageOutputFormat(data)))return Response.json({error:'not found'},{status:404,headers:apiHeaders});
+    const body=await renderer.renderApi(target);
+    if(body===null)return Response.json({error:'forbidden'},{status:403,headers:apiHeaders});
+    return new Response(body,{headers:{...apiHeaders,'Content-Type':'application/json; charset=utf-8'}});
   }
+  // Everything with an extension lives at /id.<extension>: .html for HTML, .md for the Markdown version, data formats by their own.
+  const extension=rawId.match(/^(.+)\.(html|md|json|xml|csv|txt|js|css)$/);
+  const id=extension&&!['sitemap.xml','rss.xml','podcast.xml'].includes(rawId)?extension[1]:rawId;
+  const ext=extension&&id!==rawId?extension[2]:null;
   const feed={ 'sitemap.xml':generateSitemapXml,'rss.xml':generateRssXml,'podcast.xml':generatePodcastXml }[id];
   if(feed)return new Response(await feed(env,settings,request),{headers:{'Content-Type':id==='sitemap.xml'?'application/xml; charset=utf-8':'application/rss+xml; charset=utf-8'}});
-  if(!validId(id))return new Response('Not Found',{status:404});
+  if(!validId(id))return ext&&ext!=='html'?notFoundText():new Response('Not Found',{status:404});
   const data=await loadPage(env,id),auth=await authenticatedUser(request,env);
   if(preview&&!auth)return new Response('Unauthorized',{status:401,headers:{'Cache-Control':'no-store'}});
   // Public pages are served only as published static files; the Worker never renders them for visitors.
-  if(data&&isPublicStatus(data.status)&&!auth)return new Response('Not Found',{status:404,headers:{'Cache-Control':'no-store'}});
-  const result=await renderer.render(id,!!auth);
+  if(data&&isPublicStatus(data.status)&&!auth)return ext&&ext!=='html'?notFoundText():new Response('Not Found',{status:404,headers:{'Cache-Control':'no-store'}});
+  // The URL rules of the output formats (as in the PHP editions and the published _redirects).
+  const format=pageOutputFormat(data);
+  if(data&&(ext==='md'||(ext===null&&format==='md'))) {
+    if(!formatHasMarkdown(format))return notFoundText();
+    const body=await renderer.renderMarkdown(id,undefined,!!auth);
+    return body===null?notFoundText():textOutput(body,contentTypeForExtension('md'));
+  }
+  if(ext&&ext!=='html') {
+    if(!data||format!==ext||!isDataFormat(format))return notFoundText();
+    const body=await renderer.renderData(id,undefined,!!auth);
+    return body===null?notFoundText():textOutput(body,contentTypeForExtension(ext));
+  }
+  // HTML URLs of pages without HTML answer with the site's 404 page.
+  const result=await renderer.render(data&&!formatHasHtml(format)?'\u0000missing':id,!!auth);
   const html = preview && result.status === 200 ? await previewMediaUrls(result.html,env,request,renderer.getSiteUrl()) : result.html;
   return new Response(html,{status:result.status,headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','Referrer-Policy':'no-referrer','Content-Security-Policy':PREVIEW_SANDBOX}});
 }

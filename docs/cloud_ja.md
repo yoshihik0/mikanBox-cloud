@@ -1,6 +1,6 @@
 <style>.manual-version{font-size:.5em;font-weight:400;white-space:nowrap}</style>
 
-# 🍊mikanBox Cloudflare版 マニュアル <small class="manual-version">v0.7.1</small>
+# 🍊mikanBox Cloudflare版 マニュアル <small class="manual-version">v0.8.0</small>
 
 このマニュアルはCloudflare版の導入と、PHP版との違いを説明します。共通の操作は[操作マニュアル](https://yoshihiko.com/mikanbox/help_ja.html)も参照してください。flat版・SQLite版との使い分けは、[README](https://github.com/yoshihik0/mikanBox-cloud#readme)を参照してください。
 
@@ -188,10 +188,11 @@ Cloud版では、管理画面と公開サイトが別々のWorkerで動きます
 | 状態 | 動作 |
 | :--- | :--- |
 | 下書き・承認待ち | 非公開。ログインした編集者だけがプレビューできます。 |
-| 公開 | ビルドでHTMLを作り、静的ファイルとして配信します。 |
-| DB | ページ自体は非公開。データを `/api/ページID` で公開します。 |
+| 公開 | ビルドでファイルを作り、静的ファイルとして配信します（HTML、Markdown、JSONなど、出力形式に応じたファイル）。 |
 
 ページごとの静的・動的の選択はありません。MCPやインポートで `public_dynamic` を指定しても、「公開」として保存します。
+
+以前の公開設定「DB」は、出力形式「mikanBox DB」になりました（PHP版2.18.0と同じ）。既存の「DB」のページは、更新時のデータベース移行（`0017`）・バックアップの復元・取り込み・MCPで、「公開」＋出力形式「mikanBox DB」に読み替えます。
 
 #### 公開をやめる（取り下げ）
 
@@ -240,15 +241,35 @@ Cloud版では、管理画面と公開サイトが別々のWorkerで動きます
 
 ### プレビュー
 
-- ページ一覧のプレビューは、保存済みの内容を表示します。
-- ページ編集画面のプレビューは、未保存の入力内容を表示します。保存や公開はしません。
+- ページ一覧とページ編集画面のプレビューは、どちらも**保存済みの内容**を新しいタブで開きます（PHP版2.17.2と同じ）。新規ページは、保存するまでプレビューできません。
+- HTMLを出すページ（HTML、HTML + Markdown）は `/preview/ID` で開きます。Markdownだけのページ・データ形式・mikanBox DBは `/admin?page_preview=ID` で、実際に出る中身を文字コードUTF-8のテキストとして表示します。
 - 下書き・承認待ちのページは非公開で、ログインした編集者だけがプレビューできます。公開前の画像もプレビューで表示できます。
 
 ### ページのURL
 
 ページIDを `test/index` とすると、`/test/index.html`、`/test/index/`、`/test/`、`/test` から表示できます（ビルドが必要です）。`test` 自体のページもある場合は、そちらを優先します。
 
-DB状態のページは、`/api/ID` でDATA/DATAROWを公開できます。下書き・承認待ちのページは、公開ページのPOST_MD・ナビ・フィード・APIから読み出せません。
+下書き・承認待ちのページは、公開ページのPOST_MD・ナビ・フィード・APIから読み出せません。
+
+### 出力形式（Cloud版の配信）
+
+出力形式（HTML、HTML + Markdown、Markdown、JSON・XML・CSV・テキスト・JavaScript・CSS、mikanBox DB）の考え方・タグの扱い・URLの規則は、PHP版と同じです。[出力形式](https://yoshihiko.com/mikanbox/help_ja.html#output-formats)を参照してください。Cloud版は公開サイトを静的ファイルだけで配信するため、次のように出します（どれもビルドが必要です）。
+
+| 出力形式 | 配信先に置くファイル | `/ID`・`/ID/` で開くもの |
+| :--- | :--- | :--- |
+| HTML | `/ID.html` | HTML（URL別名） |
+| HTML + Markdown | `/ID.html` と `/ID.md` | HTML（URL別名は増えません） |
+| Markdown | `/ID.md` | Markdown（URL別名の行き先を `.md` にします） |
+| データ形式 | `/ID.拡張子`（例 `/news-list.json`） | 404 |
+| mikanBox DB | `/api/ID.json` | 404（`/api/ID` は `/api/ID.json` の別名） |
+
+- **URL別名の上限**: `/ID`・`/ID/` の別名は、Cloudflareの `_redirects` の上限（2,000件）に数えます。Markdownだけのページは行き先が変わるだけで、件数は増えません。データ形式は別名を作りません。
+- **Content-Type**: ファイルごとに、`text/markdown; charset=utf-8`、`application/json; charset=utf-8` などを付けて配信します。Cloudflareは拡張子から種類を決めると、JSONとXMLに文字コードを付けないため、公開されているJSON・XMLのデータファイルと `/api/ID.json`・`/api/ID` には、`_headers` にファイルごとの指定を自動で書き足します（作者の作業はありません。`_headers` の規則は合計100件までなので、それを超えた分は拡張子による種類のままになります）。すべて `X-Content-Type-Options: nosniff` 付きです。
+- **mikanBox DB**: `/api/ID.json` が実体です。従来の `/api/ID` も同じJSONを返します。下書きにすると、次のビルドで配信先から取り除きます。
+- **`{{PAGE_URL:ID}}`**: データ形式・mikanBox DBのページの `?v=` は、ビルドで作ったファイルのハッシュです。プレビューでは本文のハッシュです。
+- **`EXT_MD`**: Markdown版・データ形式でも使えません（何も出しません）。
+- **ナビゲーション**: Cloud版の一覧（`NAV_LINKS`・`NAV_CARDS`・`@same`）は、公開中のページだけを出します（承認待ちのページは出しません）。
+- **ビジュアル編集**: HTMLを出さないページ（Markdownだけ、データ形式、mikanBox DB）では使えません。ボタンはグレーになります。
 
 ### JavaScript
 
@@ -441,7 +462,7 @@ JSON復元では、転送中のデータを一時領域に置き、全件の検�
 
 ### 使用できないタグ
 
-- `{{EXT_MD:…}}`（外部のMarkdownやデータの取得）は、Cloud版では使用できません。タグの位置には何も表示されません（HTMLには `<!-- EXT_MD is not available in the Cloud edition -->` というコメントだけが残ります）。
+- `{{EXT_MD:…}}`（外部のMarkdownやデータの取得）は、Cloud版では使用できません。タグの位置には何も表示されません（HTMLには `<!-- EXT_MD is not available in the Cloud edition -->` というコメントだけが残ります。Markdown版とデータ形式では何も出しません）。
 
 ### そのほか
 
@@ -452,3 +473,7 @@ JSON復元では、転送中のデータを一時領域に置き、全件の検�
 ### 0.7.1の保護と管理メモ
 
 管理用MCPは認証済みのAIへページ・部品・サイトのメモを返します。備忘録として利用できますが、読む権限は公開する許可を意味しません。メモを公開ページ・公開API・公開ヘルプMCPへ含めません。新規設置・公開用の配置は管理と公開を分離した構成を使用してください。旧構成のプレビューを含め、管理アドレスで描画するサイトHTMLには常にsandboxを適用し、サイト内スクリプトから管理画面へアクセスできないようにします。Cloud版に公開デモの運用機能は提供しません。
+
+### 0.8.0の変更
+
+PHP版2.17.0〜2.18.1の出力形式を移植しました。ページごとの出力形式（HTML + Markdown、Markdown、データ形式、mikanBox DB）、`/ID.拡張子` のURL、`{{PAGE_URL:ID}}`、`{{CATEGORY}}`、`_` で始まるカテゴリ、`NAV_LINKS`・`NAV_CARDS` の `sort`・`limit`・`sep`・`@same`、MCPの `output_format`・`md_footer_comps`・`expand_tags` に対応します。MCPの `update_page` は、公開済みのページを編集しても更新日を変えません（非公開から公開にしたときだけ現在時刻にします）。管理画面のページ一覧は、PHP版と同じく「承認待ち → `index` → 表示順」で並べます。更新では、データベース移行 `0017` の適用が必要です。

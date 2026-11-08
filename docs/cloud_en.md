@@ -1,6 +1,6 @@
 <style>.manual-version{font-size:.5em;font-weight:400;white-space:nowrap}</style>
 
-# 🍊mikanBox Cloudflare Manual <small class="manual-version">v0.7.1</small>
+# 🍊mikanBox Cloudflare Manual <small class="manual-version">v0.8.0</small>
 
 This manual covers installation and the Cloudflare edition’s differences. For shared operations, see the [operation manual](https://yoshihiko.com/mikanbox/help_en.html).
 
@@ -51,7 +51,7 @@ See [Pages](https://yoshihiko.com/mikanbox/help_en.html#page-mgmt) and [Page edi
 ### Implemented operations
 
 - Page lists, search, category filtering, pagination, creation, editing, and deletion.
-- Separate draft, pending, public and DB statuses.
+- Separate draft, pending and public statuses. The former DB status is the output format "mikanBox DB" (as in PHP 2.18.0).
 - Memos, Markdown/HTML input, page CSS/JavaScript, SEO fields, and wrapper selection.
 - Revision recording, selection of the last 50 revisions (visual editing keeps one per editing session), edit locks, and stale-edit protection.
 - Draft and pending pages are private. Registered, signed-in editors can preview both; the labels describe workflow state and have identical access permissions.
@@ -77,7 +77,29 @@ Usage is the same as in the PHP editions; see [Visual Editing](https://yoshihiko
 
 Component JavaScript is available at `/component-js/ID.js`. Page/component JavaScript is administrator-authored code executed on public pages.
 
-Pages with DB status expose DATA/DATAROW through `/api/ID`. Draft/pending data cannot be read through public POST_MD embeds, navigation, feeds, or the data API.
+Draft/pending data cannot be read through public POST_MD embeds, navigation, feeds, or the data API.
+
+The page list and the page editor both preview the **saved** page in a new tab (as in PHP 2.17.2); a new page can be previewed once saved. HTML pages open at `/preview/ID`; Markdown-only, data-format and mikanBox DB pages open at `/admin?page_preview=ID`, which shows the actual output as UTF-8 plain text.
+
+### Output formats (Cloud delivery)
+
+Output formats (HTML, HTML + Markdown, Markdown, JSON/XML/CSV/text/JavaScript/CSS, mikanBox DB), their tag handling and URL rules are the same as in the PHP editions; see [Output formats](https://yoshihiko.com/mikanbox/help_en.html#output-formats). The Cloud public site is static files only, so a build publishes:
+
+| Output format | Files published | `/ID` and `/ID/` open |
+| :--- | :--- | :--- |
+| HTML | `/ID.html` | the HTML (URL alias) |
+| HTML + Markdown | `/ID.html` and `/ID.md` | the HTML (no extra alias) |
+| Markdown | `/ID.md` | the Markdown (the alias points at `.md`) |
+| Data formats | `/ID.extension` (e.g. `/news-list.json`) | 404 |
+| mikanBox DB | `/api/ID.json` | 404 (`/api/ID` is an alias of `/api/ID.json`) |
+
+- **Alias limit**: `/ID` and `/ID/` aliases count toward Cloudflare's 2,000-rule `_redirects` limit. Markdown-only pages only change the alias target, and data formats add none.
+- **Content-Type**: each file is published with its type, such as `text/markdown; charset=utf-8` or `application/json; charset=utf-8`. When Cloudflare types a file by its extension, JSON and XML come without a charset, so mikanBox adds an exact `_headers` rule for each published JSON/XML data file and for `/api/ID.json` and `/api/ID` (no work for authors; `_headers` allows 100 rules in total, and files beyond that keep the extension-based type). Every response has `X-Content-Type-Options: nosniff`.
+- **mikanBox DB**: `/api/ID.json` is the file and `/api/ID` returns the same JSON. Making the page a draft removes it at the next build.
+- **`{{PAGE_URL:ID}}`**: the `?v=` of data and DB pages is the hash of the built file (the body's hash in previews).
+- **`EXT_MD`** is not available in Markdown versions and data formats either (it outputs nothing).
+- **Navigation**: lists (`NAV_LINKS`, `NAV_CARDS`, `@same`) show published pages only (not pending pages).
+- **Visual editing** is unavailable for pages without HTML (Markdown only, data formats, mikanBox DB); its button is greyed out.
 
 Page and settings saves compare their read snapshot with current storage and reject stale writes. A concurrent settings save cannot restore a revoked API key. Deleting an account stops its devices and cancels unused codes issued by them, including invitations.
 
@@ -120,7 +142,7 @@ Public pages are served as static files only. Viewing them runs neither the Work
 
 Site search uses Google site search. `{{SEARCH_RESULTS}}` becomes a form that searches this site with Google (the site URL goes into `as_sitesearch`). The search page (ID `search`) is published statically too, and a query sent by the standard search box (`_search_box`) to `index.php?page=search&q=…` is passed straight on to Google by the search page. Only pages Google has indexed are found, newly published pages take a while to appear, and the words entered are sent to Google.
 
-Pages have four statuses: draft, pending, public and DB. There is no per-page choice between static and dynamic. Public pages are built into HTML and published. Former dynamic pages become public through migration `0014` and when restoring backups. `public_dynamic` sent through MCP or imports is stored as public.
+Pages have three statuses: draft, pending and public. There is no per-page choice between static and dynamic. Public pages are built into files for their output format (HTML, Markdown, JSON and so on) and published. Pages with the former DB status become public pages with the output format "mikanBox DB" through migration `0017`, backup restores, imports and MCP. Former dynamic pages become public through migration `0014` and when restoring backups. `public_dynamic` sent through MCP or imports is stored as public.
 
 The build (rebuild and publish) button sits below the page list. Progress and results appear beside it, together with the number of pages whose changes are not on the public site and the time of the last publication.
 
@@ -314,7 +336,7 @@ Files follow the existing D1/R2 media storage setting and keep `/media/filename`
 
 ### Tags that are not available
 
-- `{{EXT_MD:…}}` (fetching external Markdown or data) is not available in the Cloud edition. Nothing is shown where the tag is; only the comment `<!-- EXT_MD is not available in the Cloud edition -->` remains in the HTML. It is not a feature for carrying data over. The editor's tag list and the bundled sample page say so.
+- `{{EXT_MD:…}}` (fetching external Markdown or data) is not available in the Cloud edition. Nothing is shown where the tag is; only the comment `<!-- EXT_MD is not available in the Cloud edition -->` remains in the HTML (Markdown versions and data formats output nothing). It is not a feature for carrying data over. The editor's tag list and the bundled sample page say so.
 
 You can use `{{SITE_URL}}` in Markdown link destinations. Tags inside code examples remain literal. Renaming an image also requests confirmation when it is used only as the site-wide OGP image.
 
@@ -322,3 +344,7 @@ You can use `{{SITE_URL}}` in Markdown link destinations. Tags inside code examp
 ### Protection and management notes in 0.7.1
 
 Authenticated management MCP clients can read page, component and site notes as working context. Reading a note is not permission to publish it. Notes are excluded from public pages, public APIs and public-help MCP. Use separate management and public Workers for new installations and production deployment. Site HTML rendered on the management origin is always sandboxed, including previews with legacy configuration, so its scripts cannot access administration. Cloud does not provide a public demo mode.
+
+### Changes in 0.8.0
+
+The output formats of PHP 2.17.0–2.18.1 are ported: per-page output formats (HTML + Markdown, Markdown, data formats, mikanBox DB), `/ID.extension` URLs, `{{PAGE_URL:ID}}`, `{{CATEGORY}}`, categories starting with `_`, `sort`/`limit`/`sep`/`@same` for `NAV_LINKS` and `NAV_CARDS`, and the MCP fields `output_format`, `md_footer_comps` and `expand_tags`. MCP `update_page` keeps the date of a published page it edits (the date moves to now only when a page goes from not public to public). The admin page list is ordered like the PHP editions: pending, then `index`, then display order. Updating requires D1 migration `0017`.

@@ -5,6 +5,7 @@ import { validMediaName, CODE_MEDIA_TYPES } from './media-policy';
 import { MikanBoxRenderer } from './renderer';
 import { generateSitemapXml, generateRssXml, generatePodcastXml } from './feeds';
 import { splitMode, publicRequest } from './site-split';
+import { contentTypeForExtension, RESERVED_OUTPUT_FILES } from './output-formats';
 
 // Paths the Worker must answer itself. Everything else is served from the
 // published static assets, falling through to the Worker when no file exists.
@@ -35,6 +36,19 @@ const STATIC_HEADERS=`/*
   Content-Security-Policy: sandbox; default-src 'none'; style-src 'unsafe-inline'
 `;
 function safePage(id:string):boolean {return validId(id)&&!blockedRoots.has(id.split('/')[0].toLowerCase());}
+// The file a built page publishes (static_pages.path; rows built before output formats are HTML).
+const PAGE_PATH="COALESCE(s.path,CASE WHEN s.id='index' THEN '/index.html' ELSE '/'||s.id||'.html' END)";
+/** A built page's file: /id.html, /id.md, /id.<data extension> or /api/id.json, never a system file name. */
+function safeOutput(id:string,path:string):boolean {
+  if(!safePage(id))return false;
+  if(path==='/api/'+id+'.json')return true;
+  const m=path.match(/^\/(.+)\.(html|md|json|xml|csv|txt|js|css)$/);
+  return !!m&&m[1]===id&&!RESERVED_OUTPUT_FILES.includes(path.slice(1).toLowerCase());
+}
+function outputType(path:string):string {
+  if(path.endsWith('.html'))return 'text/html; charset=utf-8';
+  return contentTypeForExtension(path.slice(path.lastIndexOf('.')+1));
+}
 function safeImage(name:string):boolean {return validMediaName(name)&&Object.hasOwn(imageTypes,name.split('.').pop()!.toLowerCase());}
 function safePath(path:string):boolean {return path.startsWith('/')&&!path.includes('..')&&!/[\\%?#\x00-\x20\x7f]/.test(path)&&!path.includes('//');}
 function checked(file:PublicationFile):PublicationFile {
@@ -49,17 +63,33 @@ const SPLIT_HEADERS=STATIC_HEADERS+`
 /api/*
   Access-Control-Allow-Origin: *
 `;
-const headersFor=(env:Env)=>splitMode(env)?SPLIT_HEADERS:STATIC_HEADERS;
-async function dbPages(env:Env):Promise<string[]> {
- const rows=(await env.DB.prepare("SELECT id FROM posts WHERE status='db' ORDER BY id").all<{id:string}>()).results;
- return rows.map(row=>row.id).filter(id=>validId(id));
+// Cloudflare's static delivery types a file by its extension, and JSON and XML then come
+// without "charset=utf-8" (checked with wrangler's asset server, 2026-11-09). Each published
+// JSON/XML data file and mikanBox DB API path gets its exact Content-Type here. Rules are
+// exact paths because overlapping rules are joined with commas; Cloudflare allows 100 rules.
+const HEADER_RULE_LIMIT=100;
+async function headersFor(env:Env):Promise<string> {
+ const base=splitMode(env)?SPLIT_HEADERS:STATIC_HEADERS;
+ const rows=(await env.DB.prepare(`SELECT p.id,${PAGE_PATH} path FROM posts p JOIN static_pages s ON s.id=p.id WHERE p.status='public_static' ORDER BY p.id`).all<{id:string;path:string}>()).results;
+ const rules:string[]=[];
+ for(const row of rows) {
+  if(!safeOutput(row.id,row.path)||!/\.(?:json|xml)$/.test(row.path))continue;
+  const paths=row.path.startsWith('/api/')?[row.path,'/api/'+row.id]:[row.path];
+  for(const path of paths)rules.push(`${path}\n  Content-Type: ${outputType(path.startsWith('/api/')?'/x.json':path)}\n`);
+ }
+ const used=base.split(/\n(?=\/)/).length;
+ return base+(rules.length?'\n'+rules.slice(0,Math.max(0,HEADER_RULE_LIMIT-used)).join('\n'):'');
 }
 async function redirects(env:Env):Promise<string> {
- const rows=(await env.DB.prepare("SELECT p.id,p.status,CASE WHEN s.id IS NULL THEN 0 ELSE 1 END built FROM posts p LEFT JOIN static_pages s ON s.id=p.id ORDER BY p.id").all<{id:string;status:string;built:number}>()).results;
- const all=new Set(rows.map(row=>row.id)),aliases=new Map<string,string>();
+ const rows=(await env.DB.prepare(`SELECT p.id,p.status,CASE WHEN s.id IS NULL THEN NULL ELSE ${PAGE_PATH} END path FROM posts p LEFT JOIN static_pages s ON s.id=p.id ORDER BY p.id`).all<{id:string;status:string;path:string|null}>()).results;
+ const all=new Set(rows.map(row=>row.id)),aliases=new Map<string,string>(),api:Array<[string,string]>=[];
  for(const row of rows) {
-  if(row.status!=='public_static'||!row.built||!safePage(row.id))continue;
-  const target=row.id==='index'?'/index.html':'/'+row.id+'.html';
+  if(row.status!=='public_static'||!row.path||!safeOutput(row.id,row.path))continue;
+  // mikanBox DB: /api/ID.json is the file, /api/ID its alias.
+  if(row.path.startsWith('/api/')){api.push(['/api/'+row.id,row.path]);continue;}
+  // HTML pages answer /id and /id/; so do Markdown-only pages, with their .md file. Data pages only answer /id.<ext>.
+  if(!/\.(?:html|md)$/.test(row.path))continue;
+  const target=row.path;
   aliases.set('/'+row.id,target);aliases.set('/'+row.id+'/',target);
   if(row.id==='index')aliases.set('/',target);
   if(row.id.endsWith('/index')) {
@@ -72,7 +102,7 @@ async function redirects(env:Env):Promise<string> {
  // page passes the query on to Google (see generateSearchResults).
  if(aliases.has('/search'))aliases.set('/index.php',aliases.get('/search')!);
  // The public Worker runs no code, so DB pages are served from their built JSON.
- if(splitMode(env))for(const id of await dbPages(env))aliases.set('/api/'+id,'/api/'+id+'.json');
+ for(const [source,target] of api)aliases.set(source,target);
  return [...aliases].map(([source,target])=>`${source} ${target} 200`).join('\n')+'\n';
 }
 
@@ -80,8 +110,13 @@ async function redirects(env:Env):Promise<string> {
 export async function publicationManifest(env:Env):Promise<PublicationManifest> {
   const entries:PublicationItem[]=[];
   // The hash stored at build time lets publication skip reading unchanged pages.
-  const pages=await env.DB.prepare("SELECT p.id,length(CAST(s.html AS BLOB)) size,s.hash FROM posts p JOIN static_pages s ON s.id=p.id WHERE p.status='public_static' ORDER BY p.id").all<{id:string;size:number;hash:string|null}>();
-  for(const row of pages.results)if(safePage(row.id))entries.push({path:row.id==='index'?'/index.html':'/'+row.id+'.html',kind:'page',id:row.id,size:row.size,hash:row.hash});
+  const pages=await env.DB.prepare(`SELECT p.id,${PAGE_PATH} path,length(CAST(s.html AS BLOB)) size,s.hash,length(CAST(s.md AS BLOB)) md_size,s.md_hash FROM posts p JOIN static_pages s ON s.id=p.id WHERE p.status='public_static' ORDER BY p.id`).all<{id:string;path:string;size:number;hash:string|null;md_size:number|null;md_hash:string|null}>();
+  for(const row of pages.results) {
+    if(!safeOutput(row.id,row.path))continue;
+    entries.push({path:row.path,kind:row.path.startsWith('/api/')?'api':'page',id:row.id,size:row.size,hash:row.hash});
+    // HTML + Markdown: the Markdown version sits beside the HTML at /id.md (no extra alias).
+    if(row.md_size!==null&&safeOutput(row.id,'/'+row.id+'.md'))entries.push({path:'/'+row.id+'.md',kind:'page',id:row.id,size:row.md_size,hash:row.md_hash});
+  }
   const components=await env.DB.prepare("SELECT id,length(CAST(json_extract(data,'$.js') AS BLOB)) size FROM components WHERE COALESCE(json_extract(data,'$.is_ai_doc'),0)=0 AND length(json_extract(data,'$.js'))>0 ORDER BY id").all<{id:string;size:number}>();
   for(const row of components.results)if(validId(row.id,true))entries.push({path:'/component-js/'+row.id+'.js',kind:'component',id:row.id,size:row.size});
   // Every stored file is published, not only the ones static pages reference:
@@ -90,9 +125,8 @@ export async function publicationManifest(env:Env):Promise<PublicationManifest> 
   for(const path of PUBLICATION_PUBLIC_ASSETS)if(!splitMode(env)||SPLIT_PUBLIC_ASSETS.has(path))entries.push({path,kind:'asset',id:path,size:null});
   if(splitMode(env)) {
     for(const path of Object.keys(FEEDS))entries.push({path,kind:'feed',id:path,size:null});
-    for(const id of await dbPages(env))entries.push({path:'/api/'+id+'.json',kind:'api',id,size:null});
   }
-  entries.push({path:'/_headers',kind:'headers',id:'_headers',size:encode.encode(headersFor(env)).byteLength});
+  entries.push({path:'/_headers',kind:'headers',id:'_headers',size:encode.encode(await headersFor(env)).byteLength});
   if(entries.length>PUBLICATION_FILE_LIMIT)throw new Error('Publication exceeds 20,000 files.');
   entries.push({path:'/_redirects',kind:'redirects',id:'_redirects',size:encode.encode(await redirects(env)).byteLength});
   if(new Set(entries.map(item=>item.path)).size!==entries.length)throw new Error('Publication path collision.');
@@ -104,15 +138,10 @@ export async function publicationManifest(env:Env):Promise<PublicationManifest> 
 export async function readPublicationEntry(env:Env,request:Request,path:string):Promise<PublicationFile|null> {
   if(!safePath(path))return null;
   if(path==='/_redirects')return checked({path,body:encode.encode(await redirects(env)),contentType:'text/plain; charset=utf-8'});
-  if(path==='/_headers')return checked({path,body:encode.encode(headersFor(env)),contentType:'text/plain; charset=utf-8'});
+  if(path==='/_headers')return checked({path,body:encode.encode(await headersFor(env)),contentType:'text/plain; charset=utf-8'});
   if(splitMode(env)&&FEEDS[path]) {
     const xml=await FEEDS[path](env,await loadSettings(env),publicRequest(env,request));
     return checked({path,body:encode.encode(xml),contentType:path==='/sitemap.xml'?'application/xml; charset=utf-8':'application/rss+xml; charset=utf-8'});
-  }
-  if(splitMode(env)&&path.startsWith('/api/')&&path.endsWith('.json')) {
-    const id=path.slice(5,-5);if(!(await dbPages(env)).includes(id))return null;
-    const data=await new MikanBoxRenderer(env,await loadSettings(env),publicRequest(env,request)).getPageDataBlocks(id);
-    return checked({path,body:encode.encode(JSON.stringify(data)),contentType:'application/json; charset=utf-8'});
   }
   const assetType=assetTypes.get(path);
   if(assetType) {
@@ -133,10 +162,14 @@ export async function readPublicationEntry(env:Env,request:Request,path:string):
     const row=await env.DB.prepare("SELECT json_extract(data,'$.js') js FROM components WHERE id=? AND COALESCE(json_extract(data,'$.is_ai_doc'),0)=0 AND length(json_extract(data,'$.js'))>0").bind(id).first<{js:string}>();
     return row?checked({path,body:encode.encode(row.js),contentType:'text/javascript; charset=utf-8'}):null;
   }
-  if(path.endsWith('.html')) {
-    const id=path.slice(1,-5);if(!safePage(id))return null;
-    const row=await env.DB.prepare("SELECT s.html FROM static_pages s JOIN posts p ON p.id=s.id WHERE p.id=? AND p.status='public_static'").bind(id).first<{html:string}>();
-    return row?checked({path,body:encode.encode(row.html),contentType:'text/html; charset=utf-8'}):null;
+  // Built pages: the file each one publishes, and the Markdown version of HTML + Markdown pages.
+  const page=path.match(/^\/(?:api\/)?(.+)\.(html|md|json|xml|csv|txt|js|css)$/);
+  if(page) {
+    const id=page[1];if(!safeOutput(id,path))return null;
+    const row=await env.DB.prepare(`SELECT ${PAGE_PATH} path,s.html,s.md FROM static_pages s JOIN posts p ON p.id=s.id WHERE p.id=? AND p.status='public_static'`).bind(id).first<{path:string;html:string;md:string|null}>();
+    if(!row)return null;
+    const body=row.path===path?row.html:path==='/'+id+'.md'&&row.md!==null?row.md:null;
+    return body===null?null:checked({path,body:encode.encode(body),contentType:outputType(path)});
   }
   return null;
 }
