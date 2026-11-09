@@ -1,6 +1,6 @@
 <style>.manual-version{font-size:.5em;font-weight:400;white-space:nowrap}</style>
 
-# 🍊mikanBox Cloudflare Manual <small class="manual-version">v0.8.0</small>
+# 🍊mikanBox Cloudflare Manual <small class="manual-version">v0.8.1</small>
 
 This manual covers installation and the Cloudflare edition’s differences. For shared operations, see the [operation manual](https://yoshihiko.com/mikanbox/help_en.html).
 
@@ -348,3 +348,7 @@ Authenticated management MCP clients can read page, component and site notes as 
 ### Changes in 0.8.0
 
 The output formats of PHP 2.17.0–2.18.1 are ported: per-page output formats (HTML + Markdown, Markdown, data formats, mikanBox DB), `/ID.extension` URLs, `{{PAGE_URL:ID}}`, `{{CATEGORY}}`, categories starting with `_`, `sort`/`limit`/`sep`/`@same` for `NAV_LINKS` and `NAV_CARDS`, and the MCP fields `output_format`, `md_footer_comps` and `expand_tags`. MCP `update_page` keeps the date of a published page it edits (the date moves to now only when a page goes from not public to public). The admin page list is ordered like the PHP editions: pending, then `index`, then display order. Updating requires D1 migration `0017`.
+
+### Changes in 0.8.1
+
+The public site now serves `.md`, `.txt`, `.csv`, `.js`, `.css`, `.json` and `.xml` with `charset=utf-8` on Cloudflare's delivery too (in 0.8.0, Japanese text could be garbled when opened from the globe icon in the page list). The `/ID` and `/ID/` of Markdown-only pages and `/api/ID` of mikanBox DB get the same setting. Publish once more after updating for it to take effect. Opening a page editor from a page list filtered by category no longer clears the filter, and a new page starts with the filtered category.

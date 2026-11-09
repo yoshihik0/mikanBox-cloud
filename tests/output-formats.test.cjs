@@ -82,11 +82,19 @@ test('_redirects: Markdown-only pages answer /id and /id/ with .md, data pages g
   assert.equal(rules.length,2*3+1+1);
 });
 
-test('_headers gives JSON/XML data files and DB API paths exact Content-Type rules (no overlapping rules)',async()=>{
+test('_headers types every text output with charset=utf-8: wildcard rules per extension, exact rules for aliases and XML',async()=>{
   const value=env();await sample(value);await savePage(value,'feed',{title:'Feed',status:'public_static',output_format:'xml',content_md:'<a/>'});await buildStatic(value,request);
   const headers=decode.decode((await readPublicationEntry(value,request,'/_headers')).body);
-  for(const path of ['/list.json','/feed.xml','/api/shop.json','/api/shop'])assert.match(headers,new RegExp(`\\n${path.replace(/[.]/g,'\\.')}\\n  Content-Type: application/(json|xml); charset=utf-8\\n`));
-  assert.doesNotMatch(headers,/\*\.json|\/notes\.md|\/site\.js/);
+  const rule=(path,type)=>assert.ok(headers.includes(`\n${path}\n  Content-Type: ${type}\n`),path);
+  for(const [ext,type] of [['html','text/html'],['md','text/markdown'],['txt','text/plain'],['csv','text/csv'],['js','text/javascript'],['css','text/css'],['json','application/json']])rule('/*.'+ext,type+'; charset=utf-8');
+  // Cloudflare matches the requested path, not the rewrite target: aliases need their own rule.
+  rule('/notes','text/markdown; charset=utf-8');rule('/notes/','text/markdown; charset=utf-8');rule('/api/shop','application/json; charset=utf-8');
+  rule('/feed.xml','application/xml; charset=utf-8');rule('/sitemap.xml','application/xml; charset=utf-8');rule('/rss.xml','application/rss+xml; charset=utf-8');
+  // No wildcard for XML (feeds have their own types) and no rule for HTML aliases.
+  assert.doesNotMatch(headers,/\*\.xml|\n\/article\n|\n\/\n/);
+  // Each path gets at most one Content-Type rule apart from the wildcard (two would be comma-joined).
+  const exact=[...headers.matchAll(/\n(\/[^\n*]*)\n  Content-Type:/g)].map(m=>m[1]);assert.equal(new Set(exact).size,exact.length);
+  assert.ok(headers.split(/\n(?=\/)/).length<=100);
 });
 
 test('a page that becomes a draft or changes format leaves the publication after the next build',async()=>{
@@ -203,4 +211,18 @@ test('content imports keep the format fields and read the former DB status',asyn
   assert.equal((await loadPage(value,'cat')).expand_tags,false);assert.equal((await loadPage(value,'olddb')).output_format,'db');
   assert.equal(value.sqlite.prepare("SELECT status FROM posts WHERE id='olddb'").get().status,'public_static');
   assert.deepEqual((await loadPage(value,'art')).md_footer_comps,['_md_footer']);
+});
+
+test('the page list keeps its category filter when a page editor is opened, and a new page takes that category',async()=>{
+  const value=env();await sample(value);const auth=await login(value);
+  const list=await (await call(value,'/admin?view=pages&cat=news#pages',undefined,auth.cookie)).text();
+  assert.match(list,/href="\?view=pages&amp;edit=article&amp;cat=news#page-editor"/);
+  assert.match(list,/href="\?view=pages&amp;new=1&amp;cat=news#page-editor"/);
+  const editor=await (await call(value,'/admin?view=pages&edit=article&cat=news',undefined,auth.cookie)).text();
+  // The list beside the editor stays filtered, and the way back keeps the filter.
+  assert.match(editor,/category-cloud-tag active[^"]*"[^>]*>news</);assert.match(editor,/edit=notes/);assert.doesNotMatch(editor,/edit=list\b/);
+  assert.match(editor,/href="\/admin\?cat=news#pages" class="btn btn-gray"/);
+  assert.match(editor,/window\.location\.href='\/admin\?cat=news#pages'/);
+  const fresh=await (await call(value,'/admin?view=pages&new=1&cat=news',undefined,auth.cookie)).text();
+  assert.match(fresh,/name="category" value="news"/);
 });

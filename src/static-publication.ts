@@ -63,28 +63,36 @@ const SPLIT_HEADERS=STATIC_HEADERS+`
 /api/*
   Access-Control-Allow-Origin: *
 `;
-// Cloudflare's static delivery types a file by its extension, and JSON and XML then come
-// without "charset=utf-8" (checked with wrangler's asset server, 2026-11-09). Each published
-// JSON/XML data file and mikanBox DB API path gets its exact Content-Type here. Rules are
-// exact paths because overlapping rules are joined with commas; Cloudflare allows 100 rules.
+// Cloudflare's static delivery types a file by its extension, and in production the type
+// comes without "charset=utf-8" (checked on a deployed site, 2026-11-09), so UTF-8 text is
+// garbled. _headers therefore sets the Content-Type of every text extension a page can publish
+// with one wildcard rule each (/*.md and so on). Cloudflare matches the rules against the
+// requested path, not the target of a _redirects rewrite, so the aliases of Markdown-only pages
+// (/id, /id/) and of mikanBox DB (/api/id) get exact rules too. XML keeps exact rules per file,
+// because sitemap.xml, rss.xml and podcast.xml have their own types and two rules that both set
+// Content-Type on one path are joined with a comma. Cloudflare allows 100 rules.
 const HEADER_RULE_LIMIT=100;
+const WILDCARD_TYPES=['html','md','txt','csv','js','css','json'] as const;
+const FEED_TYPES:Record<string,string>={'/sitemap.xml':'application/xml; charset=utf-8','/rss.xml':'application/rss+xml; charset=utf-8','/podcast.xml':'application/rss+xml; charset=utf-8'};
+const headerRule=(path:string,type:string)=>`${path}\n  Content-Type: ${type}\n`;
 async function headersFor(env:Env):Promise<string> {
  const base=splitMode(env)?SPLIT_HEADERS:STATIC_HEADERS;
- const rows=(await env.DB.prepare(`SELECT p.id,${PAGE_PATH} path FROM posts p JOIN static_pages s ON s.id=p.id WHERE p.status='public_static' ORDER BY p.id`).all<{id:string;path:string}>()).results;
- const rules:string[]=[];
- for(const row of rows) {
-  if(!safeOutput(row.id,row.path)||!/\.(?:json|xml)$/.test(row.path))continue;
-  const paths=row.path.startsWith('/api/')?[row.path,'/api/'+row.id]:[row.path];
-  for(const path of paths)rules.push(`${path}\n  Content-Type: ${outputType(path.startsWith('/api/')?'/x.json':path)}\n`);
- }
+ const rules=WILDCARD_TYPES.map(ext=>headerRule('/*.'+ext,outputType('/x.'+ext)));
+ for(const [path,type] of Object.entries(FEED_TYPES))rules.push(headerRule(path,type));
+ const {files,aliases}=await publishedRoutes(env);
+ // Aliases first: a page whose alias gets no rule is garbled at its usual URL.
+ for(const [source,target] of aliases)if(!/\.html$/.test(target))rules.push(headerRule(source,outputType(target)));
+ for(const path of files)if(path.endsWith('.xml'))rules.push(headerRule(path,outputType(path)));
  const used=base.split(/\n(?=\/)/).length;
- return base+(rules.length?'\n'+rules.slice(0,Math.max(0,HEADER_RULE_LIMIT-used)).join('\n'):'');
+ return base+'\n'+rules.slice(0,Math.max(0,HEADER_RULE_LIMIT-used)).join('\n');
 }
-async function redirects(env:Env):Promise<string> {
+/** Published page files, and the URL aliases (_redirects 200 rewrites) that serve them. */
+async function publishedRoutes(env:Env):Promise<{files:string[];aliases:Map<string,string>}> {
  const rows=(await env.DB.prepare(`SELECT p.id,p.status,CASE WHEN s.id IS NULL THEN NULL ELSE ${PAGE_PATH} END path FROM posts p LEFT JOIN static_pages s ON s.id=p.id ORDER BY p.id`).all<{id:string;status:string;path:string|null}>()).results;
- const all=new Set(rows.map(row=>row.id)),aliases=new Map<string,string>(),api:Array<[string,string]>=[];
+ const all=new Set(rows.map(row=>row.id)),aliases=new Map<string,string>(),api:Array<[string,string]>=[],files:string[]=[];
  for(const row of rows) {
   if(row.status!=='public_static'||!row.path||!safeOutput(row.id,row.path))continue;
+  files.push(row.path);
   // mikanBox DB: /api/ID.json is the file, /api/ID its alias.
   if(row.path.startsWith('/api/')){api.push(['/api/'+row.id,row.path]);continue;}
   // HTML pages answer /id and /id/; so do Markdown-only pages, with their .md file. Data pages only answer /id.<ext>.
@@ -97,12 +105,16 @@ async function redirects(env:Env):Promise<string> {
    if(!all.has(parent)){aliases.set('/'+parent,target);aliases.set('/'+parent+'/',target);}
   }
  }
- if(aliases.size>2000)throw new Error('Publication exceeds the 2,000 URL alias limit.');
  // The standard search box submits to index.php?page=search&q=…; the static search
  // page passes the query on to Google (see generateSearchResults).
  if(aliases.has('/search'))aliases.set('/index.php',aliases.get('/search')!);
  // The public Worker runs no code, so DB pages are served from their built JSON.
  for(const [source,target] of api)aliases.set(source,target);
+ return {files,aliases};
+}
+async function redirects(env:Env):Promise<string> {
+ const {aliases}=await publishedRoutes(env);
+ if([...aliases.keys()].filter(path=>!path.startsWith('/api/')&&path!=='/index.php').length>2000)throw new Error('Publication exceeds the 2,000 URL alias limit.');
  return [...aliases].map(([source,target])=>`${source} ${target} 200`).join('\n')+'\n';
 }
 

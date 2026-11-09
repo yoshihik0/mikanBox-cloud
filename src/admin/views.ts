@@ -91,6 +91,20 @@ function publishBox(csrf: string, t: (key: string, ...args: (string | number)[])
   return `<form method="post" class="publish-box mt-10" id="publish-box">${csrfField(csrf)}<input type="hidden" name="save_action" value="build_ssg"><button class="btn btn-blue btn-small">${getIcon('cloud')} <span data-publish-label>${t('btn_ssg_build')}</span></button><span class="publish-status" data-publish-status role="status">${h(summary)}${when ? ` ${ja ? '最後の公開' : 'Last published'}: ${h(when)}` : ''}</span>${destination}${setup}</form>`;
 }
 
+/**
+ * The page list's state (category filter, search, list page) as a query string, so that opening
+ * the page editor, saving, and going back to the list keep the list as it was (as in PHP, where
+ * the editor opens over the list without reloading it). Starts with "&" when not empty.
+ */
+export function pageListQuery(state: { category?: string; query?: string; pageNumber?: number }): string {
+  const params = new URLSearchParams();
+  if (state.category) params.set('cat', state.category);
+  if (state.query) params.set('q', state.query);
+  if (state.pageNumber && state.pageNumber > 1) params.set('p_pages', String(state.pageNumber));
+  const qs = params.toString();
+  return qs ? '&' + qs : '';
+}
+
 // ===== 管理画面メインシェル =====
 export function renderAdminShell(opts: {
   lang: string;
@@ -112,6 +126,8 @@ export function renderAdminShell(opts: {
   mediaEnabled?: boolean;
   allCategories?: string[];
   category?: string;
+  /** pageListQuery() of the current list. */
+  listQuery?: string;
 }): string {
   const { lang, t, view, editId, hasNew, message, csrf, settings, helpFile,
           pagesHtml, pageEditorHtml, siteHtml, designHtml, designEditorHtml, mediaHtml, aiPromptJson } = opts;
@@ -158,7 +174,7 @@ ${opts.mediaEnabled?`<div id="drop-zone">${getIcon('cloud')} ${t('hint_drop_uplo
     <a href="#page-editor" class="nav-edit active" data-editor-type="page" title="${t('btn_edit')}">
         ${getIcon('edit')}
         <span>${t('btn_edit')}</span>
-        <span class="close-badge" title="閉じる" onclick="event.preventDefault();event.stopPropagation();window.location.href='/admin#pages'">×</span>
+        <span class="close-badge" title="閉じる" onclick="event.preventDefault();event.stopPropagation();window.location.href='/admin${opts.listQuery ? h('?' + opts.listQuery.slice(1)) : ''}#pages'">×</span>
     </a>` : ''}
     <a href="${view==='import'?'/admin':''}#site" class="nav-settings" title="${t('nav_settings')}">
         ${getIcon('save')}
@@ -610,6 +626,7 @@ export function renderPagesView(opts: {
   lang?: string; publication?: PublicationStatus; cloudReady?: boolean; publicUrl?: string;
 }): string {
   const { t, pages, view, editId, hasNew, csrf, helpFile } = opts;
+  const listQuery = h(pageListQuery({ category: opts.category, query: opts.query, pageNumber: opts.pageNumber }));
   const ja = opts.lang !== 'en', publication = opts.publication;
   const hasEditor = view === 'pages' && (editId !== null || hasNew);
 
@@ -622,7 +639,7 @@ export function renderPagesView(opts: {
     return `<tr>
                 <td class="td-narrow">
                     <div class="flex-center" style="gap: 5px;">
-                         <a href="?view=pages&amp;edit=${h(pid)}#page-editor" class="btn btn-sm btn-blue" title="${t('btn_edit')}">${getIcon('edit')}</a>
+                         <a href="?view=pages&amp;edit=${h(encodeURIComponent(pid))}${listQuery}#page-editor" class="btn btn-sm btn-blue" title="${t('btn_edit')}">${getIcon('edit')}</a>
                          ${formatHasHtml(format)
                            ? `<a href="/admin/visual?id=${h(encodeURIComponent(pid))}" class="btn btn-sm btn-blue" title="${t('btn_visual_edit')}">${getIcon('visual')}</a>`
                            : `<span class="btn btn-sm btn-gray btn-disabled" aria-disabled="true" title="${h(t('visual_err_not_html'))}">${getIcon('visual')}</span>`}
@@ -640,7 +657,7 @@ export function renderPagesView(opts: {
                 <td class="td-narrow"><code>${h(pid)}</code></td>
                 <td>
                     <div class="title-cell-flex">
-                         <a href="?view=pages&amp;edit=${h(pid)}#page-editor" class="title-link">${h(d.title || 'No Title')}</a>
+                         <a href="?view=pages&amp;edit=${h(encodeURIComponent(pid))}${listQuery}#page-editor" class="title-link">${h(d.title || 'No Title')}</a>
                          ${format !== 'html' ? `<span class="format-badge ${isDataFormat(format) || isApiFormat(format) ? 'format-data' : 'format-md'}" title="${h(t('label_output_format') + ': ' + t('output_format_' + format))}">${formatBadge(format)}</span>` : ''}
                     </div>
                 </td>
@@ -659,7 +676,7 @@ export function renderPagesView(opts: {
         <div class="section-container section-large-bottom">
             <div class="header">
             <h1>${getIcon('page')} ${t('nav_pages')}
-              <a href="?view=pages&amp;new=1#page-editor" class="btn btn-sm btn-blue" style="margin-left:15px;display:inline-flex;align-items:center;gap:5px;font-size:.85rem;padding:4px 10px;vertical-align:middle">${getIcon('add')} ${t('btn_create_new')}</a>
+              <a href="?view=pages&amp;new=1${listQuery}#page-editor" class="btn btn-sm btn-blue" style="margin-left:15px;display:inline-flex;align-items:center;gap:5px;font-size:.85rem;padding:4px 10px;vertical-align:middle">${getIcon('add')} ${t('btn_create_new')}</a>
               <a href="${h(helpFile)}#page-mgmt" target="_blank" class="manual-link">${t('admin_help')}</a>
             </h1>
             <form method="get" class="search-bar-wrap" style="display:flex;align-items:center">
@@ -702,6 +719,9 @@ export function renderPageEditor(opts: {
   selectedRevision?: Revision;
   /** Public site URL without a trailing slash, for the output URL shown under the format. */
   publicBase?: string;
+  /** pageListQuery() of the list the editor was opened from; a new page takes its category. */
+  listQuery?: string;
+  listCategory?: string;
 }): string {
   const { t, editId, editData, csrf, helpFile, wrapperComponents, allCategories } = opts;
   const d = editData || {} as PageData;
@@ -734,7 +754,7 @@ export function renderPageEditor(opts: {
                                 </div>` : ''}
                         </div>
                     <div class="editor-header-actions">
-                    ${editId?`<div id="editor-revisions-container"><div class="revisions-select-group" style="display:flex;align-items:center;gap:8px;white-space:nowrap"><span>${getIcon('history')} ${t('label_revisions')}</span><select style="width:auto;min-width:180px" aria-label="${t('label_revisions')}" onchange="location.href=this.value"><option value="?view=pages&edit=${encodeURIComponent(editId)}#page-editor">${t('select_revision')}</option>${(opts.revisions||[]).map(r=>`<option value="?view=pages&edit=${encodeURIComponent(editId)}&rev=${r.id}#page-editor" ${opts.selectedRevision?.id===r.id?'selected':''}>${h(r.created_at)} (${h(r.editor_id)})</option>`).join('')}</select></div></div>`:''}
+                    ${editId?`<div id="editor-revisions-container"><div class="revisions-select-group" style="display:flex;align-items:center;gap:8px;white-space:nowrap"><span>${getIcon('history')} ${t('label_revisions')}</span><select style="width:auto;min-width:180px" aria-label="${t('label_revisions')}" onchange="location.href=this.value"><option value="?view=pages&edit=${encodeURIComponent(editId)}${h(opts.listQuery || '')}#page-editor">${t('select_revision')}</option>${(opts.revisions||[]).map(r=>`<option value="?view=pages&edit=${encodeURIComponent(editId)}&rev=${r.id}${h(opts.listQuery || '')}#page-editor" ${opts.selectedRevision?.id===r.id?'selected':''}>${h(r.created_at)} (${h(r.editor_id)})</option>`).join('')}</select></div></div>`:''}
                     ${editId?`<a href="/admin/visual?id=${h(encodeURIComponent(editId))}" id="editor-visual-btn" class="btn btn-sm editor-visual-btn ${visualAvailable?'btn-blue':'btn-gray btn-disabled'}" ${visualAvailable?'':'aria-disabled="true" tabindex="-1"'} data-saved-html="${visualAvailable?'1':'0'}" data-title-on="${h(t('btn_visual_edit'))}" data-title-off="${h(t('visual_err_not_html'))}" title="${h(visualAvailable?t('btn_visual_edit'):t('visual_err_not_html'))}">${getIcon('visual')} ${t('btn_visual_edit')}</a>`:''}
                     </div>
                     </div>
@@ -779,7 +799,7 @@ export function renderPageEditor(opts: {
                         </div>
                         <div class="form-group grid-span-1">
                             <label class="sub-label">${t('label_category')} ${t('hint_comma_separated')}</label>
-                            <input type="text" name="category" value="${h(d.category || '')}" placeholder="news, blog, ...">
+                            <input type="text" name="category" value="${h(d.category ?? (editData ? '' : opts.listCategory || ''))}" placeholder="news, blog, ...">
                             <small class="sub-text sub-text-block">
                                 ${t('hint_existing_categories')}:
                                 ${allCategories.length > 0 ? categoryList(allCategories) : t('label_none')}
@@ -837,7 +857,7 @@ export function renderPageEditor(opts: {
                             ${editId
                               ? `<a id="editor-preview-link" href="${h(adminPreviewUrl(editId, d))}" target="_blank" rel="noopener" class="btn btn-blue" title="${h(t('preview_saved_hint'))}">${getIcon('view')} ${t('btn_preview')}</a>`
                               : `<span id="editor-preview-link" class="btn btn-gray btn-disabled" aria-disabled="true" title="${h(t('preview_saved_hint'))}">${getIcon('view')} ${t('btn_preview')}</span>`}
-                            <a href="/admin#pages" class="btn btn-gray">${getIcon('arrow_back')} ${t('btn_back_to_list')}</a>
+                            <a href="/admin${opts.listQuery ? h('?' + opts.listQuery.slice(1)) : ''}#pages" class="btn btn-gray">${getIcon('arrow_back')} ${t('btn_back_to_list')}</a>
                         </div>
                         ${(editId && editId !== 'index') ? `
                             <button type="button" class="btn btn-red" onclick="if(confirm('${t('hint_confirm_delete')}')){var f=document.getElementById('page-form');f.querySelector('input[name=save_action]').value='delete_page';f.requestSubmit();}">${getIcon('delete')} ${t('btn_delete')}</button>

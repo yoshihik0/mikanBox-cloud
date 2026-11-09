@@ -30,7 +30,7 @@ import {publicationManifest,readPublicationEntry} from '../static-publication';
 import {buildStaticExportZip} from '../static-export';
 import { MEDIA_FILE_LIMIT,MEDIA_TOTAL_LIMIT,MEDIA_COUNT_LIMIT,imageType,validMediaName,mediaType,isCodeMedia } from '../media-policy';
 import { getSystemLanguage, createTranslator } from '../i18n';
-import { renderLoginPage, renderAdminShell, renderPagesView, renderPageEditor, renderDesignView, renderDesignEditor, renderMediaView, renderSiteView, renderImportView } from './views';
+import { renderLoginPage, renderAdminShell, renderPagesView, renderPageEditor, renderDesignView, renderDesignEditor, renderMediaView, renderSiteView, renderImportView, pageListQuery } from './views';
 const html = (body: string, status = 200) => new Response(body, {status, headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store'}});
 const json = (body: unknown, status = 200) => Response.json(body,{status,headers:{'Cache-Control':'no-store'}});
 const val = (f: FormData, key: string) => String(f.get(key) || '');
@@ -395,8 +395,8 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
   const allCategories=[...cats].sort(),category=url.searchParams.get('cat')||'',query=url.searchParams.get('q')||'';
   const filtered=pages.filter(p=>(!category||(p.data.category||'').split(',').map(x=>x.trim()).includes(category))&&(!query||`${p.id} ${p.data.title} ${p.data.content_md||''}`.toLowerCase().includes(query.toLowerCase())));
   const perPage=Math.min(500,Math.max(1,Number(settings.pages_per_page)||30)),totalPages=Math.max(1,Math.ceil(filtered.length/perPage)),pageNumber=Math.min(totalPages,Math.max(1,Number(url.searchParams.get('p_pages'))||1));
-  const hasNew=url.searchParams.has('new'),helpFile=help(lang);
-  const pageEditorHtml=view==='pages'&&(editId||hasNew)?renderPageEditor({t,editId,editData:editData as PageData|null,csrf,helpFile,wrapperComponents:components.filter(c=>c.data.is_wrapper),allCategories,publicBase:(env.PUBLIC_SITE_URL||String(settings.ssg_root_url||'')||url.origin).replace(/\/$/,''),settings:{...settings,_site_base:url.origin},revisions:pageRevisions,selectedRevision:pageRevisions.find(r=>r.id===Number(url.searchParams.get('rev')))}):'';
+  const hasNew=url.searchParams.has('new'),helpFile=help(lang),listQuery=pageListQuery({category,query,pageNumber:Number(url.searchParams.get('p_pages'))||1});
+  const pageEditorHtml=view==='pages'&&(editId||hasNew)?renderPageEditor({t,editId,editData:editData as PageData|null,csrf,helpFile,wrapperComponents:components.filter(c=>c.data.is_wrapper),allCategories,publicBase:(env.PUBLIC_SITE_URL||String(settings.ssg_root_url||'')||url.origin).replace(/\/$/,''),settings:{...settings,_site_base:url.origin},revisions:pageRevisions,selectedRevision:pageRevisions.find(r=>r.id===Number(url.searchParams.get('rev'))),listQuery,listCategory:category}):'';
   const designEditorHtml=view==='components'&&(editId||hasNew)?renderDesignEditor({t,editId,editData:editData as ComponentData|null,csrf,helpFile}):'';
   const cloudReady=await cloudConfigured(env);
   const pagesHtml=renderPagesView({t,pages:filtered.slice((pageNumber-1)*perPage,pageNumber*perPage),view,editId,hasNew,csrf,helpFile,settings,query,category,pageNumber,totalPages,lang,publication:await publicationStatus(env,url.origin,pages),cloudReady,publicUrl:env.CLOUDFLARE_PUBLIC_WORKER_NAME ? env.PUBLIC_SITE_URL || '' : ''});
@@ -420,5 +420,5 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
   const unseen=await unseenDevices(env,auth.device);
   if(unseen.length)message=(message?message+' ':'')+(lang==='ja'?'新しい端末が登録されました: ':'New device registered: ')+unseen.map(d=>`${d.name} (${d.username})`).join(', ')+(lang==='ja'?'。心当たりがなければ「端末とユーザー」で止めてください。':'. If you do not recognise it, stop it under Devices and users.');
   return html(renderAdminShell({lang,t,view,editId,hasNew,helpFile,message,csrf,settings:{...settings,_public_url:env.CLOUDFLARE_PUBLIC_WORKER_NAME ? env.PUBLIC_SITE_URL||'' : ''},pagesHtml,pageEditorHtml,siteHtml,designHtml,designEditorHtml,mediaHtml,
-    mediaEnabled:true,aiPromptJson:JSON.stringify(settings.ai_prompt||'').replace(/</g,'\\u003c'),allCategories,category}),statusCode);
+    mediaEnabled:true,aiPromptJson:JSON.stringify(settings.ai_prompt||'').replace(/</g,'\\u003c'),allCategories,category,listQuery}),statusCode);
 }

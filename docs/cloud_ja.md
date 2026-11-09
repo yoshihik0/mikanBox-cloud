@@ -1,6 +1,6 @@
 <style>.manual-version{font-size:.5em;font-weight:400;white-space:nowrap}</style>
 
-# 🍊mikanBox Cloudflare版 マニュアル <small class="manual-version">v0.8.0</small>
+# 🍊mikanBox Cloudflare版 マニュアル <small class="manual-version">v0.8.1</small>
 
 このマニュアルはCloudflare版の導入と、PHP版との違いを説明します。共通の操作は[操作マニュアル](https://yoshihiko.com/mikanbox/help_ja.html)も参照してください。flat版・SQLite版との使い分けは、[README](https://github.com/yoshihik0/mikanBox-cloud#readme)を参照してください。
 
@@ -477,3 +477,7 @@ JSON復元では、転送中のデータを一時領域に置き、全件の検�
 ### 0.8.0の変更
 
 PHP版2.17.0〜2.18.1の出力形式を移植しました。ページごとの出力形式（HTML + Markdown、Markdown、データ形式、mikanBox DB）、`/ID.拡張子` のURL、`{{PAGE_URL:ID}}`、`{{CATEGORY}}`、`_` で始まるカテゴリ、`NAV_LINKS`・`NAV_CARDS` の `sort`・`limit`・`sep`・`@same`、MCPの `output_format`・`md_footer_comps`・`expand_tags` に対応します。MCPの `update_page` は、公開済みのページを編集しても更新日を変えません（非公開から公開にしたときだけ現在時刻にします）。管理画面のページ一覧は、PHP版と同じく「承認待ち → `index` → 表示順」で並べます。更新では、データベース移行 `0017` の適用が必要です。
+
+### 0.8.1の変更
+
+公開サイトの `.md`・`.txt`・`.csv`・`.js`・`.css`・`.json`・`.xml` を、Cloudflareの配信でも `charset=utf-8` 付きで返すようにしました（0.8.0では、ページ一覧の地球儀マークから開くと日本語が文字化けすることがありました）。Markdownだけのページの `/ID`・`/ID/` と、mikanBox DBの `/api/ID` にも同じ指定を付けます。反映には、更新後にもう一度公開してください。ページ一覧をカテゴリで絞り込んだ状態からページ編集を開いても、絞り込みが外れなくなりました。新しいページを作ると、絞り込み中のカテゴリが最初から入ります。
