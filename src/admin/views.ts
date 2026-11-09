@@ -8,6 +8,7 @@ import type { Settings, PageData, ComponentData } from '../types';
 import type { User } from '../accounts';
 import type { Revision } from '../revisions';
 import {CLOUD_VERSION} from '../version';
+import {localTime,isoInstant,utcFallback,localTimeScript} from './local-time';
 import {trackingConfigured} from '../tracking';
 import type {PublicationStatus,PublicState} from '../publish-status';
 import {cloudUpdateUrl,type CloudRelease} from '../cloud-release';
@@ -54,12 +55,12 @@ export function adminTitle(settings: Partial<Settings> | null | undefined, suffi
   const name = String(settings?.site_name ?? '').trim().replace(/^\u{1F34A}\s*/u, '').trim() || 'mikanBox';
   return h('🍊' + name + (suffix !== '' ? ' - ' + suffix : ''));
 }
-export function renderLoginPage(opts: {lang:string; settings?: Partial<Settings>; initial:boolean; noDevices?:boolean; error:string; t:(key:string,...args:(string|number)[])=>string; csrf:string; inviteStep?:{code:string;device_name:string;username?:string;display_name?:string}}):string {
+export function renderLoginPage(opts: {lang:string; siteName?: string; initial:boolean; noDevices?:boolean; error:string; t:(key:string,...args:(string|number)[])=>string; csrf:string; inviteStep?:{code:string;device_name:string;username?:string;display_name?:string}}):string {
   const {lang,initial,noDevices,error,t,csrf,inviteStep}=opts, ja=lang==='ja';
   const hidden=(action:string)=>`<input type="hidden" name="login_action" value="${action}"><input type="hidden" name="csrf_token" value="${h(csrf)}">`;
   const deviceField=`<div class="form-group"><label>${ja?'この端末の名前（例: 仕事用PC）':'Name for this device (e.g. Work laptop)'}</label><input type="text" name="device_name" maxlength="60" required></div>`;
   const setupFields=`<div class="form-group"><label>${ja?'初期設定トークン（SETUP_TOKEN）':'Setup token (SETUP_TOKEN)'}</label><input type="password" name="setup_token" autocomplete="off" required></div><div class="form-group"><label>${t('label_username')}</label><input type="text" name="username" autocomplete="off" required></div>`;
-  return `<!DOCTYPE html><html lang="${h(lang)}"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${adminTitle(opts.settings, t('admin_login'))}</title><link rel="stylesheet" href="/mikanbox/admin.css?v=${h(CLOUD_VERSION)}-8"></head>
+  return `<!DOCTYPE html><html lang="${h(lang)}"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${adminTitle({ site_name: opts.siteName }, t('admin_login'))}</title><link rel="stylesheet" href="/mikanbox/admin.css?v=${h(CLOUD_VERSION)}-8"></head>
   <body class="login-body"><div class="login-box"><div class="login-title"><span>🍊</span><span>mikanBox</span></div>
   ${error?`<div class="error" role="alert">${h(error)}</div>`:''}
   ${inviteStep&&!initial?`<p><strong>${t('device_invite_intro')}</strong></p>
@@ -92,14 +93,15 @@ function globeLink(state: PublicState | undefined, status: string, t: (key: stri
 // The build is how pages reach the public site, so it sits with the page list and
 // reports there rather than in the toast at the top of the screen.
 function publishBox(csrf: string, t: (key: string, ...args: (string | number)[]) => string, publication: PublicationStatus | undefined, ja: boolean, cloudReady: boolean, publicUrl: string): string {
-  const when = publication?.publishedAt ? new Date(publication.publishedAt).toLocaleString(ja ? 'ja-JP' : 'en-US', { dateStyle: 'short', timeStyle: 'short' }) : '';
+  // Shown in the viewer's time zone (the Worker formats in UTC).
+  const when = publication?.publishedAt ? localTime(publication.publishedAt, ja ? 'ja' : 'en') : '';
   const summary = !publication ? '' : publication.stale
     ? t('cloud_publish_stale', publication.stale)
     : t('cloud_publish_up_to_date');
   // Publishing needs the Cloudflare API token from Site → Cloudflare publication settings; say so here, where the button is.
   const setup = cloudReady ? '' : `<p class="publish-setup" role="note">${t('cloud_publish_needs_token')} <a href="/admin?view=site#cloud-connection" data-open-cloud-connection>${t('cloud_publish_setup_link')}</a></p>`;
   const destination = publicUrl ? `<span class="publish-status">${t('cloud_publish_destination')}: <a href="${h(publicUrl)}" target="_blank" rel="noopener noreferrer">${h(publicUrl)}</a></span>` : '';
-  return `<form method="post" class="publish-box mt-10" id="publish-box">${csrfField(csrf)}<input type="hidden" name="save_action" value="build_ssg"><button class="btn btn-blue btn-small">${getIcon('cloud')} <span data-publish-label>${t('btn_ssg_build')}</span></button><span class="publish-status" data-publish-status role="status">${h(summary)}${when ? ` ${t('cloud_publish_last')}: ${h(when)}` : ''}</span>${destination}${setup}</form>`;
+  return `<form method="post" class="publish-box mt-10" id="publish-box">${csrfField(csrf)}<input type="hidden" name="save_action" value="build_ssg"><button class="btn btn-blue btn-small">${getIcon('cloud')} <span data-publish-label>${t('btn_ssg_build')}</span></button><span class="publish-status" data-publish-status role="status">${h(summary)}${when ? ` ${t('cloud_publish_last')}: ${when}` : ''}</span>${destination}${setup}</form>`;
 }
 
 /**
@@ -245,6 +247,8 @@ ${opts.mediaEnabled?`<div id="drop-zone">${getIcon('cloud')} ${t('hint_drop_uplo
         history.replaceState(history.state, '', currentUrl.href);
     }
     window.CSRF_TOKEN = ${JSON.stringify(csrf)};
+    // Times are sent as instants and shown in the viewer's own time zone (the Worker formats in UTC).
+    ${localTimeScript(lang)}
     window.AI_PROMPT = ${aiPromptJson};
     window.HELP_FILE = ${JSON.stringify(helpFile)};
 
@@ -808,12 +812,12 @@ export function renderPageEditor(opts: {
                                 </div>` : ''}
                         </div>
                     <div class="editor-header-actions">
-                    ${editId?`<div id="editor-revisions-container"><div class="revisions-select-group" style="display:flex;align-items:center;gap:8px;white-space:nowrap"><span>${getIcon('history')} ${t('label_revisions')}</span><select style="width:auto;min-width:180px" aria-label="${t('label_revisions')}" onchange="location.href=this.value"><option value="?view=pages&edit=${encodeURIComponent(editId)}${h(opts.listQuery || '')}#page-editor">${t('select_revision')}</option>${(opts.revisions||[]).map(r=>`<option value="?view=pages&edit=${encodeURIComponent(editId)}&rev=${r.id}${h(opts.listQuery || '')}#page-editor" ${opts.selectedRevision?.id===r.id?'selected':''}>${h(r.created_at)} (${h(r.editor_id)})</option>`).join('')}</select></div></div>`:''}
+                    ${editId?`<div id="editor-revisions-container"><div class="revisions-select-group" style="display:flex;align-items:center;gap:8px;white-space:nowrap"><span>${getIcon('history')} ${t('label_revisions')}</span><select style="width:auto;min-width:180px" aria-label="${t('label_revisions')}" onchange="location.href=this.value"><option value="?view=pages&edit=${encodeURIComponent(editId)}${h(opts.listQuery || '')}#page-editor">${t('select_revision')}</option>${(opts.revisions||[]).map(r=>{const iso=isoInstant(r.created_at),lang=opts.settings.system_lang==='en'?'en':'ja';return `<option value="?view=pages&edit=${encodeURIComponent(editId)}&rev=${r.id}${h(opts.listQuery || '')}#page-editor" ${opts.selectedRevision?.id===r.id?'selected':''}${iso?` data-local-time="${iso}" data-local-suffix="${h(` (${r.editor_id})`)}"`:''}>${h(iso?utcFallback(iso,lang):r.created_at)} (${h(r.editor_id)})</option>`;}).join('')}</select></div></div>`:''}
                     ${editId?`<a href="/admin/visual?id=${h(encodeURIComponent(editId))}" id="editor-visual-btn" class="btn btn-sm editor-visual-btn ${visualAvailable?'btn-blue':'btn-gray btn-disabled'}" ${visualAvailable?'':'aria-disabled="true" tabindex="-1"'} data-saved-html="${visualAvailable?'1':'0'}" data-title-on="${h(t('btn_visual_edit'))}" data-title-off="${h(t('visual_err_not_html'))}" title="${h(visualAvailable?t('btn_visual_edit'):t('visual_err_not_html'))}">${getIcon('visual')} ${t('btn_visual_edit')}</a>`:''}
                     </div>
                     </div>
                     <div class="editor-container editor-container-transparent">
-                        ${opts.selectedRevision?`<div id="revision-warning-banner" class="alert alert-warning" role="status" style="background:#fffbeb;border:1px solid #fef3c7;color:#b45309;padding:12px 16px;border-radius:8px;margin-bottom:20px;font-size:.9rem;line-height:1.5"><strong>${opts.settings.system_lang==='en'?'Viewing revision':'過去の版を表示中'}:</strong> ${h(opts.selectedRevision.created_at)} (${h(opts.selectedRevision.editor_id)})<br>${opts.settings.system_lang==='en'?'Saving will restore this revision as the current version.':'保存すると、この版が現在のページとして復元されます。'}</div>`:''}
+                        ${opts.selectedRevision?`<div id="revision-warning-banner" class="alert alert-warning" role="status" style="background:#fffbeb;border:1px solid #fef3c7;color:#b45309;padding:12px 16px;border-radius:8px;margin-bottom:20px;font-size:.9rem;line-height:1.5"><strong>${opts.settings.system_lang==='en'?'Viewing revision':'過去の版を表示中'}:</strong> ${localTime(opts.selectedRevision.created_at, opts.settings.system_lang==='en'?'en':'ja')} (${h(opts.selectedRevision.editor_id)})<br>${opts.settings.system_lang==='en'?'Saving will restore this revision as the current version.':'保存すると、この版が現在のページとして復元されます。'}</div>`:''}
                         <form method="post" id="page-form">
                     <input type="hidden" name="save_action" value="save_page">
                     <input type="hidden" name="old_id" value="${h(editId || '')}">

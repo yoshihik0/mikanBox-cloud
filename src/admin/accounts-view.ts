@@ -1,9 +1,11 @@
 import type {Device,DeviceCode} from '../devices';
 import {EXPIRY_CHOICES,PROBATION_DAYS,onProbation} from '../devices';
 import type {User} from '../accounts';
+import {localTime} from './local-time';
 const h=(value:unknown)=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]!));
 const csrfField=(csrf:string)=>`<input type="hidden" name="csrf_token" value="${h(csrf)}">`;
-const when=(ms:number,lang:string)=>new Date(ms).toLocaleString(lang==='ja'?'ja-JP':'en-US',{timeZone:'UTC',dateStyle:'short',timeStyle:'short'})+' UTC';
+// Shown in the viewer's local time (see local-time.ts).
+const when=(ms:number,lang:string)=>localTime(ms,lang);
 /** Users and devices of the Cloud edition. There are no passwords: devices are trusted and stopped one by one. */
 export function renderAccountsSection(opts:{lang:string;csrf:string;users:User[];me:Device;devices:Device[];codes:DeviceCode[];expiryDays:number;issuedCode?:string}):string {
  const {lang,csrf,me}=opts,ja=lang==='ja',names=new Map(opts.devices.map(d=>[d.id,d.name]));

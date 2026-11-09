@@ -1,6 +1,6 @@
 <style>.manual-version{font-size:.5em;font-weight:400;white-space:nowrap}</style>
 
-# 🍊mikanBox Cloudflare Manual <small class="manual-version">v0.8.2</small>
+# 🍊mikanBox Cloudflare Manual <small class="manual-version">v0.8.3</small>
 
 This manual covers installation and the Cloudflare edition’s differences. For shared operations, see the [operation manual](https://yoshihiko.com/mikanbox/help_en.html).
 
@@ -355,3 +355,7 @@ The public site now serves `.md`, `.txt`, `.csv`, `.js`, `.css`, `.json` and `.x
 ### Changes in 0.8.2
 
 The admin screens follow PHP 2.18.2. The browser tab title is "🍊site name". The page list has an output-format filter right of Help, combined with the category and search (kept when the page editor is opened and closed). Each page row has three actions: edit, visual editing and the globe icon (public site); check saved content with the page editor's preview. The media type filter and search moved to the heading row, and searches have one clear button (the browser's). Files can be dropped only on the media section. Selects have room right of their arrow. The MCP connection instructions and `get_ai_context` explain that a page is made readable as Markdown by setting its `output_format` to `html_md` or `md` (there is no site-wide switch).
+
+### Changes in 0.8.3
+
+Dates and times in the admin screen are shown in the viewer's own time zone (Japan time in Japan): "Last published", revision times, and the Added, Last used and Expires columns under Devices and users (they were shown in UTC before). The sign-in page now receives only the site name instead of the whole settings, and its tab title is "🍊site name - Sign in" (as in PHP).

@@ -254,3 +254,20 @@ test('2.18.2 admin alignment: title, output-format filter kept in the URL, globe
   const editor=await get('/admin?view=pages&edit=article');assert.match(editor,/<small class="sub-text preview-saved-note">保存した内容を表示します。<\/small>/);
   const login2=await (await call(value,'/admin')).text();assert.match(login2,/<title>🍊Orchard - ログイン<\/title>/);
 });
+
+test('times are sent as instants and shown in the viewer\'s time zone; the sign-in page receives only the site name',async()=>{
+  const value=env();await sample(value);const auth=await login(value);
+  {const {saveWithRevision}=require('../.test-build/src/revisions.js');const current=await loadPage(value,'article');await saveWithRevision(value,'article','article',{...current,title:'Article v2'},'admin',current.revision_tag||'');}
+  const html=await(await call(value,'/admin?view=pages&edit=article',undefined,auth.cookie)).text();
+  // Revision list entries carry the instant; the visible text is only a UTC fallback.
+  assert.match(html,/<option value="[^"]*&rev=\d+[^"]*"[^>]*data-local-time="\d{4}-\d\d-\d\dT[\d:.]+Z" data-local-suffix="/);
+  assert.match(html,/querySelectorAll\('\[data-local-time\]'\)/);
+  const site=await(await call(value,'/admin?view=site',undefined,auth.cookie)).text();
+  assert.match(site,/<time datetime="\d{4}-\d\d-\d\dT[\d:.]+Z" data-local-time="[^"]+">[^<]* UTC<\/time>/,'device times');
+  const {localTime,utcFallback}=require('../.test-build/src/admin/local-time.js');
+  assert.equal(utcFallback('2026-11-09T04:30:00.000Z','ja'),'2026/11/09 4:30 UTC');
+  assert.match(localTime('2026-11-09T04:30:00.000Z','en'),/^<time datetime="2026-11-09T04:30:00.000Z" data-local-time="2026-11-09T04:30:00.000Z">/);
+  assert.equal(localTime('not a time','ja'),'not a time');
+  // Sign-in page: title from the site name only (as in PHP), and nothing else of the settings.
+  const login2=await(await call(value,'/admin')).text();assert.match(login2,/<title>🍊[^<]* - ログイン<\/title>/);
+});
