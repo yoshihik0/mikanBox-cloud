@@ -1,0 +1,10 @@
+{
+    "cloud_globe_not_published": "Not published yet (publish to open it)",
+    "cloud_globe_stale": "Open the public page (changes not published yet)",
+    "cloud_publish_stale": "%d page(s) have changes not on the public site.",
+    "cloud_publish_up_to_date": "The public site is up to date.",
+    "cloud_publish_last": "Last published",
+    "cloud_publish_needs_token": "Publishing needs a Cloudflare API token.",
+    "cloud_publish_setup_link": "Set it up under Site → Cloudflare publication settings (the steps are explained there)",
+    "cloud_publish_destination": "Public site"
+}

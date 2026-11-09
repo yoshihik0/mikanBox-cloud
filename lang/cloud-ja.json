@@ -1,0 +1,10 @@
+{
+    "cloud_globe_not_published": "まだ公開されていません（公開すると開けます）",
+    "cloud_globe_stale": "公開ページを開く（変更がまだ反映されていません）",
+    "cloud_publish_stale": "公開側に反映していない変更があります（%dページ）。",
+    "cloud_publish_up_to_date": "公開側は最新です。",
+    "cloud_publish_last": "最後の公開",
+    "cloud_publish_needs_token": "公開するには、Cloudflare APIトークンの設定が必要です。",
+    "cloud_publish_setup_link": "サイト →「Cloudflare公開設定」で設定する（取得方法も書いてあります）",
+    "cloud_publish_destination": "公開先"
+}

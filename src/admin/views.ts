@@ -49,12 +49,17 @@ function statusOptions(t: (key:string)=>string, selected: string) {
   const current = ['public','public_dynamic'].includes(selected) ? 'public_static' : selected;
   return statuses.map(status=>`<option value="${status}" ${current===status?'selected':''}>${statusLabel(t,status)}</option>`).join('');
 }
-export function renderLoginPage(opts: {lang:string; initial:boolean; noDevices?:boolean; error:string; t:(key:string,...args:(string|number)[])=>string; csrf:string; inviteStep?:{code:string;device_name:string;username?:string;display_name?:string}}):string {
+/** Admin window title: "🍊site name" (+ " - suffix"); a site name that already starts with 🍊 keeps one (PHP mikanBoxAdminTitle). */
+export function adminTitle(settings: Partial<Settings> | null | undefined, suffix = ''): string {
+  const name = String(settings?.site_name ?? '').trim().replace(/^\u{1F34A}\s*/u, '').trim() || 'mikanBox';
+  return h('🍊' + name + (suffix !== '' ? ' - ' + suffix : ''));
+}
+export function renderLoginPage(opts: {lang:string; settings?: Partial<Settings>; initial:boolean; noDevices?:boolean; error:string; t:(key:string,...args:(string|number)[])=>string; csrf:string; inviteStep?:{code:string;device_name:string;username?:string;display_name?:string}}):string {
   const {lang,initial,noDevices,error,t,csrf,inviteStep}=opts, ja=lang==='ja';
   const hidden=(action:string)=>`<input type="hidden" name="login_action" value="${action}"><input type="hidden" name="csrf_token" value="${h(csrf)}">`;
   const deviceField=`<div class="form-group"><label>${ja?'この端末の名前（例: 仕事用PC）':'Name for this device (e.g. Work laptop)'}</label><input type="text" name="device_name" maxlength="60" required></div>`;
   const setupFields=`<div class="form-group"><label>${ja?'初期設定トークン（SETUP_TOKEN）':'Setup token (SETUP_TOKEN)'}</label><input type="password" name="setup_token" autocomplete="off" required></div><div class="form-group"><label>${t('label_username')}</label><input type="text" name="username" autocomplete="off" required></div>`;
-  return `<!DOCTYPE html><html lang="${h(lang)}"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>🍊mikanBox</title><link rel="stylesheet" href="/mikanbox/admin.css?v=${h(CLOUD_VERSION)}-8"></head>
+  return `<!DOCTYPE html><html lang="${h(lang)}"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${adminTitle(opts.settings, t('admin_login'))}</title><link rel="stylesheet" href="/mikanbox/admin.css?v=${h(CLOUD_VERSION)}-8"></head>
   <body class="login-body"><div class="login-box"><div class="login-title"><span>🍊</span><span>mikanBox</span></div>
   ${error?`<div class="error" role="alert">${h(error)}</div>`:''}
   ${inviteStep&&!initial?`<p><strong>${t('device_invite_intro')}</strong></p>
@@ -72,38 +77,48 @@ export function renderLoginPage(opts: {lang:string; initial:boolean; noDevices?:
 
 // Globe icon: blue when the public page shows the current source, grey when it is
 // older or not yet public. Never-published pages have nothing to open.
-function globeLink(state: PublicState | undefined, ja: boolean): string {
-  if (!state) return '';
-  if (state.state === 'none') return `<span class="btn btn-sm btn-gray" aria-disabled="true" style="opacity:.45;cursor:default" title="${ja ? 'まだ公開されていません' : 'Not published yet'}">${getIcon('globe')}</span>`;
+/**
+ * The page list's globe: the page at its address on the public site. Drafts and pending pages show
+ * it grey and unclickable, like the visual-editing button (PHP 2.18.2, msg_not_public_yet). A public
+ * page that is not on the site yet is also unclickable; one whose changes are not published is grey.
+ */
+function globeLink(state: PublicState | undefined, status: string, t: (key: string) => string): string {
+  const disabled = (title: string) => `<span class="btn btn-sm btn-gray btn-disabled" aria-disabled="true" title="${h(title)}">${getIcon('globe')}</span>`;
+  if (status !== 'public_static') return disabled(t('msg_not_public_yet'));
+  if (!state || state.state === 'none') return disabled(t('cloud_globe_not_published'));
   const live = state.state === 'live';
-  return `<a href="${h(state.url)}" target="_blank" class="btn btn-sm ${live ? 'btn-blue' : 'btn-gray'}" title="${live ? (ja ? '公開ページを開く' : 'Open the public page') : (ja ? '公開ページを開く（変更がまだ反映されていません）' : 'Open the public page (changes not published yet)')}">${getIcon('globe')}</a>`;
+  return `<a href="${h(state.url)}" target="_blank" rel="noopener" class="btn btn-sm ${live ? 'btn-blue' : 'btn-gray'}" title="${h(t(live ? 'btn_open_public_page' : 'cloud_globe_stale'))}">${getIcon('globe')}</a>`;
 }
 // The build is how pages reach the public site, so it sits with the page list and
 // reports there rather than in the toast at the top of the screen.
 function publishBox(csrf: string, t: (key: string, ...args: (string | number)[]) => string, publication: PublicationStatus | undefined, ja: boolean, cloudReady: boolean, publicUrl: string): string {
   const when = publication?.publishedAt ? new Date(publication.publishedAt).toLocaleString(ja ? 'ja-JP' : 'en-US', { dateStyle: 'short', timeStyle: 'short' }) : '';
   const summary = !publication ? '' : publication.stale
-    ? (ja ? `公開側に反映していない変更があります（${publication.stale}ページ）。` : `${publication.stale} page(s) have changes not on the public site.`)
-    : (ja ? '公開側は最新です。' : 'The public site is up to date.');
+    ? t('cloud_publish_stale', publication.stale)
+    : t('cloud_publish_up_to_date');
   // Publishing needs the Cloudflare API token from Site → Cloudflare publication settings; say so here, where the button is.
-  const setup = cloudReady ? '' : `<p class="publish-setup" role="note">${ja ? '公開するには、Cloudflare APIトークンの設定が必要です。' : 'Publishing needs a Cloudflare API token.'} <a href="/admin?view=site#cloud-connection" data-open-cloud-connection>${ja ? 'サイト →「Cloudflare公開設定」で設定する（取得方法も書いてあります）' : 'Set it up under Site → Cloudflare publication settings (the steps are explained there)'}</a></p>`;
-  const destination = publicUrl ? `<span class="publish-status">${ja ? '公開先' : 'Public site'}: <a href="${h(publicUrl)}" target="_blank" rel="noopener noreferrer">${h(publicUrl)}</a></span>` : '';
-  return `<form method="post" class="publish-box mt-10" id="publish-box">${csrfField(csrf)}<input type="hidden" name="save_action" value="build_ssg"><button class="btn btn-blue btn-small">${getIcon('cloud')} <span data-publish-label>${t('btn_ssg_build')}</span></button><span class="publish-status" data-publish-status role="status">${h(summary)}${when ? ` ${ja ? '最後の公開' : 'Last published'}: ${h(when)}` : ''}</span>${destination}${setup}</form>`;
+  const setup = cloudReady ? '' : `<p class="publish-setup" role="note">${t('cloud_publish_needs_token')} <a href="/admin?view=site#cloud-connection" data-open-cloud-connection>${t('cloud_publish_setup_link')}</a></p>`;
+  const destination = publicUrl ? `<span class="publish-status">${t('cloud_publish_destination')}: <a href="${h(publicUrl)}" target="_blank" rel="noopener noreferrer">${h(publicUrl)}</a></span>` : '';
+  return `<form method="post" class="publish-box mt-10" id="publish-box">${csrfField(csrf)}<input type="hidden" name="save_action" value="build_ssg"><button class="btn btn-blue btn-small">${getIcon('cloud')} <span data-publish-label>${t('btn_ssg_build')}</span></button><span class="publish-status" data-publish-status role="status">${h(summary)}${when ? ` ${t('cloud_publish_last')}: ${h(when)}` : ''}</span>${destination}${setup}</form>`;
 }
 
 /**
- * The page list's state (category filter, search, list page) as a query string, so that opening
+ * The page list's state (category and output-format filters, search, list page) as a query string, so that opening
  * the page editor, saving, and going back to the list keep the list as it was (as in PHP, where
  * the editor opens over the list without reloading it). Starts with "&" when not empty.
  */
-export function pageListQuery(state: { category?: string; query?: string; pageNumber?: number }): string {
+export function pageListQuery(state: { category?: string; format?: string; query?: string; pageNumber?: number }): string {
   const params = new URLSearchParams();
   if (state.category) params.set('cat', state.category);
+  if (state.format) params.set('fmt', state.format);
   if (state.query) params.set('q', state.query);
   if (state.pageNumber && state.pageNumber > 1) params.set('p_pages', String(state.pageNumber));
   const qs = params.toString();
   return qs ? '&' + qs : '';
 }
+
+/** Values of the page list's output-format filter ("data" is every data format), as in PHP pages.php. */
+export const PAGE_FORMAT_FILTERS = ['', 'html', 'html_md', 'md', 'data', 'db'] as const;
 
 // ===== 管理画面メインシェル =====
 export function renderAdminShell(opts: {
@@ -139,7 +154,7 @@ export function renderAdminShell(opts: {
 <html lang="${h(lang)}">
 <head>
     <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>${t('admin_site_title')} - mikanBox</title>
+    <title>${adminTitle(settings)}</title>
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0&display=block" rel="stylesheet">
     <link rel="stylesheet" href="/mikanbox/admin.css?v=${h(CLOUD_VERSION)}-8">
     <style>
@@ -243,11 +258,29 @@ ${opts.mediaEnabled?`<div id="drop-zone">${getIcon('cloud')} ${t('hint_drop_uplo
     const mcpUrlField = document.getElementById('mcp-url-display');
     if (mcpUrlField) mcpUrlField.value = location.origin + '/mcp';
 
-    const searchInput=document.getElementById('admin-page-search'), searchIcon=document.getElementById('admin-page-search-icon'), searchClear=document.getElementById('admin-page-search-clear');
-    if(searchInput&&searchIcon&&searchClear){
-      const updateSearchControls=()=>{const hasValue=searchInput.value.length>0;searchIcon.style.display=hasValue?'none':'flex';searchClear.style.display=hasValue?'flex':'none';};
-      searchInput.addEventListener('input',updateSearchControls);
-      searchClear.addEventListener('click',(event)=>{event.preventDefault();searchInput.value='';updateSearchControls();searchInput.form?.requestSubmit();});
+    // Clearing the page search with the browser's own × shows the whole list again.
+    const pageSearch=document.getElementById('admin-page-search');
+    if(pageSearch)pageSearch.addEventListener('search',()=>{if(pageSearch.value==='')pageSearch.form?.requestSubmit();});
+
+    // List filters kept in the URL (as in PHP): the page list's output format (fmt), the media type and search.
+    function applyListParam(name, value, pager, view, refresh) {
+        const url = new URL(window.location.href);
+        if (value) url.searchParams.set(name, value); else url.searchParams.delete(name);
+        url.searchParams.delete(pager);
+        url.searchParams.set('view', view);
+        history.replaceState(null, '', url.pathname + url.search + url.hash);
+        document.querySelectorAll('form[role="search"] input[type="hidden"][name="' + name + '"]').forEach(input => { input.value = value; });
+        refresh();
+    }
+    const pageFormatFilter = document.getElementById('page-format-filter');
+    if (pageFormatFilter) pageFormatFilter.addEventListener('change', () => applyListParam('fmt', pageFormatFilter.value, 'p_pages', 'pages', refreshPageList));
+    const mediaTypeFilter = document.getElementById('media-type-filter');
+    if (mediaTypeFilter) mediaTypeFilter.addEventListener('change', () => applyListParam('media_type', mediaTypeFilter.value, 'p_media', 'media', refreshMediaGrid));
+    const mediaSearch = document.getElementById('admin-media-search');
+    if (mediaSearch) {
+        let timer;
+        mediaSearch.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(() => applyListParam('q_media', mediaSearch.value.trim(), 'p_media', 'media', refreshMediaGrid), 250); });
+        mediaSearch.form.addEventListener('submit', (event) => { event.preventDefault(); applyListParam('q_media', mediaSearch.value.trim(), 'p_media', 'media', refreshMediaGrid); });
     }
 
     if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
@@ -263,16 +296,26 @@ ${opts.mediaEnabled?`<div id="drop-zone">${getIcon('cloud')} ${t('hint_drop_uplo
     const fileInput = document.getElementById('file-input');
     const uploadForm = document.getElementById('upload-form');
 
+    // Files can be dropped only on the Media section (they are uploaded there). Elsewhere the
+    // page shows "no drop" instead of silently uploading, and file inputs (such as the import
+    // forms) keep the browser's own behaviour of taking the dropped file (as in PHP 2.18.2).
+    const isFileInput = (target) => target instanceof Element && target.matches('input[type="file"]');
+    const inMediaSection = (target) => target instanceof Element && !!target.closest('#media, #drop-zone');
     window.addEventListener('dragover', (e) => {
+        if (isFileInput(e.target)) return;
         e.preventDefault();
-        if (dropZone) dropZone.classList.add('active');
+        const allowed = inMediaSection(e.target) && !!uploadForm;
+        if (e.dataTransfer) e.dataTransfer.dropEffect = allowed ? 'copy' : 'none';
+        if (dropZone) dropZone.classList.toggle('active', allowed);
     });
     window.addEventListener('dragleave', (e) => {
         if (e.relatedTarget === null && dropZone) dropZone.classList.remove('active');
     });
     window.addEventListener('drop', async (e) => {
+        if (isFileInput(e.target)) return;
         e.preventDefault();
         if (dropZone) dropZone.classList.remove('active');
+        if (!inMediaSection(e.target)) return;
         const files = e.dataTransfer.files;
         if (files.length > 0 && uploadForm) {
             const formData = new FormData(uploadForm);
@@ -364,16 +407,28 @@ ${opts.mediaEnabled?`<div id="drop-zone">${getIcon('cloud')} ${t('hint_drop_uplo
             const html = await res.text();
             const temp = document.createElement('div');
             temp.innerHTML = html;
-            const newGrid = temp.querySelector('.media-grid');
-            const oldGrid = document.querySelector('.media-grid');
-            replaceListPreservingScroll(oldGrid, newGrid);
+            const newWrap = temp.querySelector('#media-list-wrap');
+            const oldWrap = document.querySelector('#media-list-wrap');
+            replaceListPreservingScroll(oldWrap, newWrap);
             const newUsage = temp.querySelector('#media-usage');
             const oldUsage = document.querySelector('#media-usage');
             if (newUsage && oldUsage) oldUsage.textContent = newUsage.textContent;
-            const newPager = temp.querySelector('#media-pagination');
-            const oldPager = document.querySelector('#media-pagination');
-            if (newPager && oldPager) oldPager.outerHTML = newPager.outerHTML;
         } catch(err) {}
+    }
+    window.refreshMediaGrid = refreshMediaGrid;
+
+    // The page list (table and pages) for the current URL, as in PHP refreshPageList().
+    async function refreshPageList() {
+        try {
+            const url = new URL(location.href); url.searchParams.set('ajax_pages', '1'); url.searchParams.set('view', 'pages');
+            const temp = document.createElement('div');
+            temp.innerHTML = await (await fetch(url)).text();
+            replaceListPreservingScroll(document.querySelector('#pages-table-wrap'), temp.querySelector('#pages-table-wrap'));
+            const newPag = temp.querySelector('#pages .pagination'), oldPag = document.querySelector('#pages .pagination');
+            if (newPag && oldPag) oldPag.outerHTML = newPag.outerHTML;
+            else if (oldPag) oldPag.remove();
+            else if (newPag) { const wrap = document.querySelector('#pages-table-wrap'); if (wrap) wrap.after(newPag); }
+        } catch (err) {}
     }
 
     document.addEventListener('submit', async function(e) {
@@ -622,11 +677,11 @@ export function renderPagesView(opts: {
   csrf: string;
   helpFile: string;
   settings: Settings;
-  query?: string; category?:string; pageNumber?:number; totalPages?:number;
+  query?: string; category?:string; format?: string; pageNumber?:number; totalPages?:number;
   lang?: string; publication?: PublicationStatus; cloudReady?: boolean; publicUrl?: string;
 }): string {
   const { t, pages, view, editId, hasNew, csrf, helpFile } = opts;
-  const listQuery = h(pageListQuery({ category: opts.category, query: opts.query, pageNumber: opts.pageNumber }));
+  const listQuery = h(pageListQuery({ category: opts.category, format: opts.format, query: opts.query, pageNumber: opts.pageNumber }));
   const ja = opts.lang !== 'en', publication = opts.publication;
   const hasEditor = view === 'pages' && (editId !== null || hasNew);
 
@@ -634,7 +689,6 @@ export function renderPagesView(opts: {
     const status=['public','public_dynamic'].includes(d.status) ? 'public_static' : d.status || 'draft';
     const cls=statusClass(status);
     const format = pageOutputFormat(d);
-    const previewUrl = adminPreviewUrl(pid, d);
 
     return `<tr>
                 <td class="td-narrow">
@@ -643,8 +697,7 @@ export function renderPagesView(opts: {
                          ${formatHasHtml(format)
                            ? `<a href="/admin/visual?id=${h(encodeURIComponent(pid))}" class="btn btn-sm btn-blue" title="${t('btn_visual_edit')}">${getIcon('visual')}</a>`
                            : `<span class="btn btn-sm btn-gray btn-disabled" aria-disabled="true" title="${h(t('visual_err_not_html'))}">${getIcon('visual')}</span>`}
-                         <a href="${h(previewUrl)}" target="_blank" class="btn btn-sm btn-blue" title="${t('btn_preview')}">${getIcon('open_in_new')}</a>
-                         ${globeLink(publication?.pages[pid], ja)}
+                         ${globeLink(publication?.pages[pid], status, t)}
                     </div>
                 </td>
                 <td class="td-narrow">
@@ -677,14 +730,15 @@ export function renderPagesView(opts: {
             <div class="header">
             <h1>${getIcon('page')} ${t('nav_pages')}
               <a href="?view=pages&amp;new=1${listQuery}#page-editor" class="btn btn-sm btn-blue" style="margin-left:15px;display:inline-flex;align-items:center;gap:5px;font-size:.85rem;padding:4px 10px;vertical-align:middle">${getIcon('add')} ${t('btn_create_new')}</a>
-              <a href="${h(helpFile)}#page-mgmt" target="_blank" class="manual-link">${t('admin_help')}</a>
+              <a href="${h(helpFile)}#page-mgmt" target="_blank" class="manual-link">${t('admin_help')}</a><span class="component-filter-control"><select class="select-auto list-filter-select" id="page-format-filter" aria-label="${t('label_output_format')}">${PAGE_FORMAT_FILTERS.map(value=>`<option value="${value}" ${(opts.format||'')===value?'selected':''}>${h(t(value===''?'page_format_filter_all':value==='data'?'output_format_data_group':'output_format_'+value))}</option>`).join('')}</select></span>
             </h1>
-            <form method="get" class="search-bar-wrap" style="display:flex;align-items:center">
-              <div style="position:relative;display:flex;align-items:center">
-                <input type="search" name="q" id="admin-page-search" value="${h(opts.query||'')}" placeholder="${t('search_placeholder')}" style="padding:6px 32px 6px 12px;border:1px solid var(--border);border-radius:6px;font-size:.9rem;width:220px;box-sizing:border-box;outline:none">
-                <span id="admin-page-search-icon" style="position:absolute;right:10px;color:var(--text-sub);display:${opts.query?'none':'flex'};align-items:center;pointer-events:none">${getIcon('search')}</span>
-                <a id="admin-page-search-clear" class="search-clear" title="${t('btn_clear_search')}" aria-label="${t('btn_clear_search')}" href="/admin?view=pages&cat=${encodeURIComponent(opts.category||'')}#pages" style="position:absolute;right:10px;color:var(--text-sub);display:${opts.query?'flex':'none'};align-items:center">${getIcon('close')}</a>
-              </div><input type="hidden" name="cat" value="${h(opts.category||'')}">
+            <!-- Admin page search: the browser's own clear button only (as in PHP) -->
+            <form method="get" action="/admin#pages" class="search-bar-wrap" role="search">
+              <input type="hidden" name="view" value="pages"><input type="hidden" name="cat" value="${h(opts.category||'')}"><input type="hidden" name="fmt" value="${h(opts.format||'')}">
+              <div class="admin-search">
+                <input type="search" name="q" id="admin-page-search" class="admin-search-input" value="${h(opts.query||'')}" placeholder="${t('search_placeholder')}" aria-label="${t('search_placeholder')}">
+                <span id="admin-page-search-icon" class="admin-search-icon">${getIcon('search')}</span>
+              </div>
             </form>
         </div>
         <div class="table-responsive" id="pages-table-wrap">
@@ -696,7 +750,7 @@ export function renderPagesView(opts: {
         </table>
         </form>
         </div>
-        ${(opts.totalPages||1)>1?`<div class="pagination">${Array.from({length:opts.totalPages||1},(_,i)=>`<a class="pagination-link ${opts.pageNumber===i+1?'active':''}" href="?view=pages&amp;p_pages=${i+1}&amp;q=${encodeURIComponent(opts.query||'')}&amp;cat=${encodeURIComponent(opts.category||'')}#pages">${i+1}</a>`).join('')}</div>`:''}
+        ${(opts.totalPages||1)>1?`<div class="pagination">${Array.from({length:opts.totalPages||1},(_,i)=>`<a class="pagination-link ${opts.pageNumber===i+1?'active':''}" href="?view=pages&amp;p_pages=${i+1}${h(pageListQuery({category:opts.category,format:opts.format,query:opts.query}))}#pages">${i+1}</a>`).join('')}</div>`:''}
         ${publishBox(csrf, t, publication, ja, opts.cloudReady !== false, opts.publicUrl || '')}
         </div>
     </div>
@@ -855,7 +909,7 @@ export function renderPageEditor(opts: {
                         <div class="flex-row">
                             <button type="submit" form="page-form" name="save_action" value="save_page" class="btn btn-blue">${getIcon('save')} ${t('btn_save')}</button>
                             ${editId
-                              ? `<a id="editor-preview-link" href="${h(adminPreviewUrl(editId, d))}" target="_blank" rel="noopener" class="btn btn-blue" title="${h(t('preview_saved_hint'))}">${getIcon('view')} ${t('btn_preview')}</a>`
+                              ? `<a id="editor-preview-link" href="${h(adminPreviewUrl(editId, d))}" target="_blank" rel="noopener" class="btn btn-blue" title="${h(t('preview_saved_hint'))}">${getIcon('view')} ${t('btn_preview')}</a><small class="sub-text preview-saved-note">${t('preview_saved_hint')}</small>`
                               : `<span id="editor-preview-link" class="btn btn-gray btn-disabled" aria-disabled="true" title="${h(t('preview_saved_hint'))}">${getIcon('view')} ${t('btn_preview')}</span>`}
                             <a href="/admin${opts.listQuery ? h('?' + opts.listQuery.slice(1)) : ''}#pages" class="btn btn-gray">${getIcon('arrow_back')} ${t('btn_back_to_list')}</a>
                         </div>
@@ -1210,7 +1264,15 @@ export function renderMediaView(opts: {
     <div id="media" class="section-anchor">
         <div class="section-container section-large-bottom">
             <div class="header">
-            <h1>${getIcon('media')} ${t('nav_media')}<a href="${h(helpFile)}#media-mgmt" target="_blank" class="manual-link">${t('admin_help')}</a></h1>
+            <h1>${getIcon('media')} ${t('nav_media')}<a href="${h(helpFile)}#media-mgmt" target="_blank" class="manual-link">${t('admin_help')}</a><span class="component-filter-control"><select class="select-auto list-filter-select" id="media-type-filter" aria-label="${t('media_type_filter')}">${[['',t('media_type_all')],['image',t('media_type_image')],['audio',t('media_type_audio')],['video',t('media_type_video')],['js','JS'],['css','CSS']].map(([type,label])=>`<option value="${type}" ${opts.mediaType===type?'selected':''}>${label}</option>`).join('')}</select></span></h1>
+            <!-- Media search: the same control and behaviour as the page search -->
+            <form method="get" action="/admin#media" class="search-bar-wrap" role="search">
+                <input type="hidden" name="view" value="media"><input type="hidden" name="cat" value="${h(opts.category||'')}"><input type="hidden" name="media_all" value="${opts.ignoreCategory?'1':'0'}"><input type="hidden" name="media_type" value="${h(opts.mediaType||'')}">
+                <div class="admin-search">
+                    <input type="search" name="q_media" id="admin-media-search" class="admin-search-input" value="${h(opts.query||'')}" placeholder="${t('media_search_placeholder')}" aria-label="${t('media_search_placeholder')}">
+                    <span class="admin-search-icon">${getIcon('search')}</span>
+                </div>
+            </form>
         </div>
 
         ${opts.mediaEnabled?`<div class="editor-container" id="media-upload-area">
@@ -1224,10 +1286,8 @@ export function renderMediaView(opts: {
                     </div>
                     <div id="upload-publication-status" role="status" class="sub-text"></div>
                     <button type="button" id="upload-publication-retry" class="btn btn-gray btn-small" hidden style="display:none">${opts.lang==='ja'?'画像の公開を再試行':'Retry image publication'}</button>
-                    <details class="resize-details upload-options" id="upload-options"><summary class="resize-summary">${t('upload_options')}<span class="resize-arrow">▼</span></summary><div class="upload-options-body"><label class="upload-option"><input type="checkbox" name="opt_resize" value="1" id="opt-resize" checked> ${t('upload_opt_resize')} <input type="text" name="opt_max_dim" id="opt-max-dim" value="2000" class="resize-input" inputmode="numeric" pattern="[0-9]*"> px</label><label class="upload-option"><input type="checkbox" name="opt_webp" id="opt-webp" value="1"> ${t('upload_opt_webp')}</label></div></details>
+                    <details class="resize-details upload-options" id="upload-options"><summary class="resize-summary">${t('upload_options')}<span class="resize-arrow">▼</span></summary><div class="upload-options-body"><div class="upload-info upload-info-types">${t('media_support_types')}: JPEG, PNG, GIF, WebP, SVG, JS, CSS<br>${t('media_code_hint')}</div><label class="upload-option"><input type="checkbox" name="opt_resize" value="1" id="opt-resize" checked> ${t('upload_opt_resize')} <input type="text" name="opt_max_dim" id="opt-max-dim" value="2000" class="resize-input" inputmode="numeric" pattern="[0-9]*"> px</label><label class="upload-option"><input type="checkbox" name="opt_webp" id="opt-webp" value="1"> ${t('upload_opt_webp')}</label></div></details>
                     <div class="upload-info">
-                        ${t('media_support_types')}: JPEG, PNG, GIF, WebP, SVG, JS, CSS<br>
-                        ${t('media_code_hint')}<br>
                         ${opts.usage?`<span id="media-usage">${opts.lang==='ja'?'メディアの使用量':'Media storage'}: ${opts.storageMode==='r2'?`${(opts.usage.bytes/1_000_000_000).toFixed(3)} GB (R2)`:`${(opts.usage.bytes/1_000_000).toFixed(1)} / 400 MB (D1)`} · ${opts.usage.files.toLocaleString()} / 10,000 ${t('media_file_count')}</span><br>`:''}
                         <br>
                         ${t('hint_media_display')}<br>
@@ -1239,8 +1299,8 @@ export function renderMediaView(opts: {
 
         `:`<p role="status">${opts.lang==='ja'?'画像アップロードは後日対応します。現在はページとデザインの確認ができます。':'Image uploads will be available later. Pages and design editing are available now.'}</p>`}
 
+        <div id="media-list-wrap">
         ${opts.category?`<div class="media-filter-status flex-row" style="margin:15px 0;justify-content:space-between"><span>${t(opts.ignoreCategory?'all_media_shown_hint':'media_filtered_hint',h(opts.category))}</span><a class="btn btn-sm ${opts.ignoreCategory?'btn-blue':'btn-orange'}" href="/admin?cat=${encodeURIComponent(opts.category)}&media_all=${opts.ignoreCategory?'0':'1'}#media">${t(opts.ignoreCategory?'btn_apply_filter':'btn_ignore_filter')}</a></div>`:''}
-        <form method="get" action="/admin#media" class="flex-row media-search-form"><input type="hidden" name="view" value="media"><input type="hidden" name="cat" value="${h(opts.category||'')}"><input type="hidden" name="media_all" value="${opts.ignoreCategory?'1':'0'}"><select name="media_type" aria-label="${t('media_type_filter')}">${[['',t('media_type_all')],['image',t('media_type_image')],['audio',t('media_type_audio')],['video',t('media_type_video')],['js','JS'],['css','CSS']].map(([type,label])=>`<option value="${type}" ${opts.mediaType===type?'selected':''}>${label}</option>`).join('')}</select><input type="text" name="q_media" value="${h(opts.query||'')}" placeholder="${t('media_search_placeholder')}" aria-label="${t('media_search_placeholder')}"><button class="btn btn-gray btn-small">${t('btn_search')}</button>${opts.query?`<a class="btn btn-gray btn-small" href="/admin?view=media&cat=${encodeURIComponent(opts.category||'')}&media_all=${opts.ignoreCategory?'1':'0'}&media_type=${encodeURIComponent(opts.mediaType||'')}#media">${t('btn_clear_search')}</a>`:''}</form>
         <div class="media-grid">
             ${files.length === 0 ? "<p class='td-empty'>No media found.</p>" : cards}
         </div>
@@ -1249,6 +1309,7 @@ export function renderMediaView(opts: {
             ${(opts.page||1)>1?`<a class="btn btn-gray btn-small" href="/admin?view=media&q_media=${encodeURIComponent(opts.query||'')}&cat=${encodeURIComponent(opts.category||'')}&media_all=${opts.ignoreCategory?'1':'0'}&media_type=${encodeURIComponent(opts.mediaType||'')}&p_media=${(opts.page||1)-1}#media">${t('btn_previous')}</a>`:''}
             ${(opts.page||1)<(opts.totalPages||1)?`<a class="btn btn-gray btn-small" href="/admin?view=media&q_media=${encodeURIComponent(opts.query||'')}&cat=${encodeURIComponent(opts.category||'')}&media_all=${opts.ignoreCategory?'1':'0'}&media_type=${encodeURIComponent(opts.mediaType||'')}&p_media=${(opts.page||1)+1}#media">${t('btn_next')}</a>`:''}
         </div>
+        </div> <!-- /#media-list-wrap -->
     </div>
     </div>`;
 }

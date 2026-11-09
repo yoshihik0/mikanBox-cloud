@@ -161,9 +161,11 @@ test('admin page list puts index first, labels formats, greys out visual editing
   assert.match(html,/class="format-badge format-md"[^>]*>\+MD</);assert.match(html,/class="format-badge format-md"[^>]*>MD</);
   assert.match(html,/class="format-badge format-data"[^>]*>JSON</);assert.match(html,/class="format-badge format-data"[^>]*>DB</);
   assert.match(html,/<span class="btn btn-sm btn-gray btn-disabled" aria-disabled="true"/);
-  assert.match(html,/href="\/admin\?page_preview=notes"/);assert.match(html,/<span class="category-structural">_hidden<\/span>/);
+  // The list opens pages on the public site (globe); the editor's preview shows the saved content (as in PHP 2.18.2).
+  assert.doesNotMatch(html,/page_preview=/);
+  assert.match(await(await call(value,'/admin?view=pages&edit=notes',undefined,auth.cookie)).text(),/<a id="editor-preview-link" href="\/admin\?page_preview=notes"/);assert.match(html,/<span class="category-structural">_hidden<\/span>/);
   assert.match(html,/category-cloud-tag[^"]*is-structural/);
-  assert.doesNotMatch(html,/<option value="db"/,'the DB status is gone from the status select');
+  for(const select of html.match(/<select onchange="changePageStatus[\s\S]*?<\/select>/g))assert.doesNotMatch(select,/<option value="db"/,'the DB status is gone from the status select');
   const preview=await call(value,'/admin?page_preview=notes',undefined,auth.cookie);
   assert.equal(preview.headers.get('Content-Type'),'text/plain; charset=utf-8');assert.match(await preview.text(),/Plain notes/);
   const draft=await call(value,'/admin?page_preview=secret',undefined,auth.cookie);assert.equal(await draft.text(),'draft text');
@@ -228,4 +230,27 @@ test('the page list keeps its category filter when a page editor is opened, and 
   assert.match(editor,/window\.location\.href='\/admin\?cat=news#pages'/);
   const fresh=await (await call(value,'/admin?view=pages&new=1&cat=news',undefined,auth.cookie)).text();
   assert.match(fresh,/name="category" value="news"/);
+});
+
+test('2.18.2 admin alignment: title, output-format filter kept in the URL, globe, media header controls, one clear button',async()=>{
+  const value=env();await sample(value);const auth=await login(value);
+  await saveSettings(value,{...await (require('../.test-build/src/storage.js').loadSettings)(value),site_name:'🍊Orchard'});
+  const get=async path=>(await call(value,path,undefined,auth.cookie)).text();
+  const html=await get('/admin?view=pages&fmt=data&cat=news');
+  assert.match(html,/<title>🍊Orchard<\/title>/,'one orange even when the site name starts with one');
+  assert.match(html,/<select class="select-auto list-filter-select" id="page-format-filter"[^>]*>[\s\S]*?<option value="data" selected>/);
+  // fmt=data keeps only data-format pages (list.json, site.js), combined with cat.
+  assert.doesNotMatch(html,/<code>article<\/code>|<code>notes<\/code>/);
+  const all=await get('/admin?view=pages&fmt=data');assert.match(all,/<code>list<\/code>/);assert.match(all,/<code>site<\/code>/);assert.doesNotMatch(all,/<code>shop<\/code>/);
+  assert.match(all,/href="\?view=pages&amp;edit=list&amp;fmt=data#page-editor"/,'the editor link keeps fmt');
+  assert.match(all,/<input type="hidden" name="fmt" value="data">/);
+  // A draft's globe is grey with the PHP message; one search box with the browser's clear button only.
+  assert.match(all,/<span class="btn btn-sm btn-gray btn-disabled" aria-disabled="true" title="公開されていません（下書き・承認待ち）">/);
+  assert.match(all,/<input type="search" name="q" id="admin-page-search" class="admin-search-input"/);assert.doesNotMatch(all,/admin-page-search-clear/);
+  // Media: type filter and search in the heading; support notes inside Upload options; drops only on #media.
+  assert.match(all,/id="media-type-filter"/);assert.match(all,/<input type="search" name="q_media" id="admin-media-search" class="admin-search-input"/);
+  assert.match(all,/<div class="upload-options-body"><div class="upload-info upload-info-types">/);
+  assert.match(all,/target\.closest\('#media, #drop-zone'\)/);
+  const editor=await get('/admin?view=pages&edit=article');assert.match(editor,/<small class="sub-text preview-saved-note">保存した内容を表示します。<\/small>/);
+  const login2=await (await call(value,'/admin')).text();assert.match(login2,/<title>🍊Orchard - ログイン<\/title>/);
 });

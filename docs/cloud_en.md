@@ -1,6 +1,6 @@
 <style>.manual-version{font-size:.5em;font-weight:400;white-space:nowrap}</style>
 
-# 🍊mikanBox Cloudflare Manual <small class="manual-version">v0.8.1</small>
+# 🍊mikanBox Cloudflare Manual <small class="manual-version">v0.8.2</small>
 
 This manual covers installation and the Cloudflare edition’s differences. For shared operations, see the [operation manual](https://yoshihiko.com/mikanbox/help_en.html).
 
@@ -79,7 +79,7 @@ Component JavaScript is available at `/component-js/ID.js`. Page/component JavaS
 
 Draft/pending data cannot be read through public POST_MD embeds, navigation, feeds, or the data API.
 
-The page list and the page editor both preview the **saved** page in a new tab (as in PHP 2.17.2); a new page can be previewed once saved. HTML pages open at `/preview/ID`; Markdown-only, data-format and mikanBox DB pages open at `/admin?page_preview=ID`, which shows the actual output as UTF-8 plain text.
+The page editor's preview opens the **saved** page in a new tab through the admin screen (the note "Shows the saved content." sits beside the button); a new page can be previewed once saved. The page list has the globe icon to the public site instead of a preview (as in PHP 2.18.2). HTML pages open at `/preview/ID`; Markdown-only, data-format and mikanBox DB pages open at `/admin?page_preview=ID`, which shows the actual output as UTF-8 plain text.
 
 ### Output formats (Cloud delivery)
 
@@ -105,7 +105,6 @@ Page and settings saves compare their read snapshot with current storage and rej
 
 Admin previews can display images before publication. Each referenced image receives a short-lived preview URL while the preview remains sandboxed.
 
-The page-list preview shows saved content. The page editor preview renders the current unsaved form without saving or publishing it.
 
 ## Site
 
@@ -162,7 +161,7 @@ Setting `CLOUDFLARE_PUBLIC_WORKER_NAME` (the public Worker's name) and `PUBLIC_S
 - A signed-in device opening `/about` on the admin address is sent to the preview (`/preview/about`). Previews carry a CSP `sandbox`, so page scripts cannot reach the admin screen. Inside a preview, page scripts cannot use cookies or `localStorage`.
 - Public pages, sitemaps and RSS use `PUBLIC_SITE_URL` and never the admin address. Sitemaps, RSS and DB page JSON (`/api/page-id`) are published as files.
 - Publication sends only changed files. Page hashes are stored at build time.
-- The globe icon in the page list opens the public page. Blue means the public site shows the current content; grey means changes are not published yet, or the page has never been published. Parts that change because of other pages (a page list component, for instance) only update when you build.
+- The globe icon in the page list opens the page on the public site (the same role as in the PHP editions; check saved content with the page editor's preview). Blue means the public site shows the current content; grey means changes are not published yet. Drafts, pending pages and pages never published show it grey and unclickable. Parts that change because of other pages (a page list component, for instance) only update when you build.
 - There is no sign-out button at the top. To stop using a device, stop it under Devices and users.
 - The AI question box does not work on the public site. Site search uses Google, as described under Delivery and withdrawal.
 - As in the PHP editions, the 404 page is never listed in sitemaps or RSS, split or not.
@@ -282,7 +281,7 @@ A page ID such as `test/index` works at `/test/index.html`, `/test/index/`, `/te
 
 Choose an image in the media section or drag it onto the screen. Click its filename to copy it; use `![Description](filename.png)` or `{{IMAGE:filename.png}}` in page content. A Download link saves each file individually.
 
-Filename search, category filtering and pagination use the configured media page size. Categories match images referenced by pages in that category or filenames starting with the category name and an underscore.
+The type filter and filename search sit in the heading row (the list follows what you type); category filtering and pagination use the configured media page size. The supported formats are explained inside Upload options. Files can be dropped only on the media section; elsewhere the pointer shows that dropping is not possible. Categories match images referenced by pages in that category or filenames starting with the category name and an underscore.
 
 In D1 storage, Rename updates references in page content, CSS, JavaScript, OGP images and components. It cannot overwrite another file or change extensions. Memos and previous revisions remain unchanged; affected pages get new revisions. A lock or concurrent change cancels every write, including the image rename. Rebuild affected static pages; component changes invalidate all static snapshots. Large reference sets can exceed the operation limit. External sites and dynamically constructed JavaScript URLs are not updated.
 
@@ -352,3 +351,7 @@ The output formats of PHP 2.17.0–2.18.1 are ported: per-page output formats (H
 ### Changes in 0.8.1
 
 The public site now serves `.md`, `.txt`, `.csv`, `.js`, `.css`, `.json` and `.xml` with `charset=utf-8` on Cloudflare's delivery too (in 0.8.0, Japanese text could be garbled when opened from the globe icon in the page list). The `/ID` and `/ID/` of Markdown-only pages and `/api/ID` of mikanBox DB get the same setting. Markdown versions, data formats and mikanBox DB are served with `Access-Control-Allow-Origin: *`, so Markdown viewers and scripts on other sites can read them (as in the PHP editions). Publish once more after updating for it to take effect. Opening a page editor from a page list filtered by category no longer clears the filter, and a new page starts with the filtered category.
+
+### Changes in 0.8.2
+
+The admin screens follow PHP 2.18.2. The browser tab title is "🍊site name". The page list has an output-format filter right of Help, combined with the category and search (kept when the page editor is opened and closed). Each page row has three actions: edit, visual editing and the globe icon (public site); check saved content with the page editor's preview. The media type filter and search moved to the heading row, and searches have one clear button (the browser's). Files can be dropped only on the media section. Selects have room right of their arrow. The MCP connection instructions and `get_ai_context` explain that a page is made readable as Markdown by setting its `output_format` to `html_md` or `md` (there is no site-wide switch).

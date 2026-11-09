@@ -30,7 +30,7 @@ import {publicationManifest,readPublicationEntry} from '../static-publication';
 import {buildStaticExportZip} from '../static-export';
 import { MEDIA_FILE_LIMIT,MEDIA_TOTAL_LIMIT,MEDIA_COUNT_LIMIT,imageType,validMediaName,mediaType,isCodeMedia } from '../media-policy';
 import { getSystemLanguage, createTranslator } from '../i18n';
-import { renderLoginPage, renderAdminShell, renderPagesView, renderPageEditor, renderDesignView, renderDesignEditor, renderMediaView, renderSiteView, renderImportView, pageListQuery } from './views';
+import { renderLoginPage, renderAdminShell, renderPagesView, renderPageEditor, renderDesignView, renderDesignEditor, renderMediaView, renderSiteView, renderImportView, pageListQuery, PAGE_FORMAT_FILTERS } from './views';
 const html = (body: string, status = 200) => new Response(body, {status, headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store'}});
 const json = (body: unknown, status = 200) => Response.json(body,{status,headers:{'Cache-Control':'no-store'}});
 const val = (f: FormData, key: string) => String(f.get(key) || '');
@@ -70,7 +70,7 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
   const loginCsrf=request.headers.get('Cookie')?.match(/(?:^|;\s*)login_csrf=([A-Za-z0-9-]+)/)?.[1]||crypto.randomUUID();
   // Users exist but no device does (an upgraded site): only the setup token can register one.
   const noDevices=!initial&&!auth&&(await listDevices(env)).length===0;
-  const loginResponse=(error='',status=200,inviteStep?:{code:string;device_name:string;username?:string;display_name?:string})=>{const response=html(renderLoginPage({lang,initial,noDevices,error,t,csrf:loginCsrf,inviteStep}),status);response.headers.append('Set-Cookie',`login_csrf=${loginCsrf}; Secure; SameSite=Strict; HttpOnly; Path=/; Max-Age=900`);return response;};
+  const loginResponse=(error='',status=200,inviteStep?:{code:string;device_name:string;username?:string;display_name?:string})=>{const response=html(renderLoginPage({lang,settings,initial,noDevices,error,t,csrf:loginCsrf,inviteStep}),status);response.headers.append('Set-Cookie',`login_csrf=${loginCsrf}; Secure; SameSite=Strict; HttpOnly; Path=/; Max-Age=900`);return response;};
   if (form?.has('login_action')) {
     if(!verifyCsrf(val(form,'csrf_token'),loginCsrf))return html(t('err_csrf'),403);
     let error='';
@@ -393,13 +393,14 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
   const files=await listMediaFiles(env),cats=new Set((settings.category_candidates||'').split(',').map(x=>x.trim()).filter(Boolean));
   for(const p of pages)for(const c of(p.data.category||'').split(',').map(x=>x.trim()).filter(Boolean))cats.add(c);
   const allCategories=[...cats].sort(),category=url.searchParams.get('cat')||'',query=url.searchParams.get('q')||'';
-  const filtered=pages.filter(p=>(!category||(p.data.category||'').split(',').map(x=>x.trim()).includes(category))&&(!query||`${p.id} ${p.data.title} ${p.data.content_md||''}`.toLowerCase().includes(query.toLowerCase())));
+  const formatFilter=(PAGE_FORMAT_FILTERS as readonly string[]).includes(url.searchParams.get('fmt')||'')?url.searchParams.get('fmt')||'':'';
+  const filtered=pages.filter(p=>(!formatFilter||(formatFilter==='data'?isDataFormat(pageOutputFormat(p.data)):pageOutputFormat(p.data)===formatFilter))&&(!category||(p.data.category||'').split(',').map(x=>x.trim()).includes(category))&&(!query||`${p.id} ${p.data.title} ${p.data.content_md||''}`.toLowerCase().includes(query.toLowerCase())));
   const perPage=Math.min(500,Math.max(1,Number(settings.pages_per_page)||30)),totalPages=Math.max(1,Math.ceil(filtered.length/perPage)),pageNumber=Math.min(totalPages,Math.max(1,Number(url.searchParams.get('p_pages'))||1));
-  const hasNew=url.searchParams.has('new'),helpFile=help(lang),listQuery=pageListQuery({category,query,pageNumber:Number(url.searchParams.get('p_pages'))||1});
+  const hasNew=url.searchParams.has('new'),helpFile=help(lang),listQuery=pageListQuery({category,format:formatFilter,query,pageNumber:Number(url.searchParams.get('p_pages'))||1});
   const pageEditorHtml=view==='pages'&&(editId||hasNew)?renderPageEditor({t,editId,editData:editData as PageData|null,csrf,helpFile,wrapperComponents:components.filter(c=>c.data.is_wrapper),allCategories,publicBase:(env.PUBLIC_SITE_URL||String(settings.ssg_root_url||'')||url.origin).replace(/\/$/,''),settings:{...settings,_site_base:url.origin},revisions:pageRevisions,selectedRevision:pageRevisions.find(r=>r.id===Number(url.searchParams.get('rev'))),listQuery,listCategory:category}):'';
   const designEditorHtml=view==='components'&&(editId||hasNew)?renderDesignEditor({t,editId,editData:editData as ComponentData|null,csrf,helpFile}):'';
   const cloudReady=await cloudConfigured(env);
-  const pagesHtml=renderPagesView({t,pages:filtered.slice((pageNumber-1)*perPage,pageNumber*perPage),view,editId,hasNew,csrf,helpFile,settings,query,category,pageNumber,totalPages,lang,publication:await publicationStatus(env,url.origin,pages),cloudReady,publicUrl:env.CLOUDFLARE_PUBLIC_WORKER_NAME ? env.PUBLIC_SITE_URL || '' : ''});
+  const pagesHtml=renderPagesView({t,pages:filtered.slice((pageNumber-1)*perPage,pageNumber*perPage),view,editId,hasNew,csrf,helpFile,settings,query,category,format:formatFilter,pageNumber,totalPages,lang,publication:await publicationStatus(env,url.origin,pages),cloudReady,publicUrl:env.CLOUDFLARE_PUBLIC_WORKER_NAME ? env.PUBLIC_SITE_URL || '' : ''});
   const mediaQuery=url.searchParams.get('q_media')||'',mediaCategory=category,ignoreMediaCategory=url.searchParams.get('media_all')==='1';
   const mediaTypeFilter=['image','audio','video','js','css'].includes(url.searchParams.get('media_type')||'')?url.searchParams.get('media_type')!:'';
   const extensions:Record<string,string[]>={image:['jpg','jpeg','png','gif','webp','svg'],audio:['mp3','m4a'],video:['mp4'],js:['js'],css:['css']};
