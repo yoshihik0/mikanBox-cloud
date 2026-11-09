@@ -59,10 +59,8 @@ function checked(file:PublicationFile):PublicationFile {
 const FEEDS:Record<string,typeof generateSitemapXml>={'/sitemap.xml':generateSitemapXml,'/rss.xml':generateRssXml,'/podcast.xml':generatePodcastXml};
 // Only the scripts public pages load; the admin scripts stay on the admin Worker.
 const SPLIT_PUBLIC_ASSETS=new Set(['/mikanbox/ai-question.js']);
-const SPLIT_HEADERS=STATIC_HEADERS+`
-/api/*
-  Access-Control-Allow-Origin: *
-`;
+// mikanBox DB answers cross-origin requests through the CORS rules headersFor() adds.
+const SPLIT_HEADERS=STATIC_HEADERS;
 // Cloudflare's static delivery types a file by its extension, and in production the type
 // comes without "charset=utf-8" (checked on a deployed site, 2026-11-09), so UTF-8 text is
 // garbled. _headers therefore sets the Content-Type of every text extension a page can publish
@@ -70,15 +68,19 @@ const SPLIT_HEADERS=STATIC_HEADERS+`
 // requested path, not the target of a _redirects rewrite, so the aliases of Markdown-only pages
 // (/id, /id/) and of mikanBox DB (/api/id) get exact rules too. XML keeps exact rules per file,
 // because sitemap.xml, rss.xml and podcast.xml have their own types and two rules that both set
-// Content-Type on one path are joined with a comma. Cloudflare allows 100 rules.
+// Content-Type on one path are joined with a comma. Markdown and data outputs (and mikanBox DB)
+// also allow cross-origin reads, as in PHP, so external Markdown viewers and scripts can fetch
+// them; each path gets that header from exactly one rule for the same reason. HTML gets none.
+// Cloudflare allows 100 rules.
 const HEADER_RULE_LIMIT=100;
 const WILDCARD_TYPES=['html','md','txt','csv','js','css','json'] as const;
 const FEED_TYPES:Record<string,string>={'/sitemap.xml':'application/xml; charset=utf-8','/rss.xml':'application/rss+xml; charset=utf-8','/podcast.xml':'application/rss+xml; charset=utf-8'};
-const headerRule=(path:string,type:string)=>`${path}\n  Content-Type: ${type}\n`;
+const CORS='  Access-Control-Allow-Origin: *\n';
+const headerRule=(path:string,type:string,cors=!type.startsWith('text/html'))=>`${path}\n  Content-Type: ${type}\n${cors?CORS:''}`;
 async function headersFor(env:Env):Promise<string> {
  const base=splitMode(env)?SPLIT_HEADERS:STATIC_HEADERS;
  const rules=WILDCARD_TYPES.map(ext=>headerRule('/*.'+ext,outputType('/x.'+ext)));
- for(const [path,type] of Object.entries(FEED_TYPES))rules.push(headerRule(path,type));
+ for(const [path,type] of Object.entries(FEED_TYPES))rules.push(headerRule(path,type,false));
  const {files,aliases}=await publishedRoutes(env);
  // Aliases first: a page whose alias gets no rule is garbled at its usual URL.
  for(const [source,target] of aliases)if(!/\.html$/.test(target))rules.push(headerRule(source,outputType(target)));

@@ -85,7 +85,8 @@ test('_redirects: Markdown-only pages answer /id and /id/ with .md, data pages g
 test('_headers types every text output with charset=utf-8: wildcard rules per extension, exact rules for aliases and XML',async()=>{
   const value=env();await sample(value);await savePage(value,'feed',{title:'Feed',status:'public_static',output_format:'xml',content_md:'<a/>'});await buildStatic(value,request);
   const headers=decode.decode((await readPublicationEntry(value,request,'/_headers')).body);
-  const rule=(path,type)=>assert.ok(headers.includes(`\n${path}\n  Content-Type: ${type}\n`),path);
+  const cors='  Access-Control-Allow-Origin: *\n';
+  const rule=(path,type,withCors=!type.startsWith('text/html')&&!['/sitemap.xml','/rss.xml'].includes(path))=>assert.ok(headers.includes(`\n${path}\n  Content-Type: ${type}\n${withCors?cors:''}\n`)||headers.endsWith(`\n${path}\n  Content-Type: ${type}\n${withCors?cors:''}`),path);
   for(const [ext,type] of [['html','text/html'],['md','text/markdown'],['txt','text/plain'],['csv','text/csv'],['js','text/javascript'],['css','text/css'],['json','application/json']])rule('/*.'+ext,type+'; charset=utf-8');
   // Cloudflare matches the requested path, not the rewrite target: aliases need their own rule.
   rule('/notes','text/markdown; charset=utf-8');rule('/notes/','text/markdown; charset=utf-8');rule('/api/shop','application/json; charset=utf-8');
@@ -94,6 +95,8 @@ test('_headers types every text output with charset=utf-8: wildcard rules per ex
   assert.doesNotMatch(headers,/\*\.xml|\n\/article\n|\n\/\n/);
   // Each path gets at most one Content-Type rule apart from the wildcard (two would be comma-joined).
   const exact=[...headers.matchAll(/\n(\/[^\n*]*)\n  Content-Type:/g)].map(m=>m[1]);assert.equal(new Set(exact).size,exact.length);
+  // Markdown and data outputs allow cross-origin reads (as in PHP); HTML and feeds do not, and no path gets the header twice.
+  assert.equal((headers.match(/Access-Control-Allow-Origin/g)||[]).length,(headers.match(/\n\/(?:\*\.(?:md|txt|csv|js|css|json)|notes\/?|api\/shop|feed\.xml)\n/g)||[]).length);
   assert.ok(headers.split(/\n(?=\/)/).length<=100);
 });
 

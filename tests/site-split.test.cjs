@@ -38,7 +38,11 @@ test('the public manifest holds feeds and DB JSON but none of the admin scripts'
  for(const path of ['/index.html','/sitemap.xml','/rss.xml','/podcast.xml','/api/data.json','/mikanbox/ai-question.js'])assert.ok(paths.includes(path),path);
  for(const path of paths)assert.doesNotMatch(path,/cloud-admin|cloud-publish|admin\.css/);
  assert.match(decode.decode((await readPublicationEntry(env,admin,'/_redirects')).body),/^\/api\/data \/api\/data\.json 200$/m);
- assert.match(decode.decode((await readPublicationEntry(env,admin,'/_headers')).body),/\/api\/\*\n  Access-Control-Allow-Origin: \*/);
+ {const headers=decode.decode((await readPublicationEntry(env,admin,'/_headers')).body);
+  // mikanBox DB allows cross-origin reads at /api/ID.json (the *.json rule) and its /api/ID alias, each from one rule.
+  assert.match(headers,/\n\/\*\.json\n  Content-Type: application\/json; charset=utf-8\n  Access-Control-Allow-Origin: \*\n/);
+  assert.match(headers,/\n\/api\/data\n  Content-Type: application\/json; charset=utf-8\n  Access-Control-Allow-Origin: \*\n/);
+  assert.doesNotMatch(headers,/\/api\/\*/);}
  assert.equal(await readPublicationEntry(env,admin,'/api/index.json'),null);
 });
 test('publication creates an assets-only version on the public Worker',async()=>{
