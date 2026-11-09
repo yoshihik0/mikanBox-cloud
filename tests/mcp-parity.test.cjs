@@ -56,7 +56,7 @@ test('MCP AI documents match SQLite suffix, context, byte count, and protected t
   assert.equal((await tool('update_ai_doc',{id:'DESIGN',html:'日本語',css:'body{}'})).error,false);
   assert.equal((await tool('update_ai_doc',{id:'DESIGN.md',html:'更新'})).error,false);
   const doc=(await tool('get_ai_doc',{id:'DESIGN'})).data;assert.equal(doc.id,'DESIGN.md');assert.equal(doc.css,'body{}');assert.equal(doc.is_ai_doc,true);
-  const context=(await tool('get_ai_context')).data;assert.deepEqual(context.documents,[{id:'DESIGN.md',content_md:'更新'}]);assert.equal(context.count,1);assert.match(context.component_naming,/leading _.*ordinary new or duplicated/);
+  const context=(await tool('get_ai_context')).data;assert.deepEqual(context.documents.slice(0,1),[{id:'DESIGN.md',content_md:'更新'}]);assert.equal(context.documents.at(-1).id,'mikanbox-output-formats');assert.equal(context.documents.at(-1).builtin,true);assert.match(context.documents.at(-1).content_md,/preview_page/);assert.equal(context.count,2);assert.match(context.component_naming,/leading _.*ordinary new or duplicated/);
   assert.deepEqual((await tool('list_ai_docs')).data,{ai_docs:[{id:'DESIGN.md',html_length:6}],count:1});
 });
 test('MCP settings exclude credentials',async()=>{

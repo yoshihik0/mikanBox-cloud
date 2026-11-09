@@ -570,8 +570,10 @@ test('the search page only forwards legacy page links within the site',async()=>
 test('save notification is dismissible and does not persist in navigation state',async()=>{
   const env=environment(),auth=await login(env);
   const body=await(await call(env,'/admin?view=site&saved=1',undefined,auth.cookie)).text();
-  assert.match(body, /id="admin-toast" class="toast toast-show"/);
-  assert.match(body, /#admin-toast \{[^}]*opacity:0; visibility:hidden/);
+  // The message goes through the one toast of admin-ui.js (bottom right, fades by itself), not a server-drawn element.
+  assert.match(body, /document\.addEventListener\('DOMContentLoaded', \(\) => window\.MikanUI\.toast\("[^"]+"\)\);/);
+  assert.doesNotMatch(body, /id="admin-toast"/);
+  assert.match(body, /<script src="\/mikanbox\/admin-ui\.js\?v=/);
   const cleanup=body.match(/const currentUrl = new URL\(window\.location\.href\);[\s\S]*?history\.replaceState\(history\.state, '', currentUrl\.href\);\s*}/)?.[0];
   assert.ok(cleanup);
   let replaced='';const history={state:{marker:1},replaceState(state,unused,url){replaced=url;assert.equal(state.marker,1);}};

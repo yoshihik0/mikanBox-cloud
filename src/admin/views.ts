@@ -159,11 +159,6 @@ export function renderAdminShell(opts: {
     <title>${adminTitle(settings)}</title>
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0&display=block" rel="stylesheet">
     <link rel="stylesheet" href="/mikanbox/admin.css?v=${h(CLOUD_VERSION)}-8">
-    <style>
-    #admin-toast { position:fixed; bottom:30px; right:30px; max-width:calc(100vw - 60px); box-sizing:border-box; background:rgba(0,0,0,.8); color:white; padding:12px 24px; border-radius:8px; z-index:10000; transition:opacity .3s; opacity:0; visibility:hidden; pointer-events:none; }
-    #admin-toast.toast-show { opacity:1; visibility:visible; }
-    #admin-toast.toast-error { background:rgba(220,53,69,.9); }
-    </style>
 </head>
 <body>
 <script>(function(){
@@ -191,7 +186,7 @@ ${opts.mediaEnabled?`<div id="drop-zone">${getIcon('cloud')} ${t('hint_drop_uplo
     <a href="#page-editor" class="nav-edit active" data-editor-type="page" title="${t('btn_edit')}">
         ${getIcon('edit')}
         <span>${t('btn_edit')}</span>
-        <span class="close-badge" title="閉じる" onclick="event.preventDefault();event.stopPropagation();window.location.href='/admin${opts.listQuery ? h('?' + opts.listQuery.slice(1)) : ''}#pages'">×</span>
+        <span class="close-badge" title="${t('btn_close')}" data-url="/admin${opts.listQuery ? h('?' + opts.listQuery.slice(1)) : ''}#pages">×</span>
     </a>` : ''}
     <a href="${view==='import'?'/admin':''}#site" class="nav-settings" title="${t('nav_settings')}">
         ${getIcon('save')}
@@ -206,7 +201,7 @@ ${opts.mediaEnabled?`<div id="drop-zone">${getIcon('cloud')} ${t('hint_drop_uplo
     <a href="#design-editor" class="nav-edit active" data-editor-type="design" title="${t('btn_edit')}">
         ${getIcon('edit')}
         <span>${t('btn_edit')}</span>
-        <span class="close-badge" title="閉じる" onclick="event.preventDefault();event.stopPropagation();window.location.href='/admin?view=components'">×</span>
+        <span class="close-badge" title="${t('btn_close')}" data-url="/admin?view=design#design">×</span>
     </a>` : ''}
 
     <a href="${view==='import'?'/admin':''}#media" class="nav-media" title="${t('nav_media')}">
@@ -219,25 +214,22 @@ ${opts.mediaEnabled?`<div id="drop-zone">${getIcon('cloud')} ${t('hint_drop_uplo
         <a href="${h(ssgRootUrl)}" target="_blank">${t('admin_view_site')}</a>
     </div>`}
 
-    ${message ? `<div id="admin-toast" class="toast toast-show">${h(message)}</div>` : ''}
 
     ${view==='import'?'':`    <div class="category-cloud-wrap"><div class="category-cloud"><span class="category-cloud-label">${t('category_cloud_label')}</span>
     <a href="?cat=" class="category-cloud-tag ${!opts.category?'active':''}">${t('all_pages')}</a>
     ${sortCategories(opts.allCategories||[]).map(cat=>`<a href="?cat=${encodeURIComponent(cat)}" class="category-cloud-tag ${opts.category===cat?'active':''}${isStructuralCategory(cat)?' is-structural':''}"${isStructuralCategory(cat)?` title="${h(t('category_structural_hint'))}"`:''}>${h(cat)}</a>`).join('')}
-    <button type="button" class="category-cloud-tag" data-add-category>${getIcon('add')} ${t('btn_add')}</button></div></div>
+    <span class="category-control-group" style="display:inline-flex;align-items:center;gap:8px;white-space:nowrap"><span class="category-cloud-divider" style="margin:0">|</span><a href="#" class="category-cloud-tag btn-add-cat" style="border-style:dashed;background:transparent;display:inline-flex;align-items:center;gap:5px">${getIcon('add')} ${t('btn_add')}</a><input type="text" id="new-category-input" placeholder="${t('placeholder_new_category')}" maxlength="100" style="display:none;width:120px;padding:4px 10px;border-radius:8px;border:1px solid #ff8c00;font-size:.85rem;height:30px;box-sizing:border-box"></span></div></div>
     ${pagesHtml}
 
 `}
-    ${pageEditorHtml}
-
     ${siteHtml}
 
     ${view==='import'?'':designHtml}
 
-    ${designEditorHtml}
-
     ${view==='import'?'':mediaHtml}
 
+    <script>window.__MIKAN_UI = ${JSON.stringify({confirmTitle:t('btn_delete'),confirmOk:t('btn_delete_confirm'),cancel:t('btn_cancel'),saveFailed:t('err_save_failed'),done:t('msg_update_success'),networkError:t('err_network_error')}).replace(/</g,'\\u003c')};window.__CLOUD_EDITOR = ${JSON.stringify({editLabel:t('btn_edit'),closeLabel:t('btn_close'),editIcon:getIcon('edit'),loadFailed:t('err_editor_load_failed'),unsavedTitle:t('modal_unsaved_title'),unsavedText:t('visual_js_confirm_leave'),ok:t('btn_ok'),confirmDelete:t('hint_confirm_delete'),deleteTitle:t('btn_delete'),deleteOk:t('btn_delete_confirm'),saveFailed:t('err_save_failed'),done:t('msg_update_success'),networkError:t('err_network_error')}).replace(/</g,'\\u003c')};</script>
+    <script src="/mikanbox/admin-ui.js?v=${h(CLOUD_VERSION)}"></script>
     <script src="/mikanbox/ai-question.js?v=${h(CLOUD_VERSION)}" data-mcp-endpoint="/public-mcp" data-public-mcp="/public-mcp" data-help-ja="/public-help.html?language=ja" data-help-en="/public-help.html?language=en" defer></script>
     <script>
     // The save marker is a one-time notification, not part of navigation state.
@@ -247,6 +239,7 @@ ${opts.mediaEnabled?`<div id="drop-zone">${getIcon('cloud')} ${t('hint_drop_uplo
         history.replaceState(history.state, '', currentUrl.href);
     }
     window.CSRF_TOKEN = ${JSON.stringify(csrf)};
+    ${message ? `document.addEventListener('DOMContentLoaded', () => window.MikanUI.toast(${JSON.stringify(message).replace(/</g,'\\u003c')}));` : ''}
     // Times are sent as instants and shown in the viewer's own time zone (the Worker formats in UTC).
     ${localTimeScript(lang)}
     window.AI_PROMPT = ${aiPromptJson};
@@ -383,6 +376,8 @@ ${opts.mediaEnabled?`<div id="drop-zone">${getIcon('cloud')} ${t('hint_drop_uplo
 
     // Keep the viewport stable while a refreshed list replaces its old DOM.
     let listRefreshCount = 0, savedOverflowAnchor = '';
+    // While an editor is being opened or closed (window.mikanNav.pending), its own scroll decides the position.
+    window.mikanNav = window.mikanNav || { pending: 0 };
     function replaceListPreservingScroll(oldList, newList) {
         if (!oldList || !newList) return;
         const y = window.scrollY;
@@ -394,15 +389,19 @@ ${opts.mediaEnabled?`<div id="drop-zone">${getIcon('cloud')} ${t('hint_drop_uplo
         // Reserve the old height until the replacement has been laid out.
         newList.style.minHeight = oldList.getBoundingClientRect().height + 'px';
         oldList.replaceWith(newList);
-        window.scrollTo({top: y, behavior: 'instant'});
+        const keepPosition = window.mikanNav.pending === 0;
+        const replacedAt = performance.now();
+        if (keepPosition) window.scrollTo({top: y, behavior: 'instant'});
         requestAnimationFrame(() => {
             newList.style.minHeight = '';
-            window.scrollTo({top: y, behavior: 'instant'});
+            // Only right after the replacement: a frame delayed in a background tab must not pull the page back later.
+            if (keepPosition && window.mikanNav.pending === 0 && performance.now() - replacedAt < 200) window.scrollTo({top: y, behavior: 'instant'});
             requestAnimationFrame(() => {
                 if (--listRefreshCount === 0) root.style.overflowAnchor = savedOverflowAnchor;
             });
         });
     }
+    window.replaceListPreservingScroll = replaceListPreservingScroll;
 
     async function refreshMediaGrid() {
         try {
@@ -434,43 +433,14 @@ ${opts.mediaEnabled?`<div id="drop-zone">${getIcon('cloud')} ${t('hint_drop_uplo
             else if (newPag) { const wrap = document.querySelector('#pages-table-wrap'); if (wrap) wrap.after(newPag); }
         } catch (err) {}
     }
+    window.refreshPageList = refreshPageList;
 
     document.addEventListener('submit', async function(e) {
         const form = e.target;
         const actionInput = form.querySelector('input[name="save_action"]');
-        if (!actionInput) return;
+        if (!actionInput || e.defaultPrevented) return;
         const action = actionInput.value;
-        if (action === 'delete_page') {
-            e.preventDefault();
-            const formData = new FormData(form);
-            formData.append('ajax_request', '1');
-            try {
-                const res = await fetch(window.location.href, { method: 'POST', body: formData });
-                const json = await res.json().catch(() => ({}));
-                if (json.success) {
-                    window.location.href = '/admin?view=pages';
-                } else {
-                    showToast(json.message || ${JSON.stringify(opts.t('err_save_failed'))}, true);
-                }
-            } catch(err) {
-                showToast(${JSON.stringify(opts.t('err_save_failed'))}, true);
-            }
-        } else if (action === 'delete_comp') {
-            e.preventDefault();
-            const formData = new FormData(form);
-            formData.append('ajax_request', '1');
-            try {
-                const res = await fetch(window.location.href, { method: 'POST', body: formData });
-                const json = await res.json().catch(() => ({}));
-                if (json.success) {
-                    window.location.href = '/admin?view=components';
-                } else {
-                    showToast(json.message || ${JSON.stringify(opts.t('err_save_failed'))}, true);
-                }
-            } catch(err) {
-                showToast(${JSON.stringify(opts.t('err_save_failed'))}, true);
-            }
-        } else if (action === 'delete_media' || action === 'rename_media' || action === 'resize_media' || action === 'convert_media_webp') {
+        if (action === 'delete_media' || action === 'rename_media' || action === 'resize_media' || action === 'convert_media_webp') {
             e.preventDefault();
             let formData = new FormData(form);
             formData.append('ajax_request', '1');
@@ -492,7 +462,7 @@ ${opts.mediaEnabled?`<div id="drop-zone">${getIcon('cloud')} ${t('hint_drop_uplo
     async function copyToClipboard(text) {
         try {
             await navigator.clipboard.writeText(text);
-            alert(${JSON.stringify(opts.t('msg_copied'))});
+            showToast(${JSON.stringify(opts.t('msg_copied'))});
         } catch (err) {
             const textArea = document.createElement("textarea");
             textArea.value = text;
@@ -500,9 +470,9 @@ ${opts.mediaEnabled?`<div id="drop-zone">${getIcon('cloud')} ${t('hint_drop_uplo
             textArea.select();
             try {
                 document.execCommand('copy');
-                alert(${JSON.stringify(opts.t('msg_copied'))});
+                showToast(${JSON.stringify(opts.t('msg_copied'))});
             } catch (err) {
-                alert(${JSON.stringify(opts.t('msg_copy_failed'))});
+                showToast(${JSON.stringify(opts.t('msg_copy_failed'))}, true);
             }
             document.body.removeChild(textArea);
         }
@@ -510,7 +480,7 @@ ${opts.mediaEnabled?`<div id="drop-zone">${getIcon('cloud')} ${t('hint_drop_uplo
     async function csvConvertAndCopy() {
         const fileInput = document.getElementById('csv-file-input');
         const btn = document.getElementById('csv-copy-btn');
-        if (!fileInput.files[0]) { alert(${JSON.stringify(opts.t('csv_no_file'))}); return; }
+        if (!fileInput.files[0]) { showToast(${JSON.stringify(opts.t('csv_no_file'))}, true); return; }
         const buffer = await fileInput.files[0].arrayBuffer();
         const bytes = new Uint8Array(buffer);
         let encoding = 'UTF-8';
@@ -580,15 +550,15 @@ ${opts.mediaEnabled?`<div id="drop-zone">${getIcon('cloud')} ${t('hint_drop_uplo
                     else selectEl.classList.add('draft');
                 }
             } else {
-                showToast('保存に失敗しました', true);
+                showToast(${JSON.stringify(opts.t('err_save_failed'))}, true);
             }
         } catch(err) {
-            showToast('通信エラー', true);
+            showToast(${JSON.stringify(opts.t('err_network_error'))}, true);
         }
     }
     let isNavigating = false;
     function updateScrollPos() {
-        if (isNavigating) return;
+        if (isNavigating || window.mikanNavigating) return;
         const sections = [
             { id: 'pages', color: '#e0f2fe', navId: 'nav-pages' },
             { id: 'site', color: '#ffffff', navId: 'nav-settings' },
@@ -630,13 +600,11 @@ ${opts.mediaEnabled?`<div id="drop-zone">${getIcon('cloud')} ${t('hint_drop_uplo
     document.querySelectorAll('.side-nav a').forEach(a => {
         a.addEventListener('click', function(e) {
             const href = this.getAttribute('href');
-            const closeUrl = this.dataset.url;
-            if (closeUrl) { e.preventDefault(); window.location.href = closeUrl; return; }
             if (href && href.startsWith('#')) { e.preventDefault(); navigateTo(href); }
         });
     });
+    window.updateScrollPos = updateScrollPos;
     window.addEventListener('scroll', updateScrollPos, { passive: true });
-    let toastTimer;
     document.addEventListener('DOMContentLoaded', () => {
         updateScrollPos();
         setTimeout(() => {
@@ -644,25 +612,12 @@ ${opts.mediaEnabled?`<div id="drop-zone">${getIcon('cloud')} ${t('hint_drop_uplo
             if (s) s.remove();
         }, 100);
 
-        const toast = document.getElementById('admin-toast');
-        if (toast) { toastTimer = setTimeout(() => toast.classList.remove('toast-show'), 3000); }
     });
-    function showToast(msg, isError = false) {
-        let toast = document.getElementById('admin-toast');
-        if (!toast) {
-            toast = document.createElement('div');
-            toast.id = 'admin-toast';
-            document.body.appendChild(toast);
-        }
-        toast.textContent = msg;
-        toast.className = 'toast toast-show' + (isError ? ' toast-error' : '');
-        clearTimeout(toastTimer);
-        toastTimer = setTimeout(() => toast.classList.remove('toast-show'), 3000);
-    }
     </script>
     <dialog id="rename-confirm-dialog" class="custom-dialog"><h3 class="dialog-title" style="margin-top:0;margin-bottom:12px;font-size:1.05rem;display:flex;align-items:center;gap:8px">${getIcon('warning')} ${t('media_rename_confirm_title')}</h3><p id="rename-dialog-message" style="font-size:.9rem;line-height:1.5;margin-bottom:20px;color:#475569"></p><div class="dialog-buttons" style="display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap"><button type="button" data-rename-choice="cancel" class="btn btn-small btn-gray">${t('btn_rename_cancel')}</button><button type="button" data-rename-choice="only" class="btn btn-small btn-gray">${t('btn_rename_only')}</button><button type="button" data-rename-choice="update" class="btn btn-small btn-blue">${t('btn_rename_update')}</button></div></dialog>
 
-    <script src="/mikanbox/preview-editor.js?v=${h(CLOUD_VERSION)}" defer></script>
+    <script src="/mikanbox/preview-editor.js?v=${h(CLOUD_VERSION)}-2" defer></script>
+    <script src="/mikanbox/cloud-editor.js?v=${h(CLOUD_VERSION)}" defer></script>
     <script src="/mikanbox/cloud-admin.js?v=${h(CLOUD_VERSION)}-3" defer></script>
     <script src="/mikanbox/cloud-media.js?v=${h(CLOUD_VERSION)}" defer></script>
     <script src="/mikanbox/cloud-backup.js?v=${h(CLOUD_VERSION)}-2" defer></script><script src="/mikanbox/cloud-publish.js?v=${h(CLOUD_VERSION)}-7" defer></script><script src="/mikanbox/cloud-storage.js?v=${h(CLOUD_VERSION)}-2" defer></script>
@@ -683,6 +638,8 @@ export function renderPagesView(opts: {
   settings: Settings;
   query?: string; category?:string; format?: string; pageNumber?:number; totalPages?:number;
   lang?: string; publication?: PublicationStatus; cloudReady?: boolean; publicUrl?: string;
+  /** The page editor (when ?edit= or ?new= opens it); it lives in the page-editor slot. */
+  editorHtml?: string;
 }): string {
   const { t, pages, view, editId, hasNew, csrf, helpFile } = opts;
   const listQuery = h(pageListQuery({ category: opts.category, format: opts.format, query: opts.query, pageNumber: opts.pageNumber }));
@@ -694,7 +651,7 @@ export function renderPagesView(opts: {
     const cls=statusClass(status);
     const format = pageOutputFormat(d);
 
-    return `<tr>
+    return `<tr data-page-id="${h(pid)}">
                 <td class="td-narrow">
                     <div class="flex-center" style="gap: 5px;">
                          <a href="?view=pages&amp;edit=${h(encodeURIComponent(pid))}${listQuery}#page-editor" class="btn btn-sm btn-blue" title="${t('btn_edit')}">${getIcon('edit')}</a>
@@ -759,8 +716,7 @@ export function renderPagesView(opts: {
         </div>
     </div>
 
-    <div id="page-editor-slot">
-    </div>`;
+    <div id="page-editor-slot">${opts.editorHtml || ''}</div>`;
 }
 
 // ===== ページエディター (views/page-editor.php) =====
@@ -812,7 +768,7 @@ export function renderPageEditor(opts: {
                                 </div>` : ''}
                         </div>
                     <div class="editor-header-actions">
-                    ${editId?`<div id="editor-revisions-container"><div class="revisions-select-group" style="display:flex;align-items:center;gap:8px;white-space:nowrap"><span>${getIcon('history')} ${t('label_revisions')}</span><select style="width:auto;min-width:180px" aria-label="${t('label_revisions')}" onchange="location.href=this.value"><option value="?view=pages&edit=${encodeURIComponent(editId)}${h(opts.listQuery || '')}#page-editor">${t('select_revision')}</option>${(opts.revisions||[]).map(r=>{const iso=isoInstant(r.created_at),lang=opts.settings.system_lang==='en'?'en':'ja';return `<option value="?view=pages&edit=${encodeURIComponent(editId)}&rev=${r.id}${h(opts.listQuery || '')}#page-editor" ${opts.selectedRevision?.id===r.id?'selected':''}${iso?` data-local-time="${iso}" data-local-suffix="${h(` (${r.editor_id})`)}"`:''}>${h(iso?utcFallback(iso,lang):r.created_at)} (${h(r.editor_id)})</option>`;}).join('')}</select></div></div>`:''}
+                    ${editId?`<div id="editor-revisions-container"><div class="revisions-select-group" style="display:flex;align-items:center;gap:8px;white-space:nowrap"><span>${getIcon('history')} ${t('label_revisions')}</span><select style="width:auto;min-width:180px" aria-label="${t('label_revisions')}" onchange="spaChangeRevision(this)"><option value="?view=pages&edit=${encodeURIComponent(editId)}${h(opts.listQuery || '')}#page-editor">${t('select_revision')}</option>${(opts.revisions||[]).map(r=>{const iso=isoInstant(r.created_at),lang=opts.settings.system_lang==='en'?'en':'ja';return `<option value="?view=pages&edit=${encodeURIComponent(editId)}&rev=${r.id}${h(opts.listQuery || '')}#page-editor" ${opts.selectedRevision?.id===r.id?'selected':''}${iso?` data-local-time="${iso}" data-local-suffix="${h(` (${r.editor_id})`)}"`:''}>${h(iso?utcFallback(iso,lang):r.created_at)} (${h(r.editor_id)})</option>`;}).join('')}</select></div></div>`:''}
                     ${editId?`<a href="/admin/visual?id=${h(encodeURIComponent(editId))}" id="editor-visual-btn" class="btn btn-sm editor-visual-btn ${visualAvailable?'btn-blue':'btn-gray btn-disabled'}" ${visualAvailable?'':'aria-disabled="true" tabindex="-1"'} data-saved-html="${visualAvailable?'1':'0'}" data-title-on="${h(t('btn_visual_edit'))}" data-title-off="${h(t('visual_err_not_html'))}" title="${h(visualAvailable?t('btn_visual_edit'):t('visual_err_not_html'))}">${getIcon('visual')} ${t('btn_visual_edit')}</a>`:''}
                     </div>
                     </div>
@@ -912,13 +868,11 @@ export function renderPageEditor(opts: {
                     <div class="flex-row flex-between mt-10">
                         <div class="flex-row">
                             <button type="submit" form="page-form" name="save_action" value="save_page" class="btn btn-blue">${getIcon('save')} ${t('btn_save')}</button>
-                            ${editId
-                              ? `<a id="editor-preview-link" href="${h(adminPreviewUrl(editId, d))}" target="_blank" rel="noopener" class="btn btn-blue" title="${h(t('preview_saved_hint'))}">${getIcon('view')} ${t('btn_preview')}</a><small class="sub-text preview-saved-note">${t('preview_saved_hint')}</small>`
-                              : `<span id="editor-preview-link" class="btn btn-gray btn-disabled" aria-disabled="true" title="${h(t('preview_saved_hint'))}">${getIcon('view')} ${t('btn_preview')}</span>`}
+                            <button type="button" id="editor-preview-btn" class="btn btn-blue" data-editor-preview title="${h(t('preview_editing_hint'))}" data-error="${h(t('err_network_error_detail'))}">${getIcon('view')} ${t('btn_preview')}</button><small class="sub-text preview-saved-note">${t('preview_editing_hint')}</small>
                             <a href="/admin${opts.listQuery ? h('?' + opts.listQuery.slice(1)) : ''}#pages" class="btn btn-gray">${getIcon('arrow_back')} ${t('btn_back_to_list')}</a>
                         </div>
                         ${(editId && editId !== 'index') ? `
-                            <button type="button" class="btn btn-red" onclick="if(confirm('${t('hint_confirm_delete')}')){var f=document.getElementById('page-form');f.querySelector('input[name=save_action]').value='delete_page';f.requestSubmit();}">${getIcon('delete')} ${t('btn_delete')}</button>
+                            <button type="submit" form="page-form" name="save_action" value="delete_page" class="btn btn-red">${getIcon('delete')} ${t('btn_delete')}</button>
                         ` : ''}
                     </div>
                 </form>
@@ -1051,6 +1005,8 @@ export function renderDesignView(opts: {
   editId: string | null;
   hasNew: boolean;
   helpFile: string;
+  /** The design editor, in the design-editor slot. */
+  editorHtml?: string;
 }): string {
   const { t, components, view, editId, hasNew, helpFile } = opts;
   const hasEditor = view === 'components' && (editId !== null || hasNew);
@@ -1079,7 +1035,7 @@ export function renderDesignView(opts: {
             <h1>${getIcon('component')} ${t('nav_design')}<a href="${h(helpFile)}#design-mgmt" target="_blank" class="manual-link">${t('admin_help')}</a><span class="component-filter-control"><select class="select-auto component-filter-select" aria-label="${t('component_filter_label')}">${['all','category','wrapper','part','ai_doc','standard'].map(value=>`<option value="${value}">${t('component_filter_'+value)}</option>`).join('')}</select></span></h1>
             <a href="?view=design&amp;new=1#design-editor" class="btn btn-blue">${getIcon('add')} ${t('btn_create_new')}</a>
         </div>
-        <div class="table-responsive ${hasEditor ? 'mb-0' : 'ssg-build-row no-editor'}">
+        <div class="table-responsive ${hasEditor ? 'mb-0' : 'ssg-build-row no-editor'}" id="comps-table-wrap">
         <table>
             <tr><th class="td-narrow">${t('btn_edit')}</th><th class="td-narrow">${t('label_component_id')}</th><th class="td-narrow">${t('label_type')}</th><th>${t('label_tag_name')}</th></tr>
             ${rows}
@@ -1088,8 +1044,7 @@ export function renderDesignView(opts: {
         </div>
     </div>
 
-    <div id="design-editor-slot">
-    </div>`;
+    <div id="design-editor-slot">${opts.editorHtml || ''}</div>`;
 }
 
 // ===== デザインエディター (views/design-editor.php) =====
@@ -1151,10 +1106,10 @@ export function renderDesignEditor(opts: {
                 <div class="flex-row flex-between mt-25">
                     <div class="flex-row">
                         <button type="submit" form="comp-form" name="save_action" value="save_comp" class="btn btn-blue">${getIcon('save')} ${t('btn_save')}</button>
-                        <a href="/admin#design" class="btn btn-gray">${getIcon('arrow_back')} ${t('btn_back_to_list')}</a>
+                        <a href="/admin?view=design#design" class="btn btn-gray">${getIcon('arrow_back')} ${t('btn_back_to_list')}</a>
                     </div>
                     ${editId ? `
-                        <button type="button" class="btn btn-red" onclick="if(confirm('${t('hint_confirm_delete')}')){var f=document.getElementById('comp-form');f.querySelector('input[name=save_action]').value='delete_comp';f.requestSubmit();}">${getIcon('delete')} ${t('btn_delete')}</button>
+                        <button type="submit" form="comp-form" name="save_action" value="delete_comp" class="btn btn-red">${getIcon('delete')} ${t('btn_delete')}</button>
                     ` : ''}
                 </div>
             </form>
@@ -1228,7 +1183,7 @@ export function renderMediaView(opts: {
                         <div class="media-card-meta media-meta-label">
                             ${ext.toUpperCase()} ${dims ? `(${dims})` : ''}
                         </div>
-                        <form method="post" onsubmit="return confirm('${t('hint_confirm_delete')}')" class="inline">
+                        <form method="post" class="inline" data-confirm="${h(t('hint_confirm_delete'))}" data-confirm-ok="${h(t('btn_delete_confirm'))}" data-confirm-title="${h(t('btn_delete'))}">
                             <input type="hidden" name="save_action" value="delete_media">
                             <input type="hidden" name="file" value="${h(fname)}">
                             ${csrfField(csrf)}
@@ -1346,7 +1301,7 @@ export function renderSiteView(opts: {
                 <h2 class="section-sub-title">${t('memo_head')}</h2>
             </div>
             <div class="editor-container editor-container-sub">
-                <form method="post">
+                <form method="post" data-ajax>
                     ${csrfField(csrf)}
                     <input type="hidden" name="save_action" value="save_memo">
                     <textarea name="memo" class="textarea-memo mb-10">${h(settings.memo || '')}</textarea>
@@ -1370,7 +1325,7 @@ export function renderSiteView(opts: {
             <small class="sub-text sub-text-block">${lang==='en'?'Open GitHub and press Run workflow to update. Updates run only when you choose. After it succeeds, reload this screen to check the installed version.':'GitHubを開き「Run workflow」を押すと更新します。自動では更新しません。成功後、この画面を再読み込みして現在のバージョンを確認してください。'}</small>
             <details class="mt-10 js-accordion tracking-code-details"><summary>${lang==='en'?'Set up manual updates':'手動アップデートの設定'} <span class="accordion-arrow">▼</span></summary>
               <p><a href="${h(helpFile)}#manual-update" target="_blank" rel="noopener noreferrer">${lang==='en'?'First-time GitHub setup instructions':'GitHubでの初回設定手順'}</a></p>
-              <form method="post">${csrfField(csrf)}<input type="hidden" name="save_action" value="save_cloud_update_repository">
+              <form method="post" data-ajax>${csrfField(csrf)}<input type="hidden" name="save_action" value="save_cloud_update_repository">
                 <label>${lang==='en'?'Your GitHub repository (owner/repository)':'自分のGitHubリポジトリ（所有者/リポジトリ名）'} <input name="cloud_update_repository" value="${h(opts.updateRepository||'')}" placeholder="owner/repository" maxlength="200"></label>
                 <button type="submit" class="btn btn-gray btn-small">${t('btn_save')}</button>
               </form>
@@ -1386,7 +1341,7 @@ export function renderSiteView(opts: {
                     </h2>
                 </summary>
                 <div class="editor-container editor-container-sub">
-                    <form method="post">
+                    <form method="post" data-ajax>
                         <input type="hidden" name="save_action" value="save_settings">
                         ${csrfField(csrf)}
                         <div class="form-group mb-10" style="max-width: 300px;">
@@ -1443,7 +1398,7 @@ export function renderSiteView(opts: {
                     </h2>
                 </summary>
                 <div class="editor-container editor-container-sub">
-                    <form method="post" class="site-settings-form">
+                    <form method="post" class="site-settings-form" data-ajax>
                         <input type="hidden" name="save_action" value="save_settings">
                         ${csrfField(csrf)}
                         <div class="grid-2col">
@@ -1658,6 +1613,6 @@ export function renderImportView(opts: {t:(key:string,...args:(string|number)[])
     <section id="cloud-json-restore" class="data-tool-card"><h2>${getIcon('upload')} ${lang==='en'?'Restore a JSON backup':'バックアップJSONファイルの復元'}</h2>
     <p>${lang==='en'?'Restoring replaces current site data. Accounts are restored only if selected. Current site identity, API key and Cloud connection are kept.':'復元すると、現在のサイトの内容がバックアップの内容に置き換わります。ユーザーは選択した場合のみ復元され、現在のサイトID・APIキー・Cloud接続は維持されます。'}</p>
     <p>${lang==='en'?'For D1, existing and temporary restore images must fit within 450 MB. R2 also needs space for both sets.':'D1では現在の画像と復元用の一時画像の合計が450 MB以内である必要があります。R2でも両方の保存領域が必要です。'}</p>
-    <form method="post" enctype="multipart/form-data" data-cloudbackup="restore" onsubmit="return confirm('${lang==='en'?'Replace all current site data with this backup?':'現在のサイトデータをすべてバックアップ内容で置き換えます。続けますか？'}')">${csrfField(csrf)}<input type="hidden" name="save_action" value="restore_backup_json"><label class="form-group backup-field">${lang==='en'?'Backup JSON file':'バックアップJSONファイル'} <input type="file" name="backup_file" accept="application/json,.json" required></label><label class="form-group backup-field"><input type="checkbox" name="restore_users" value="1"> ${lang==='en'?'Also restore user accounts (signs everyone out)':'ユーザーも復元（全員ログアウト）'}</label><button type="submit" class="btn btn-orange btn-small">${lang==='en'?'Restore and replace':'復元して置き換え'}</button><span data-transfer-status role="status"></span></form></section></div>`;
+    <form method="post" enctype="multipart/form-data" data-cloudbackup="restore">${csrfField(csrf)}<input type="hidden" name="save_action" value="restore_backup_json"><label class="form-group backup-field">${lang==='en'?'Backup JSON file':'バックアップJSONファイル'} <input type="file" name="backup_file" accept="application/json,.json" required></label><label class="form-group backup-field"><input type="checkbox" name="restore_users" value="1"> ${lang==='en'?'Also restore user accounts (signs everyone out)':'ユーザーも復元（全員ログアウト）'}</label><button type="submit" class="btn btn-orange btn-small">${lang==='en'?'Restore and replace':'復元して置き換え'}</button><span data-transfer-status role="status"></span></form></section></div>`;
   return renderDataImportView({t,csrf,lang,stats:opts.stats||{pages:0,components:0,users:0,media:0,mediaBytes:0},cloudBackupHtml:d1BackupHtml+cloudBackupHtml+`<section id="static-zip" class="data-tool-card"><h2>${getIcon('archive')} ${lang==='en'?'Static HTML (ZIP)':'静的HTML（ZIP）'}</h2><form method="post">${csrfField(csrf)}<input type="hidden" name="save_action" value="download_static_zip"><div class="data-tool-form-row"><label>${lang==='en'?'HTML file structure':'HTMLファイルの構造'} <select name="structure"><option value="flat">ID.html</option><option value="directory">ID/index.html</option></select></label><button class="btn btn-gray btn-small">${getIcon('download')} ${lang==='en'?'Download static ZIP':'静的ZIPを保存'}</button></div><p class="data-action-hint">${lang==='en'?'Exports already-built static pages and referenced local images, up to 20 MB. Dynamic pages and external images remain live links; images loaded dynamically by JavaScript are not collected.':'ビルド済みの静的ページと参照するサイト内画像を、合計20 MBまで保存します。動的ページと外部画像は元のURLのままです。JavaScriptが動的に読み込む画像は収集しません。'}</p></form></section>`});
 }

@@ -1,6 +1,6 @@
 <style>.manual-version{font-size:.5em;font-weight:400;white-space:nowrap}</style>
 
-# 🍊mikanBox Cloudflare Manual <small class="manual-version">v0.8.3</small>
+# 🍊mikanBox Cloudflare Manual <small class="manual-version">v0.9.0</small>
 
 This manual covers installation and the Cloudflare edition’s differences. For shared operations, see the [operation manual](https://yoshihiko.com/mikanbox/help_en.html).
 
@@ -79,7 +79,7 @@ Component JavaScript is available at `/component-js/ID.js`. Page/component JavaS
 
 Draft/pending data cannot be read through public POST_MD embeds, navigation, feeds, or the data API.
 
-The page editor's preview opens the **saved** page in a new tab through the admin screen (the note "Shows the saved content." sits beside the button); a new page can be previewed once saved. The page list has the globe icon to the public site instead of a preview (as in PHP 2.18.2). HTML pages open at `/preview/ID`; Markdown-only, data-format and mikanBox DB pages open at `/admin?page_preview=ID`, which shows the actual output as UTF-8 plain text.
+The page editor's preview opens the content **being edited** (unsaved changes and new pages included) in a new tab through the admin screen; the note "Shows the content being edited (it is not saved)." sits beside the button. Nothing is saved, and the display stays isolated (scripts do not run on the admin origin). The edited content is kept on the server for 30 minutes only (at most four per user, readable only by that user). The page list has the globe icon to the public site instead of a preview (as in the PHP editions). HTML pages open at `/preview/ID`; Markdown-only, data-format and mikanBox DB pages open at `/admin?page_preview=ID`, which shows the actual output as UTF-8 plain text.
 
 ### Output formats (Cloud delivery)
 
@@ -161,7 +161,7 @@ Setting `CLOUDFLARE_PUBLIC_WORKER_NAME` (the public Worker's name) and `PUBLIC_S
 - A signed-in device opening `/about` on the admin address is sent to the preview (`/preview/about`). Previews carry a CSP `sandbox`, so page scripts cannot reach the admin screen. Inside a preview, page scripts cannot use cookies or `localStorage`.
 - Public pages, sitemaps and RSS use `PUBLIC_SITE_URL` and never the admin address. Sitemaps, RSS and DB page JSON (`/api/page-id`) are published as files.
 - Publication sends only changed files. Page hashes are stored at build time.
-- The globe icon in the page list opens the page on the public site (the same role as in the PHP editions; check saved content with the page editor's preview). Blue means the public site shows the current content; grey means changes are not published yet. Drafts, pending pages and pages never published show it grey and unclickable. Parts that change because of other pages (a page list component, for instance) only update when you build.
+- The globe icon in the page list opens the page on the public site (the same role as in the PHP editions; check the content being edited with the page editor's preview). Blue means the public site shows the current content; grey means changes are not published yet. Drafts, pending pages and pages never published show it grey and unclickable. Parts that change because of other pages (a page list component, for instance) only update when you build.
 - There is no sign-out button at the top. To stop using a device, stop it under Devices and users.
 - The AI question box does not work on the public site. Site search uses Google, as described under Delivery and withdrawal.
 - As in the PHP editions, the 404 page is never listed in sitemaps or RSS, split or not.
@@ -240,13 +240,13 @@ Changing an unpublished image needs no Cloudflare publication settings. Deleting
 
 Generate a Cloud-specific API key in Site settings and connect to `/mcp` using a Bearer key from a separate workspace. The root `.mcp.json` remains dedicated to the official PHP server.
 
-Current tools: `get_site_info`, `list_pages`, `get_page`, `create_page`, `update_page`, `delete_page`, `list_components`, `get_component`, `create_component`, `update_component`, `delete_component`, `get_revisions`, `get_settings`, `get_ai_context`, `list_ai_docs`, `get_ai_doc`, `update_ai_doc`, `upload_media`, and `build_ssg`.
+Current tools: `get_site_info`, `list_pages`, `get_page`, `create_page`, `update_page`, `delete_page`, `list_components`, `get_component`, `create_component`, `update_component`, `delete_component`, `preview_page`, `get_revisions`, `get_settings`, `get_ai_context`, `list_ai_docs`, `get_ai_doc`, `update_ai_doc`, `upload_media`, and `build_ssg`.
 
 SQLite-style flat field arguments and legacy `id` plus `data` are both accepted; do not specify the same field in both. Updates preserve unspecified fields. Call `get_site_info`, then `get_ai_context` on connection. AI document IDs may omit `.md`. `get_settings` excludes credentials and API keys, but includes working notes for authenticated AI clients. Editing requires exact IDs rather than public directory aliases.
 
 `upload_media` accepts `filename` and `content_base64`, up to 10 MB for JPEG, PNG, GIF, WebP and SVG. Optional `category` allows ASCII letters, digits, underscores and hyphens and prefixes the filename. Duplicates fail instead of being overwritten. Large Base64 images have higher transfer and processing costs; use the ordinary media upload form as well. Audio/video and duplicate-name numbering differ from PHP. Administration aliases `/mikanBox/mcp` and `/mikanBox/mcp.php` require the same key.
 
-Check the Cloud site's identity with `get_site_info` before writing. Do not reuse the official site ID. A Cloud API key grants administrative content operations and must remain private.
+Check the Cloud site's identity with `get_site_info` before writing. Its `version` changes when the product is updated: if it differs from the one you last saw, read the tool list and `get_ai_context` again. `preview_page` (read-only) shows how a page will be served in its output format before saving or publishing: with only `id` it is the saved page, with fields it renders them without saving (a new `id` works too; a title is then required). `get_ai_context` ends with a built-in document, `mikanbox-output-formats`, explaining how to choose `output_format`. Do not reuse the official site ID. A Cloud API key grants administrative content operations and must remain private.
 
 ### Public help and WebMCP
 
@@ -354,8 +354,20 @@ The public site now serves `.md`, `.txt`, `.csv`, `.js`, `.css`, `.json` and `.x
 
 ### Changes in 0.8.2
 
-The admin screens follow PHP 2.18.2. The browser tab title is "🍊site name". The page list has an output-format filter right of Help, combined with the category and search (kept when the page editor is opened and closed). Each page row has three actions: edit, visual editing and the globe icon (public site); check saved content with the page editor's preview. The media type filter and search moved to the heading row, and searches have one clear button (the browser's). Files can be dropped only on the media section. Selects have room right of their arrow. The MCP connection instructions and `get_ai_context` explain that a page is made readable as Markdown by setting its `output_format` to `html_md` or `md` (there is no site-wide switch).
+The admin screens follow PHP 2.18.2. The browser tab title is "🍊site name". The page list has an output-format filter right of Help, combined with the category and search (kept when the page editor is opened and closed). Each page row has three actions: edit, visual editing and the globe icon (public site); check the content being edited with the page editor's preview. The media type filter and search moved to the heading row, and searches have one clear button (the browser's). Files can be dropped only on the media section. Selects have room right of their arrow. The MCP connection instructions and `get_ai_context` explain that a page is made readable as Markdown by setting its `output_format` to `html_md` or `md` (there is no site-wide switch).
 
 ### Changes in 0.8.3
 
 Dates and times in the admin screen are shown in the viewer's own time zone (Japan time in Japan): "Last published", revision times, and the Added, Last used and Expires columns under Devices and users (they were shown in UTC before). The sign-in page now receives only the site name instead of the whole settings, and its tab title is "🍊site name - Sign in" (as in PHP).
+
+### Changes in 0.9.0
+
+The basics of operation, the motion of opening and closing editors, previews and MCP follow PHP 2.19.0. Updating requires D1 migration `0018` (the table holding previews for a short time).
+
+- **Operation basics.** The browser's `alert`, `confirm` and `prompt` are gone from the admin screen (a test fails if one returns). Results go to the toast at the bottom right and confirmations are asked in the screen. This covers the copy success and failure messages, the missing CSV file, adding a category (an input field), deleting media, and the confirmations before restoring a backup or D1.
+- **Actions without a reload.** Saving and deleting pages and components (a delete asks in the screen, then closes the editor and refreshes the list), saving the memo, site settings and update source, the actions under Devices and users (issuing and cancelling codes, stopping a device, the expiry period, the display name, deleting a user), publishing (afterwards only the list and the publish box are refreshed), and choosing or adding a category all run in the current screen. A new page or component becomes the editor of an existing one after its first save, without moving the screen (Delete and the revision list appear).
+- **Opening and closing editors.** Page and design editors grow and shrink in. Opening scrolls to the top of the editor; closing refreshes the list and returns to the row that was edited. Filters, search and the list page are kept, unsaved changes are asked about in the screen, and Back/Forward work.
+- **Where the whole screen is still reloaded (exceptions, with reasons).** Changing the language (every label changes); restoring a backup (the whole site and the accounts are replaced); switching media storage and cancelling its migration (the storage screen's premise changes); restoring D1 to a time (the whole database changes); stopping your own device (you are signed out); saving the connection settings and downloading a backup or SQL (the publish and backup sections change, or a file is saved).
+- **Preview.** It shows the content being edited (see Preview above).
+- **MCP.** Added `preview_page` (read-only). Added `version` to `get_site_info`, the connection guidance (read the tool list again when the version changes) and the built-in document `mikanbox-output-formats` at the end of `get_ai_context`. The AI instruction sample has one more line about output formats.
+- **Other.** `/admin.php` is the same screen as `/admin` (the shared preview script uses that address). The shared `admin-ui.js` is copied from `shared/admin-ui.js` on every `npm run check`, `npm test` and `npm run build`.

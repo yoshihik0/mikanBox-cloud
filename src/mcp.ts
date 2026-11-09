@@ -1,5 +1,6 @@
 import {assertNotPublished,checkPublicationLock} from './publication-state';
-import type { Env, PageData, ComponentData } from './types';
+import type { Env, PageData, ComponentData, Settings } from './types';
+import { MikanBoxRenderer } from './renderer';
 import {CLOUD_VERSION,negotiatedProtocol} from './version';
 import { loadSettings, listPages, loadComponent, listComponents, saveComponent, deleteComponent, uploadMedia } from './storage';
 import { MEDIA_FILE_LIMIT, validMediaName, mediaType, isCodeMedia } from './media-policy';
@@ -11,6 +12,11 @@ import { OUTPUT_FORMATS, pageFormatFields, withFormatFields, validatePageSave, p
 import { createTranslator, getSystemLanguage } from './i18n';
 import { isPublicStatus } from './storage';
 const OUTPUT_FORMATS_GUIDE='mikanBox can publish a page in forms other than HTML. To make a page readable as Markdown, set its output_format with update_page to html_md (HTML plus /ID.md) or md (/ID.md only); there is no site-wide switch, it is chosen per page. Each page has an output_format: html (default) / html_md (HTML plus a Markdown version at /id.md) / md (Markdown version only, also answered at /id and /id/) / json / xml / csv / txt / js / css (data formats: the body as it is at /id.<extension>) / db (mikanBox DB: the DATA/DATAROW data as JSON at /api/ID.json, /api/ID is an alias; replaces the former status "db"). Page IDs never contain dots. Data formats and db are not listed in NAV lists, sitemap or RSS. Put site JS and CSS in js/css pages and load them with {{PAGE_URL:ID}} (data pages get ?v=<hash> automatically). Lists: {{NAV_LINKS:category:sort=new:limit=5}}; related pages: {{NAV_LINKS:@same}}. Categories starting with _ are structural (not used by @same or {{CATEGORY}}). A paged list is a catalogue JSON page ([{{NAV_CARDS:category:item_component:sort=new:sep=,}}]) plus a js page. EXT_MD is not available in the Cloud edition.';
+const BUILTIN_OUTPUT_FORMATS_DOC=[
+  '## Output formats (pages can be published as more than HTML)','',
+  '- Choose `output_format` per page (`update_page` / `create_page`): `html` (default), `html_md` (HTML plus a Markdown version at `/ID.md`), `md` (Markdown version only), `json` / `xml` / `csv` / `txt` / `js` / `css` (the body as it is at `/ID.<extension>`), `db` (mikanBox DB: the DATA/DATAROW data as JSON at `/api/ID.json`).',
+  '- To make a page readable as Markdown, set `html_md` or `md`; there is no site-wide switch. Data formats and `db` are not listed in NAV lists, sitemap, RSS or search.',
+  '- Before saving or publishing, check the result (tags expanded and so on) with `preview_page`. See `output_formats` below for the details.'].join('\n');
 const string={type:'string'};
 const boolean={type:'boolean'};
 const pageFields=Object.fromEntries(['title','category','description','keywords','ogp_image','content_md','css','js','wrapper_comp','memo','updated_at'].map(key=>[key,string]));
@@ -20,13 +26,14 @@ const pageProperties={id:string,...pageFields,status:{type:'string',enum:['draft
   expand_tags:{type:'boolean',description:'Data formats only: expand tags (default: json/xml/csv/txt yes, js/css no).'},
   is_html:boolean,exclude_tracking:boolean,sort_order:{type:'number'},data:{type:'object'},expected_revision:string};
 const componentProperties={id:string,...Object.fromEntries(['html','css','js','memo'].map(key=>[key,string])),is_global:boolean,is_wrapper:boolean,is_ai_doc:boolean,data:{type:'object'}};
-const tool=(name:string,description:string,properties:Record<string,unknown>={},required:string[]=[])=>({name,description,inputSchema:{type:'object',properties,required,additionalProperties:false},annotations:{readOnlyHint:/^(?:get_|list_)/.test(name),destructiveHint:/^(?:update_|delete_)/.test(name),idempotentHint:/^(?:update_|delete_)/.test(name)||name==='build_ssg',untrustedContentHint:/^(?:get_|list_)/.test(name)&&!['get_site_info','get_settings'].includes(name),openWorldHint:false}});
+const tool=(name:string,description:string,properties:Record<string,unknown>={},required:string[]=[])=>({name,description,inputSchema:{type:'object',properties,required,additionalProperties:false},annotations:{readOnlyHint:/^(?:get_|list_|preview_)/.test(name),destructiveHint:/^(?:update_|delete_)/.test(name),idempotentHint:/^(?:update_|delete_)/.test(name)||name==='build_ssg',untrustedContentHint:/^(?:get_|list_)/.test(name)&&!['get_site_info','get_settings'].includes(name),openWorldHint:false}});
 const tools=[
   tool('get_site_info','Identify this Cloud site before writing.'),
   tool('list_pages','List pages, including draft and pending pages.'),
   tool('get_page','Get an editable page.',{id:string},['id']),
   tool('create_page','Create a page. Pass fields directly, or in the legacy data object.',pageProperties,['id']),
   tool('update_page','Update selected page fields; preserve unspecified fields. updated_at moves to now only when a page goes from not public to public; editing a published page keeps its date.',pageProperties,['id']),
+  tool('preview_page','Read-only. Render a page the way it is served in its output format (HTML, Markdown version, data format or mikanBox DB JSON) before saving or publishing. With only id it is the saved page; pass fields to preview them without saving, also for a new id (a title is then required).',pageProperties,['id']),
   tool('delete_page','Delete a page and its history.',{id:string},['id']),
   tool('list_components','List components.'),
   tool('get_component','Get a component.',{id:string},['id']),
@@ -69,6 +76,25 @@ function decodeImage(encoded:string):Uint8Array<ArrayBuffer> {
   }
   return bytes;
 }
+/** The page that results from applying MCP fields to a saved page (or to nothing): the same rules for saving and previewing. Nothing is written. */
+async function mergePage(env:Env,settings:Settings,pid:string,incoming:Record<string,unknown>,previous:PageData|null):Promise<PageData> {
+  const next:PageData=previous?{...previous}:{title:'',status:'draft',preview_token:crypto.randomUUID()};
+  for(const field of ['title','category','description','keywords','ogp_image','content_md','css','js','wrapper_comp','memo','updated_at']) {
+    if(field in incoming){if(typeof incoming[field]!=='string')throw new Error(`Invalid field: ${field}`);(next as unknown as Record<string,unknown>)[field]=incoming[field];}
+  }
+  if('status'in incoming)next.status=pageStatus(String(incoming.status));
+  if('exclude_tracking'in incoming){if(typeof incoming.exclude_tracking!=='boolean')throw new Error('Invalid exclude_tracking');next.exclude_tracking=incoming.exclude_tracking;}
+  if('is_html'in incoming){if(typeof incoming.is_html!=='boolean')throw new Error('Invalid is_html');next.is_html=incoming.is_html;}
+  if('sort_order'in incoming){if(typeof incoming.sort_order!=='number'||!Number.isFinite(incoming.sort_order))throw new Error('Invalid sort order');next.sort_order=incoming.sort_order;}
+  if('md_footer_comps' in incoming&&(!Array.isArray(incoming.md_footer_comps)||incoming.md_footer_comps.some(id=>typeof id!=='string')))throw new Error('Invalid field: md_footer_comps');
+  if('expand_tags' in incoming&&typeof incoming.expand_tags!=='boolean')throw new Error('Invalid field: expand_tags');
+  if('output_format' in incoming&&!OUTPUT_FORMATS.includes(incoming.output_format as never))throw new Error('Invalid field: output_format');
+  const formatInput=Object.fromEntries(['output_format','md_footer_comps','expand_tags'].filter(key=>key in incoming).map(key=>[key,incoming[key]]));
+  let saved=withFormatFields(next,await pageFormatFields(formatInput,previous,id=>loadComponent(env,id)));
+  if((saved.status as string)==='db'){saved={...saved,status:'public_static',output_format:'db'};delete saved.expand_tags;}
+  const formatError=validatePageSave(pid,previous?pid:'',saved,createTranslator(getSystemLanguage(settings)));if(formatError)throw new Error(formatError);
+  return saved;
+}
 export async function handleMcp(request:Request,env:Env):Promise<Response> {
   const settings=await loadSettings(env),key=String(settings.api_key||'');
   if(!key||!verifyCsrf(request.headers.get('Authorization')?.replace(/^Bearer /,'')||'',key))
@@ -81,7 +107,7 @@ export async function handleMcp(request:Request,env:Env):Promise<Response> {
     const params=body.params?object(body.params):{};
     const result=(data:unknown)=>Response.json({jsonrpc:'2.0',id,result:data},{headers:{'Cache-Control':'no-store'}});
     if(body.method==='notifications/initialized')return new Response(null,{status:202});
-    if(body.method==='initialize')return result({protocolVersion:negotiatedProtocol(params),capabilities:{tools:{}},serverInfo:{name:'mikanbox-cloud',version:CLOUD_VERSION},instructions:'A leading _ marks a standard component. Omit it for ordinary new or duplicated components; use it only when the user intends standard classification. Preserve existing standard IDs. Call get_site_info to confirm the target site, then get_ai_context before planning content, design, or code changes. Confirm get_site_info again before writes. A page can also be published as a Markdown version (output_format html_md or md: /ID.md), as data such as JSON (/ID.<extension>) or as mikanBox DB (/api/ID.json); see output_formats in get_ai_context.'});
+    if(body.method==='initialize')return result({protocolVersion:negotiatedProtocol(params),capabilities:{tools:{}},serverInfo:{name:'mikanbox-cloud',version:CLOUD_VERSION},instructions:'A leading _ marks a standard component. Omit it for ordinary new or duplicated components; use it only when the user intends standard classification. Preserve existing standard IDs. Call get_site_info to confirm the target site, then get_ai_context before planning content, design, or code changes. Confirm get_site_info again before writes. If the version in get_site_info differs from the one you last saw (the product was updated), read the tool list and get_ai_context again. Check the output of a page with preview_page before saving or publishing it. A page can also be published as a Markdown version (output_format html_md or md: /ID.md), as data such as JSON (/ID.<extension>) or as mikanBox DB (/api/ID.json); see output_formats in get_ai_context.'});
     if(body.method==='ping')return result({});
     if(body.method==='tools/list')return result({tools});
     if(body.method!=='tools/call')return Response.json({jsonrpc:'2.0',id,error:{code:-32601,message:'Method not found'}},{status:400});
@@ -109,6 +135,16 @@ export async function handleMcp(request:Request,env:Env):Promise<Response> {
         const format=pageOutputFormat(page);
         data={id:args.id,...page,status:(page.status as string)==='db'?'public_static':page.status,output_format:format,md_footer_comps:[...(page.md_footer_comps||[])],...(isDataFormat(format)?{expand_tags:pageExpandsTags(page)}:{})};break;
       }
+      case 'preview_page': {
+        // Read-only: renders the page as it would be served in its output format, saved or not. With only an ID it is
+        // the saved page; with fields it is the saved page (or a new one) with those fields applied. Nothing is saved.
+        const pid=pageId(String(args.id||'')),incoming=fields(args,pageProperties),previous=await exactPage(env,pid);
+        if(!previous&&typeof incoming.title!=='string')throw new Error('Page not found. Pass at least a title to preview a new page.');
+        const unsaved=Object.keys(incoming);
+        const page=unsaved.length?await mergePage(env,settings,pid,incoming,previous):previous!;
+        const preview=await new MikanBoxRenderer(env,settings,request).renderPreview(pid,page);
+        data={id:pid,output_format:pageOutputFormat(page),content_type:preview.type,saved:!unsaved.length,used_unsaved_fields:unsaved,content:preview.body};break;
+      }
       case 'create_page':case 'update_page': {
         const pid=pageId(String(args.id||'')),incoming=fields(args,pageProperties),previous=await exactPage(env,pid);
         if(name==='create_page'&&previous)throw new Error('Page already exists.');
@@ -116,22 +152,7 @@ export async function handleMcp(request:Request,env:Env):Promise<Response> {
         if(name==='create_page'&&typeof incoming.title!=='string')throw new Error('A title is required.');
         const lock=await env.DB.prepare('SELECT owner FROM edit_locks WHERE post_id=? AND expires_at>?').bind(pid,Date.now()).first();
         if(lock)throw new Error('Page is being edited.');
-        const next:PageData=previous?{...previous}:{title:'',status:'draft',preview_token:crypto.randomUUID()};
-        for(const field of ['title','category','description','keywords','ogp_image','content_md','css','js','wrapper_comp','memo','updated_at']) {
-          if(field in incoming){if(typeof incoming[field]!=='string')throw new Error(`Invalid field: ${field}`);(next as unknown as Record<string,unknown>)[field]=incoming[field];}
-        }
-        if('status'in incoming)next.status=pageStatus(String(incoming.status));
-        if('exclude_tracking'in incoming){if(typeof incoming.exclude_tracking!=='boolean')throw new Error('Invalid exclude_tracking');next.exclude_tracking=incoming.exclude_tracking;}
-        if('is_html'in incoming){if(typeof incoming.is_html!=='boolean')throw new Error('Invalid is_html');next.is_html=incoming.is_html;}
-        if('sort_order'in incoming){if(typeof incoming.sort_order!=='number'||!Number.isFinite(incoming.sort_order))throw new Error('Invalid sort order');next.sort_order=incoming.sort_order;}
-        if('md_footer_comps' in incoming&&(!Array.isArray(incoming.md_footer_comps)||incoming.md_footer_comps.some(id=>typeof id!=='string')))throw new Error('Invalid field: md_footer_comps');
-        if('expand_tags' in incoming&&typeof incoming.expand_tags!=='boolean')throw new Error('Invalid field: expand_tags');
-        if('output_format' in incoming&&!OUTPUT_FORMATS.includes(incoming.output_format as never))throw new Error('Invalid field: output_format');
-        const formatInput=Object.fromEntries(['output_format','md_footer_comps','expand_tags'].filter(key=>key in incoming).map(key=>[key,incoming[key]]));
-        let saved=withFormatFields(next,await pageFormatFields(formatInput,previous,id=>loadComponent(env,id)));
-        if((saved.status as string)==='db'){saved={...saved,status:'public_static',output_format:'db'};delete saved.expand_tags;}
-        const formatError=validatePageSave(pid,previous?pid:'',saved,createTranslator(getSystemLanguage(settings)));if(formatError)throw new Error(formatError);
-        Object.keys(next).forEach(key=>delete (next as unknown as Record<string,unknown>)[key]);Object.assign(next,saved);
+        const next=await mergePage(env,settings,pid,incoming,previous);
         // Same rule as the admin screen and the PHP editions: the date moves to now only when a page
         // goes from not public to public, so fixing an old notice does not bring it to the top of sort=new lists.
         next.preview_token||=crypto.randomUUID();
@@ -168,7 +189,10 @@ export async function handleMcp(request:Request,env:Env):Promise<Response> {
       case 'get_settings':data=Object.fromEntries(Object.entries(settings).filter(([key])=>!/(?:password|secret|token|api.?key|credential)/i.test(key)&&!['_site_base'].includes(key)));break;
       case 'get_ai_context':case 'list_ai_docs': {
         const docs=(await listComponents(env)).map(({id,data:component})=>({id,...component})).filter(doc=>doc.is_ai_doc);
-        data=name==='get_ai_context'?{documents:docs.map(doc=>({id:doc.id,content_md:doc.html||''})),count:docs.length,output_formats:OUTPUT_FORMATS_GUIDE,component_naming:'A leading _ marks a standard component. Omit it for ordinary new or duplicated components; use it only when the user intends standard classification. Preserve existing standard IDs.'}:{ai_docs:docs.map(doc=>({id:doc.id,html_length:new TextEncoder().encode(doc.html||'').length})),count:docs.length};break;
+        const documents:Array<{id:string;content_md:string;builtin?:boolean}>=docs.map(doc=>({id:doc.id,content_md:doc.html||''}));
+        // The built-in guidance sits among the documents, so reading the project rules finds it too.
+        documents.push({id:'mikanbox-output-formats',builtin:true,content_md:BUILTIN_OUTPUT_FORMATS_DOC});
+        data=name==='get_ai_context'?{documents,count:documents.length,output_formats:OUTPUT_FORMATS_GUIDE,component_naming:'A leading _ marks a standard component. Omit it for ordinary new or duplicated components; use it only when the user intends standard classification. Preserve existing standard IDs.'}:{ai_docs:docs.map(doc=>({id:doc.id,html_length:new TextEncoder().encode(doc.html||'').length})),count:docs.length};break;
       }
       case 'get_ai_doc': {
         const cid=aiId(args.id),current=await loadComponent(env,cid);if(!current?.is_ai_doc)throw new Error('AI document not found.');data={id:cid,...current};break;

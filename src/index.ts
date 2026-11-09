@@ -19,7 +19,7 @@ async function route(request: Request, env: Env): Promise<Response> {
   const url=new URL(request.url),pathname=url.pathname;
   if(['/mcp','/mikanBox/mcp','/mikanBox/mcp.php'].includes(pathname))return handleMcp(request,env);
   if(['/public-mcp','/mikanBox/public-mcp.php','/public-help.html'].includes(pathname))return handlePublicHelp(request,env);
-  if(['/admin','/admin/','/mikanBox/admin.php'].includes(pathname)) return handleAdmin(request,env);
+  if(['/admin','/admin/','/admin.php','/mikanBox/admin.php'].includes(pathname)) return handleAdmin(request,env);
   if(['/admin/visual','/admin/visual/'].includes(pathname)) return handleVisual(request,env);
   if(!['GET','HEAD'].includes(request.method)) return new Response('Method Not Allowed',{status:405,headers:{Allow:'GET, HEAD'}});
   if(pathname==='/admin.css'||pathname.startsWith('/mikanbox/')) {
@@ -109,7 +109,7 @@ export default {
       const response=new Response(original.body,{status:original.status,headers:original.headers});
       response.headers.set('X-Content-Type-Options','nosniff');
       response.headers.set('X-Mikanbox-Delivery','worker');
-      const admin=['/admin','/admin/','/mikanBox/admin.php'].includes(new URL(request.url).pathname);
+      const admin=['/admin','/admin/','/admin.php','/mikanBox/admin.php'].includes(new URL(request.url).pathname);
       if(admin && !response.headers.has('Content-Security-Policy'))response.headers.set('Content-Security-Policy',"frame-ancestors 'none'; base-uri 'self'; form-action 'self'");
       if(splitMode(env)) {
         response.headers.set('X-Robots-Tag','noindex, nofollow');

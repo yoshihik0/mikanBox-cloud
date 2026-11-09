@@ -32,7 +32,7 @@
     const url=URL.createObjectURL(new Blob(pieces,{type:'application/json'})),link=document.createElement('a');link.href=url;link.download='mikanbox-cloud-'+new Date().toISOString().slice(0,10)+'.json';link.click();setTimeout(()=>URL.revokeObjectURL(url),60000);
     progress(ja?'バックアップを保存しました。安全に保管してください。':'Backup downloaded. Store it securely.');
    }else{
-    if(!confirm(ja?'バックアップで現在の内容を置き換えます。続けますか？':'Replace the current site with this backup?'))return;
+    if(!await window.MikanUI.confirm(ja?'バックアップで現在の内容を置き換えます。続けますか？':'Replace the current site with this backup?',ja?'バックアップから復元':'Restore from backup',ja?'置き換える':'Replace','btn-red'))return;
     const file=fields.get('backup_file');if(!(file instanceof File)||!file.size)throw new Error('Choose a backup file.');
     const iterator=lines(file)[Symbol.asyncIterator](),header=await iterator.next();
     if(header.done||!header.value.startsWith('{"manifest":')||!header.value.endsWith(','))throw new Error('Unsupported backup file layout.');

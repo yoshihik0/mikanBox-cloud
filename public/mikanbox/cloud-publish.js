@@ -56,12 +56,15 @@
  document.addEventListener('submit',async event=>{
   const form=event.target,name=form.querySelector('[name="save_action"]')?.value;
   if(!['build_ssg','delete_media','rename_media','resize_media','edit_media','convert_media_webp','begin_d1_export','restore_d1_time'].includes(name))return;
-  event.preventDefault();event.stopImmediatePropagation();const buttons=[...form.querySelectorAll('button')];buttons.forEach(b=>b.disabled=true);const label=form.querySelector('[data-publish-label]'),labelText=label?.textContent;if(label)label.textContent=ja?'公開中…':'Publishing…';form.classList?.add('is-busy');
+  event.preventDefault();event.stopImmediatePropagation();
+  // Deleting asks in the screen first (the form carries its own message).
+  if(form.dataset?.confirm!==undefined&&!await window.MikanUI.confirm(form.dataset.confirm,form.dataset.confirmTitle||'',form.dataset.confirmOk||'','btn-red'))return;
+  const buttons=[...form.querySelectorAll('button')];buttons.forEach(b=>b.disabled=true);const label=form.querySelector('[data-publish-label]'),labelText=label?.textContent;if(label)label.textContent=ja?'公開中…':'Publishing…';form.classList?.add('is-busy');
   form.parentElement?.querySelector('[data-media-action-error]')?.remove();
   try{
    let data=new FormData(form);
-   // Reload afterwards so the globe icons and the last-published time are current.
-   if(name==='build_ssg'){statusTarget=form.querySelector('[data-publish-status]');await window.cloudPublish(true);setTimeout(()=>location.reload(),1500);return;}
+   // Afterwards the page list (globe icons) and the publish box (last-published time) are refreshed in place.
+   if(name==='build_ssg'){statusTarget=form.querySelector('[data-publish-status]');await window.cloudPublish(true);await window.refreshPageList();await window.MikanUI.refresh('#publish-box');window.mikanBoxLocalTimes?.();return;}
    if(name==='begin_d1_export'){
     let result=await action(name);for(let i=0;i<600&&result.export.status!=='complete';i++){if(result.export.status==='error')throw new Error(result.export.error||'Export failed.');await new Promise(resolve=>setTimeout(resolve,1000));const response=await fetch('/admin?d1_export_poll=1',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({capability:result.capability}),credentials:'same-origin'}),next=await response.json();if(!response.ok||!next.success)throw new Error(next.message||'Export polling failed.');result={...result,export:next.export,download_capability:next.download_capability};}
     if(result.export.status!=='complete'||!result.download_capability)throw new Error('Export did not finish. Try again.');
@@ -69,7 +72,7 @@
     for(const [key,value] of Object.entries({save_action:'download_d1_export',csrf_token:window.CSRF_TOKEN,capability:result.download_capability})){const input=document.createElement('input');input.type='hidden';input.name=key;input.value=value;download.append(input);}
     document.body.append(download);download.submit();download.remove();status(ja?'D1のダウンロードを開始しました。':'D1 download started.');return;
    }
-   if(name==='restore_d1_time'){if(!confirm(ja?'DB全体を指定時刻に戻します。現在の変更が失われます。実行しますか？':'Restore the whole database? Changes after that time will be lost.'))return;data.set('restore_at',new Date(data.get('restore_at')).toISOString());await action(name,data);location.reload();return;}
+   if(name==='restore_d1_time'){if(!await window.MikanUI.confirm(ja?'DB全体を指定時刻に戻します。現在の変更が失われます。実行しますか？':'Restore the whole database? Changes after that time will be lost.',ja?'DBを戻す':'Restore database',ja?'戻す':'Restore','btn-red'))return;data.set('restore_at',new Date(data.get('restore_at')).toISOString());await action(name,data);location.reload();return;}
    const info=await action('media_reference_status',{file:data.get('file')});
    if(name==='rename_media'&&info.count){const choice=await renameChoice(info.message);if(choice==='cancel')return;data.set('confirmed',choice==='update'?'1':'0');}
    if(name==='rename_media'&&!info.count)data.set('confirmed','1');

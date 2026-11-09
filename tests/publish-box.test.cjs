@@ -38,6 +38,7 @@ test('device management starts closed and exposes an in-place expiry result',asy
  const env=environment(),auth=await login(env);
  const html=await (await call(env,'/admin',undefined,auth.cookie)).text();
  assert.match(html,/<div id="users-mgmt"><div class="section-container section-tight"><details class="section-accordion"><summary/);
- assert.match(html,/<form method="post" class="device-expiry-form" data-device-expiry>/);
- assert.match(html,/<span data-device-expiry-status role="status"><\/span>/);
+ // The expiry is saved in place: the result goes to the toast (admin-ui.js), not to a status element.
+ assert.match(html,/<form method="post" class="device-expiry-form" data-ajax>/);
+ assert.doesNotMatch(html,/data-device-expiry/);
 });

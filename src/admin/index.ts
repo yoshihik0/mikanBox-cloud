@@ -30,6 +30,7 @@ import {publicationManifest,readPublicationEntry} from '../static-publication';
 import {buildStaticExportZip} from '../static-export';
 import { MEDIA_FILE_LIMIT,MEDIA_TOTAL_LIMIT,MEDIA_COUNT_LIMIT,imageType,validMediaName,mediaType,isCodeMedia } from '../media-policy';
 import { getSystemLanguage, createTranslator } from '../i18n';
+import { stashPreview, loadStashedForm } from '../preview-stash';
 import { renderLoginPage, renderAdminShell, renderPagesView, renderPageEditor, renderDesignView, renderDesignEditor, renderMediaView, renderSiteView, renderImportView, pageListQuery, PAGE_FORMAT_FILTERS } from './views';
 const html = (body: string, status = 200) => new Response(body, {status, headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store'}});
 const json = (body: unknown, status = 200) => Response.json(body,{status,headers:{'Cache-Control':'no-store'}});
@@ -119,9 +120,18 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
   // The preview of a saved page whose output is text (Markdown only, data formats, mikanBox DB):
   // always UTF-8 plain text, so a static .md/.txt served without a charset never looks garbled.
   if(request.method==='GET'&&url.searchParams.has('page_preview')) {
-    let id='';try{id=pageId(url.searchParams.get('page_preview')||'');}catch{return new Response('Not Found',{status:404});}
-    const page=await loadPage(env,id);if(!page)return new Response('Not Found',{status:404,headers:{'Cache-Control':'no-store'}});
-    const renderer=new MikanBoxRenderer(env,settings,request),preview=await renderer.renderPreview(id,page);
+    const stash=url.searchParams.get('stash')||'';
+    let id='',page:PageData|null=null;
+    if(stash) {
+      // The content being edited (not saved): the editor's fields, rendered in the output format they choose. "_" is a page with no ID yet.
+      const fields=await loadStashedForm(env,auth.user.username,stash);if(!fields)return new Response('Not Found',{status:404,headers:{'Cache-Control':'no-store'}});
+      try{id=pageId(val(fields,'id').trim()||'preview');const oldId=val(fields,'old_id');page=await editorPageWithFormat(env,fields,oldId?await loadPage(env,pageId(oldId)):null);}
+      catch(error){return new Response(error instanceof Error?error.message:'Preview failed.',{status:400,headers:{'Content-Type':'text/plain; charset=utf-8','Cache-Control':'no-store'}});}
+    } else {
+      try{id=pageId(url.searchParams.get('page_preview')||'');}catch{return new Response('Not Found',{status:404});}
+      page=await loadPage(env,id);if(!page)return new Response('Not Found',{status:404,headers:{'Cache-Control':'no-store'}});
+    }
+    const renderer=new MikanBoxRenderer(env,settings,request),preview=await renderer.renderPreview(id,page!);
     const body=preview.type.startsWith('text/html')?await previewMediaUrls(preview.body,env,request,renderer.getSiteUrl()):preview.body;
     return new Response(body,{status:preview.status,headers:{'Content-Type':preview.type,'Cache-Control':'no-store','Referrer-Policy':'no-referrer','X-Content-Type-Options':'nosniff','Content-Security-Policy':PREVIEW_SANDBOX}});
   }
@@ -132,7 +142,7 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
   }
   let editId=url.searchParams.get('edit'), view=url.searchParams.get('view')||'pages';
   if(view==='design') view='components';
-  let message=!form&&url.searchParams.get('saved')==='1'?t('msg_update_success'):'',success=true,statusCode=200,issuedCode='',newApiKey='',uploadedName='';
+  let message=!form&&url.searchParams.get('saved')==='1'?t('msg_update_success'):'',success=true,statusCode=200,issuedCode='',newApiKey='',uploadedName='',deletedId='';
   if(form) {
     if(!verifyCsrf(val(form,'csrf_token'),csrf)) return json({success:false,message:t('err_csrf')},403);
     const action=val(form,'save_action');
@@ -155,6 +165,7 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
       const lockout=['delete_user','restore_d1_time'].includes(action)||(action==='update_user'&&val(form,'old_username')!==auth.user.username)||(action==='restore_backup_json'&&val(form,'restore_users')==='1');
       if(lockout&&onProbation(auth.device))throw new Error(`追加から${PROBATION_DAYS}日間の端末では、この操作はできません。 / A device added within ${PROBATION_DAYS} days cannot do this.`);
       switch(action) {
+        case 'preview_stash': return json({success:true,token:await stashPreview(env,auth.user.username,form)});
         case 'publication_begin': return json({success:true,...await beginPublication(env,request,auth.user.username,val(form,'rebuild')==='1',JSON.parse(val(form,'excluded')||'[]'),val(form,'media_only'))});
         case 'publication_hashes': await hashPublicationFiles(env,val(form,'publication_lease'),auth.user.username,JSON.parse(val(form,'items')));return json({success:true});
         case 'publication_prepare': return json({success:true,...await preparePublication(env,val(form,'publication_lease'),auth.user.username)});
@@ -234,7 +245,7 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
           const id=pageId(val(form,'old_id')||val(form,'id'));
           const lock=await env.DB.prepare('SELECT owner FROM edit_locks WHERE post_id=? AND expires_at>?').bind(id,Date.now()).first<{owner:string}>();
           if(lock&&lock.owner!==auth.user.username) throw new Error('Another user is editing this page.');
-          await env.DB.batch([env.DB.prepare('DELETE FROM posts WHERE id=?').bind(id),env.DB.prepare('DELETE FROM post_revisions WHERE post_id=?').bind(id),env.DB.prepare('DELETE FROM visual_history WHERE post_id=?').bind(id),env.DB.prepare('DELETE FROM visual_sessions WHERE post_id=?').bind(id),env.DB.prepare('DELETE FROM edit_locks WHERE post_id=?').bind(id),env.DB.prepare('DELETE FROM static_pages WHERE id=?').bind(id)]);editId=null;break;
+          await env.DB.batch([env.DB.prepare('DELETE FROM posts WHERE id=?').bind(id),env.DB.prepare('DELETE FROM post_revisions WHERE post_id=?').bind(id),env.DB.prepare('DELETE FROM visual_history WHERE post_id=?').bind(id),env.DB.prepare('DELETE FROM visual_sessions WHERE post_id=?').bind(id),env.DB.prepare('DELETE FROM edit_locks WHERE post_id=?').bind(id),env.DB.prepare('DELETE FROM static_pages WHERE id=?').bind(id)]);editId=null;deletedId=id;message=t('msg_page_deleted',id);break;
         }
         case 'save_comp': {
           const id=componentId(val(form,'id')),oldId=val(form,'old_id'); if(oldId) componentId(oldId);
@@ -248,7 +259,7 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
           } else if(!await saveComponent(env,id,data)) throw new Error(t('err_save_failed'));
           editId=id;message=t('msg_comp_saved',id);break;
         }
-        case 'delete_comp': await assertNotPublished(env,['/component-js/'+val(form,'old_id')+'.js']);if(!await deleteComponent(env,componentId(val(form,'old_id')||val(form,'id')))) throw new Error(t('err_save_failed'));editId=null;break;
+        case 'delete_comp': await assertNotPublished(env,['/component-js/'+val(form,'old_id')+'.js']);{const id=componentId(val(form,'old_id')||val(form,'id'));if(!await deleteComponent(env,id)) throw new Error(t('err_save_failed'));editId=null;deletedId=id;message=t('msg_comp_deleted',id);break;}
         case 'save_cloud_update_repository': {
           const repository=val(form,'cloud_update_repository').trim();
           if(repository&&!cloudUpdateUrl(repository))throw new Error('GitHub repository must be owner/repository.');
@@ -281,7 +292,12 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
         case 'device_code_cancel': await cancelCode(env,val(form,'code_hash'));break;
         case 'device_revoke': {
           await revokeDevice(env,auth.device,val(form,'device_id'));
-          if(val(form,'device_id')===auth.device.id)return redirect(url.pathname,clearDeviceCookie());break;
+          if(val(form,'device_id')===auth.device.id) {
+            // This device signs out: the screen goes to the sign-in page (JSON redirect for an in-place request).
+            if(form.has('ajax_request')){const done=json({success:true,message:t('msg_update_success'),redirect:url.pathname});done.headers.append('Set-Cookie',clearDeviceCookie());return done;}
+            return redirect(url.pathname,clearDeviceCookie());
+          }
+          break;
         }
         case 'device_expiry': await setExpiryDays(env,Number(val(form,'days')));break;
         case 'update_user': {
@@ -375,7 +391,7 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
       }
       message||=t('msg_update_success');
     } catch(e) {success=false;statusCode=400;message=e instanceof Error&&(e.message.startsWith('Cloudflare operation failed')||!/D1_|SQLITE_|constraint|UNIQUE/.test(e.message))?e.message:t('err_save_failed');}
-    if(form.has('ajax_request')) return json({success,message,editId,...(issuedCode?{issued_code:issuedCode}:{}),...(newApiKey?{mcp_api_key:newApiKey}:{}),...(uploadedName?{uploaded_name:uploadedName}:{})},statusCode);
+    if(form.has('ajax_request')) return json({success,message,editId,...(issuedCode?{issued_code:issuedCode}:{}),...(newApiKey?{mcp_api_key:newApiKey}:{}),...(uploadedName?{uploaded_name:uploadedName}:{}),...(success&&deletedId?{deleted:deletedId}:{})},statusCode);
     // A new device code is shown once on this response, never put in a URL.
     if(success&&action==='device_code_create')view='site';
     else if(success) {
@@ -400,7 +416,7 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
   const pageEditorHtml=view==='pages'&&(editId||hasNew)?renderPageEditor({t,editId,editData:editData as PageData|null,csrf,helpFile,wrapperComponents:components.filter(c=>c.data.is_wrapper),allCategories,publicBase:(env.PUBLIC_SITE_URL||String(settings.ssg_root_url||'')||url.origin).replace(/\/$/,''),settings:{...settings,_site_base:url.origin},revisions:pageRevisions,selectedRevision:pageRevisions.find(r=>r.id===Number(url.searchParams.get('rev'))),listQuery,listCategory:category}):'';
   const designEditorHtml=view==='components'&&(editId||hasNew)?renderDesignEditor({t,editId,editData:editData as ComponentData|null,csrf,helpFile}):'';
   const cloudReady=await cloudConfigured(env);
-  const pagesHtml=renderPagesView({t,pages:filtered.slice((pageNumber-1)*perPage,pageNumber*perPage),view,editId,hasNew,csrf,helpFile,settings,query,category,format:formatFilter,pageNumber,totalPages,lang,publication:await publicationStatus(env,url.origin,pages),cloudReady,publicUrl:env.CLOUDFLARE_PUBLIC_WORKER_NAME ? env.PUBLIC_SITE_URL || '' : ''});
+  const pagesHtml=renderPagesView({t,pages:filtered.slice((pageNumber-1)*perPage,pageNumber*perPage),view,editId,hasNew,csrf,helpFile,settings,query,category,format:formatFilter,pageNumber,totalPages,lang,publication:await publicationStatus(env,url.origin,pages),cloudReady,publicUrl:env.CLOUDFLARE_PUBLIC_WORKER_NAME ? env.PUBLIC_SITE_URL || '' : '',editorHtml:pageEditorHtml});
   const mediaQuery=url.searchParams.get('q_media')||'',mediaCategory=category,ignoreMediaCategory=url.searchParams.get('media_all')==='1';
   const mediaTypeFilter=['image','audio','video','js','css'].includes(url.searchParams.get('media_type')||'')?url.searchParams.get('media_type')!:'';
   const extensions:Record<string,string[]>={image:['jpg','jpeg','png','gif','webp','svg'],audio:['mp3','m4a'],video:['mp4'],js:['js'],css:['css']};
@@ -408,7 +424,7 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
   const mediaPerPage=Math.min(500,Math.max(1,Number(settings.media_per_page)||100)),mediaTotalPages=Math.max(1,Math.ceil(mediaFiles.length/mediaPerPage)),mediaPage=Math.min(mediaTotalPages,Math.max(1,Number(url.searchParams.get('p_media'))||1));
   const references:Record<string,string[]>={};const mediaNames=new Set(files.map(f=>f.key));
   for(const item of [...pages.map(p=>({id:p.id,text:[p.data.content_md,p.data.css,p.data.js,p.data.ogp_image].join('\n')})),...components.filter(c=>!c.data.is_ai_doc).map(c=>({id:'component: '+c.id,text:[c.data.html,c.data.css,c.data.js].join('\n')}))])for(const name of new Set(item.text.match(/[A-Za-z0-9_.-]+\.(?:jpe?g|png|gif|webp|svg)/gi)||[]))if(mediaNames.has(name))(references[name]||=[]).push(item.id);
-  const designHtml=renderDesignView({t,components,view,editId,hasNew,helpFile}),mediaHtml=renderMediaView({t,files:mediaFiles.slice((mediaPage-1)*mediaPerPage,mediaPage*mediaPerPage),csrf,helpFile,mediaEnabled:true,lang,references,usage:await mediaUsage(env),storageMode:await mediaStorageMode(env),query:mediaQuery,mediaType:mediaTypeFilter,category:mediaCategory,ignoreCategory:ignoreMediaCategory,categories:allCategories,page:mediaPage,totalPages:mediaTotalPages,totalFiles:mediaFiles.length});
+  const designHtml=renderDesignView({t,components,view,editId,hasNew,helpFile,editorHtml:designEditorHtml}),mediaHtml=renderMediaView({t,files:mediaFiles.slice((mediaPage-1)*mediaPerPage,mediaPage*mediaPerPage),csrf,helpFile,mediaEnabled:true,lang,references,usage:await mediaUsage(env),storageMode:await mediaStorageMode(env),query:mediaQuery,mediaType:mediaTypeFilter,category:mediaCategory,ignoreCategory:ignoreMediaCategory,categories:allCategories,page:mediaPage,totalPages:mediaTotalPages,totalFiles:mediaFiles.length});
   if(url.searchParams.has('ajax_editor'))return html(view==='components'?designEditorHtml:pageEditorHtml);
   if(url.searchParams.has('ajax_media'))return html(mediaHtml);
   if(url.searchParams.has('ajax_pages'))return html(pagesHtml);

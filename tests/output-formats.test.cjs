@@ -163,7 +163,7 @@ test('admin page list puts index first, labels formats, greys out visual editing
   assert.match(html,/<span class="btn btn-sm btn-gray btn-disabled" aria-disabled="true"/);
   // The list opens pages on the public site (globe); the editor's preview shows the saved content (as in PHP 2.18.2).
   assert.doesNotMatch(html,/page_preview=/);
-  assert.match(await(await call(value,'/admin?view=pages&edit=notes',undefined,auth.cookie)).text(),/<a id="editor-preview-link" href="\/admin\?page_preview=notes"/);assert.match(html,/<span class="category-structural">_hidden<\/span>/);
+  assert.match(await(await call(value,'/admin?view=pages&edit=notes',undefined,auth.cookie)).text(),/<button type="button" id="editor-preview-btn" class="btn btn-blue" data-editor-preview/);assert.match(html,/<span class="category-structural">_hidden<\/span>/);
   assert.match(html,/category-cloud-tag[^"]*is-structural/);
   for(const select of html.match(/<select onchange="changePageStatus[\s\S]*?<\/select>/g))assert.doesNotMatch(select,/<option value="db"/,'the DB status is gone from the status select');
   const preview=await call(value,'/admin?page_preview=notes',undefined,auth.cookie);
@@ -227,7 +227,7 @@ test('the page list keeps its category filter when a page editor is opened, and 
   // The list beside the editor stays filtered, and the way back keeps the filter.
   assert.match(editor,/category-cloud-tag active[^"]*"[^>]*>news</);assert.match(editor,/edit=notes/);assert.doesNotMatch(editor,/edit=list\b/);
   assert.match(editor,/href="\/admin\?cat=news#pages" class="btn btn-gray"/);
-  assert.match(editor,/window\.location\.href='\/admin\?cat=news#pages'/);
+  assert.match(editor,/class="close-badge"[^>]*data-url="\/admin\?cat=news#pages"/);
   const fresh=await (await call(value,'/admin?view=pages&new=1&cat=news',undefined,auth.cookie)).text();
   assert.match(fresh,/name="category" value="news"/);
 });
@@ -251,7 +251,7 @@ test('2.18.2 admin alignment: title, output-format filter kept in the URL, globe
   assert.match(all,/id="media-type-filter"/);assert.match(all,/<input type="search" name="q_media" id="admin-media-search" class="admin-search-input"/);
   assert.match(all,/<div class="upload-options-body"><div class="upload-info upload-info-types">/);
   assert.match(all,/target\.closest\('#media, #drop-zone'\)/);
-  const editor=await get('/admin?view=pages&edit=article');assert.match(editor,/<small class="sub-text preview-saved-note">保存した内容を表示します。<\/small>/);
+  const editor=await get('/admin?view=pages&edit=article');assert.match(editor,/<small class="sub-text preview-saved-note">編集中の内容を表示します（保存はされません）。<\/small>/);
   const login2=await (await call(value,'/admin')).text();assert.match(login2,/<title>🍊Orchard - ログイン<\/title>/);
 });
 
@@ -270,4 +270,32 @@ test('times are sent as instants and shown in the viewer\'s time zone; the sign-
   assert.equal(localTime('not a time','ja'),'not a time');
   // Sign-in page: title from the site name only (as in PHP), and nothing else of the settings.
   const login2=await(await call(value,'/admin')).text();assert.match(login2,/<title>🍊[^<]* - ログイン<\/title>/);
+});
+
+test('MCP preview_page is read-only: saved page, unsaved fields, a new page, every format; version and guidance for clients',async()=>{
+  const value=env();await sample(value);await saveSettings(value,{...site,api_key:'test-mcp-key'});
+  const rpc=async(method,params={})=>(await(await handleMcp(new Request('https://cloud.test/mcp',{method:'POST',headers:{Authorization:'Bearer test-mcp-key','Content-Type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method,params})}),value)).json()).result;
+  const mcp=async(name,args={})=>{const r=await rpc('tools/call',{name,arguments:args});return {error:r.isError,data:r.isError?r.content[0].text:JSON.parse(r.content[0].text)};};
+  const init=await rpc('initialize',{protocolVersion:'2025-06-18'});
+  assert.match(init.instructions,/version in get_site_info differs.*read the tool list and get_ai_context again/);assert.match(init.instructions,/preview_page/);
+  assert.equal((await mcp('get_site_info')).data.version,require('../.test-build/src/version.js').CLOUD_VERSION);
+  const tool=(await rpc('tools/list')).tools.find(t=>t.name==='preview_page');
+  assert.equal(tool.annotations.readOnlyHint,true);assert.equal(tool.annotations.destructiveHint,false);assert.ok(tool.inputSchema.properties.content_md&&tool.inputSchema.properties.output_format);
+  const saved=(await loadPage(value,'notes')).content_md;
+  // Only an ID: the saved page, in its output format.
+  let r=(await mcp('preview_page',{id:'notes'})).data;
+  assert.equal(r.saved,true);assert.deepEqual(r.used_unsaved_fields,[]);assert.equal(r.output_format,'md');assert.match(r.content_type,/^text\/plain/);assert.match(r.content,/Plain notes/);
+  // Fields: rendered without saving, nothing written.
+  r=(await mcp('preview_page',{id:'notes',content_md:'Changed {{TITLE}}'})).data;
+  assert.equal(r.saved,false);assert.deepEqual(r.used_unsaved_fields,['content_md']);assert.match(r.content,/Changed Notes/);
+  r=(await mcp('preview_page',{id:'notes',output_format:'json',content_md:'{"a":1}'})).data;assert.equal(r.output_format,'json');assert.match(r.content,/\{"a":1\}/);
+  assert.equal((await loadPage(value,'notes')).content_md,saved,'nothing was saved');
+  // A new ID needs a title; it renders (HTML) and is not created, also with a status that would not publish.
+  assert.equal((await mcp('preview_page',{id:'fresh'})).error,true);
+  r=(await mcp('preview_page',{id:'fresh',title:'Fresh',content_md:'Hello *new*'})).data;assert.match(r.content_type,/^text\/html/);assert.match(r.content,/Hello <em>new<\/em>/);
+  assert.equal(await loadPage(value,'fresh'),null,'a new page is not created');
+  assert.equal((await mcp('preview_page',{id:'notes',output_format:'nope'})).error,true);
+  // The AI context lists the built-in guidance last.
+  const context=(await mcp('get_ai_context')).data;assert.equal(context.documents.at(-1).id,'mikanbox-output-formats');assert.equal(context.count,context.documents.length);
+  assert.match(context.documents.at(-1).content_md,/html_md.*md/s);
 });
