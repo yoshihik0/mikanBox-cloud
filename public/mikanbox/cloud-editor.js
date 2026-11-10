@@ -6,6 +6,11 @@
   const C = window.__CLOUD_EDITOR || {};
   const ui = () => window.MikanUI;
   const nav = (window.mikanNav = window.mikanNav || { pending: 0 });
+  // Unsaved changes are tracked per editor (the page and the design editor can both be open), and
+  // window.isDirty is true while either has some.
+  const dirty = new Set();
+  const syncDirty = () => { window.isDirty = dirty.size > 0; };
+  const markClean = (type) => { if (type) dirty.delete(type); else dirty.clear(); syncDirty(); };
   window.isDirty = false;
   let navigating = false;
 
@@ -94,33 +99,34 @@
     return a;
   }
   const navAnchor = (type) => document.querySelector(type === 'page' ? '.side-nav .nav-settings' : '.side-nav .nav-media');
-  const bindDirtyTrackers = (container) => {
+  const bindDirtyTrackers = (container, type) => {
     container.querySelectorAll('input, textarea, select').forEach((el) => {
-      el.addEventListener('input', () => { window.isDirty = true; });
-      el.addEventListener('change', () => { window.isDirty = true; });
+      el.addEventListener('input', () => { dirty.add(type); syncDirty(); });
+      el.addEventListener('change', () => { dirty.add(type); syncDirty(); });
     });
   };
   // Unsaved changes: the same three-way prompt as the PHP admin (#unsaved-modal): save and close,
-  // discard and close, or cancel. Resolves true when the caller may go on (saved, or discarded).
-  function guardUnsaved() {
-    if (!window.isDirty) return Promise.resolve(true);
+  // discard and close, or cancel. `type` is the editor being left or replaced. Resolves true when the
+  // caller may go on (that editor was saved, or its changes were discarded). A save that cannot be
+  // done (no such form or button) or that fails never counts as done: the prompt stays open.
+  function guardUnsaved(type) {
+    if (!dirty.has(type)) return Promise.resolve(true);
     const modal = document.getElementById('unsaved-modal');
-    if (!modal) return Promise.resolve(true);
+    if (!modal) return ui().confirm(C.unsavedText || '', C.unsavedTitle || '', C.ok || '', 'btn-red');
     const save = document.getElementById('btn-modal-save'), discard = document.getElementById('btn-modal-discard'), cancel = document.getElementById('btn-modal-cancel');
     return new Promise((resolve) => {
       const close = (value) => { modal.style.display = 'none'; save.onclick = discard.onclick = cancel.onclick = null; resolve(value); };
       cancel.onclick = () => close(false);
-      discard.onclick = () => { window.isDirty = false; close(true); };
+      discard.onclick = () => { markClean(type); close(true); };
       save.onclick = async () => {
-        const form = document.querySelector('#page-editor #page-form, #design-editor #comp-form');
+        const form = document.querySelector(type === 'page' ? '#page-editor #page-form' : '#design-editor #comp-form');
         const button = form && document.querySelector('button[form="' + form.getAttribute('id') + '"][name="save_action"][value^="save_"]');
-        if (!form || !button) { discard.click(); return; }
+        if (!form || !button) { ui().toast(C.saveFailed || '', true); return; }
         const savingHtml = '<span class="material-symbols-outlined icon" style="animation: spin 1s linear infinite;">sync</span> ' + (C.saving || '');
         const original = { modal: save.innerHTML, button: button.innerHTML };
         save.innerHTML = button.innerHTML = savingHtml; save.disabled = button.disabled = true;
         try {
-          const ok = await saveEditor(form.getAttribute('id') === 'page-form' ? 'page' : 'design', form, button);
-          if (ok) { close(true); }  // a failed save keeps the prompt open, with the message in the toast
+          if (await saveEditor(type, form, button)) close(true);  // a failed save keeps the prompt open, with the message in the toast
         } finally {
           save.innerHTML = original.modal; button.innerHTML = original.button; save.disabled = button.disabled = false;
         }
@@ -166,8 +172,8 @@
         if (oldNav) oldNav.remove();
         const anchor = navAnchor(type);
         if (anchor) anchor.parentNode.insertBefore(createNavEditButton(type), anchor);
-        bindDirtyTrackers(editor);
-        window.isDirty = false;
+        bindDirtyTrackers(editor, type);
+        markClean(type);
         history.pushState({ spaEditor: true, type, editId }, '', '/admin?' + params.toString() + '#' + editorId);
         if (type === 'page' && editId && window.cloudEditorLock) window.cloudEditorLock.start(editId);
         // Every editor opens the same way: scroll to its top while it grows in (only when newly
@@ -186,13 +192,6 @@
     const { editor: editorId, slot: slotId, section: sectionId } = ids(type);
     const editor = document.getElementById(editorId);
     const navEdit = document.querySelector('.side-nav .nav-edit[data-editor-type="' + type + '"]');
-    // The row to come back to: the page (or component) that was being edited.
-    const editedId = editor ? ((editor.querySelector('input[name="old_id"]') || {}).value || (editor.querySelector('input[name="id"]') || {}).value || '') : '';
-    const editedRow = () => {
-      if (!editedId) return null;
-      const selector = type === 'page' ? '#pages-table-wrap tr[data-page-id]' : '#comps-table-wrap tr[data-component-id]';
-      return [...document.querySelectorAll(selector)].find((row) => (row.dataset.pageId ?? row.dataset.componentId) === editedId) || null;
-    };
     navigating = true;
     window.mikanNavigating = true;
     document.querySelectorAll('.side-nav a').forEach((a) => { a.style.transition = 'none'; });
@@ -204,7 +203,7 @@
     // The URL goes back first: the list refresh filters by the current URL (cat, fmt, q), so the
     // buttons and the list agree after closing.
     history.pushState({ spaEditor: false }, '', '/admin?' + listUrlParams(viewOf(type)).toString() + '#' + sectionId);
-    window.isDirty = false;
+    markClean(type);
     if (type === 'page' && window.cloudEditorLock) window.cloudEditorLock.stop();
     (async () => {
       try {
@@ -216,15 +215,18 @@
           const shift = editor.getBoundingClientRect().top - before;
           if (shift) window.scrollBy({ top: shift, behavior: 'instant' });
         }
-        const scrolled = settleScroll(() => {
-          const row = editedRow();
-          return row ? { el: row, block: 'center' } : { el: document.getElementById(sectionId), block: 'start' };
-        });
-        await Promise.all([editor ? ui().collapse(editor) : Promise.resolve(), scrolled]);
+        // 2. Scroll smoothly to the top of the list (the editor's top edge is right under it). The editor
+        //    shrinks only once its top is in view: shrinking 4000+ px while its bottom is in view pushes
+        //    the scroll position back and looks instant.
+        await settleScroll(() => ({ el: document.getElementById(sectionId), block: 'start' }));
+        // 3. Shrink (260 ms; opening takes 320 ms): height and opacity only.
+        if (editor) await ui().collapse(editor, 260);
       } finally {
         const slot = document.getElementById(slotId);
         if (slot) slot.innerHTML = '';
         if (navEdit) navEdit.remove();
+        const section = document.getElementById(sectionId);
+        if (section && Math.abs(section.getBoundingClientRect().top) >= 40) scrollToElement(section, 'start', 'instant');
         setTimeout(() => {
           navigating = false;
           window.mikanNavigating = false;
@@ -240,9 +242,9 @@
     const editLink = event.target.closest('a[href*="edit="][href*="#page-editor"], a[href*="new=1"][href*="#page-editor"], a[href*="edit="][href*="#design-editor"], a[href*="new=1"][href*="#design-editor"]');
     if (editLink && !event.target.closest('.close-badge')) {
       event.preventDefault(); event.stopPropagation();
-      if (!await guardUnsaved()) return;
       const href = editLink.getAttribute('href');
       const type = href.indexOf('#page-editor') !== -1 ? 'page' : 'design';
+      if (!await guardUnsaved(type)) return;
       const query = new URLSearchParams(href.split('?')[1]?.split('#')[0] || '');
       spaOpenEditor(type, query.get('edit') || null);
       return;
@@ -250,16 +252,17 @@
     const closer = event.target.closest('.editor-focus-bg a.btn-gray[href*="#pages"], .editor-focus-bg a.btn-gray[href*="#design"], .side-nav .close-badge');
     if (closer) {
       event.preventDefault(); event.stopPropagation();
-      if (!await guardUnsaved()) return;
       const target = closer.dataset.url || closer.getAttribute('href') || closer.closest('a').getAttribute('href') || '';
-      spaCloseEditor(target.indexOf('#pages') !== -1 ? 'page' : 'design');
+      const type = target.indexOf('#pages') !== -1 ? 'page' : 'design';
+      if (!await guardUnsaved(type)) return;
+      spaCloseEditor(type);
     }
   }, true);
 
   // The revision list inside the page editor opens that revision in place.
   window.spaChangeRevision = async (select) => {
     const query = new URLSearchParams((select.value.split('?')[1] || '').split('#')[0]);
-    if (!await guardUnsaved()) { select.selectedIndex = 0; return; }
+    if (!await guardUnsaved('page')) { select.selectedIndex = 0; return; }
     spaOpenEditor('page', query.get('edit'), query.get('rev'));
   };
 
@@ -270,7 +273,7 @@
       ['page', 'design'].forEach((type) => { const slot = document.getElementById(ids(type).slot); if (slot) slot.innerHTML = ''; });
       if (window.cloudEditorLock) window.cloudEditorLock.stop();
       document.querySelectorAll('.side-nav .nav-edit').forEach((el) => el.remove());
-      window.isDirty = false;
+      markClean();
       if (window.updateScrollPos) window.updateScrollPos();
     } else if (state && state.spaEditor === true) {
       spaOpenEditor(state.type, state.editId);
@@ -281,7 +284,7 @@
   // Saving keeps the editor open: the result goes to the toast, and only the parts that change
   // with a save (the page's ID and revision stamp, the revision list) are taken from the server.
   async function afterSave(type, form, wasNew) {
-    window.isDirty = false;
+    markClean(type);
     const editId = form.querySelector('input[name="id"]')?.value.trim() || '';
     if (!editId) return;
     try {
@@ -296,7 +299,7 @@
         slot.innerHTML = html;
         runScripts(slot);
         const editor = document.getElementById(ids(type).editor);
-        if (editor) bindDirtyTrackers(editor);
+        if (editor) bindDirtyTrackers(editor, type);
         window.scrollTo({ top: y, behavior: 'instant' });
         history.replaceState({ spaEditor: true, type, editId }, '', '/admin?' + params.toString() + '#' + ids(type).editor);
         if (type === 'page' && window.cloudEditorLock) window.cloudEditorLock.start(editId);
@@ -333,7 +336,7 @@
         const { ok, json } = await ui().post(form, submitter);
         ui().toast(json.message || (ok ? C.done : C.saveFailed) || '', !ok);
         if (!ok) return;
-        window.isDirty = false;
+        markClean(type);
         spaCloseEditor(type); // the editor goes away, the list is refreshed, the screen returns to the list
       } catch (_) { ui().toast(C.networkError || '', true); }
       return;
@@ -360,7 +363,7 @@
 
   // An editor that the server rendered into the page (a link with ?edit=) starts out clean and tracked.
   document.addEventListener('DOMContentLoaded', () => {
-    ['page-editor', 'design-editor'].forEach((id) => { const editor = document.getElementById(id); if (editor) bindDirtyTrackers(editor); });
+    [['page', 'page-editor'], ['design', 'design-editor']].forEach(([type, id]) => { const editor = document.getElementById(id); if (editor) bindDirtyTrackers(editor, type); });
   });
   window.mikanEditors = { open: spaOpenEditor, close: spaCloseEditor, settleScroll, refreshCompList };
   window.addEventListener('beforeunload', (event) => { if (window.isDirty && !navigating) { event.preventDefault(); event.returnValue = ''; } });

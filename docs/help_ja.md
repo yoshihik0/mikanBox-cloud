@@ -56,7 +56,7 @@
 }
 </style>
 
-# 🍊mikanBox 操作マニュアル <small class="manual-version">v2.19.0</small>
+# 🍊mikanBox 操作マニュアル <small class="manual-version">v2.19.2</small>
 
 🍊mikanBoxには、SQLiteデータベースを使う**🍊mikanBox** [SQLite版]{.type-badge .badge-sqlite}と、データベースを使わないJSONファイルベースの**🍊mikanBox flat** [flat版]{.type-badge .badge-flat}があります。基本的な使い方は共通なので、このヘルプは両方に対応しています。バージョンによって内容が異なる箇所には、上記のバッジで区別を示します。
 
@@ -304,7 +304,7 @@ Cloud版では、各画像は「リサイズ▼」「名前変更▼」「WebP �
 
 #### 操作の基本（画面を読み込み直さない）
 
-管理画面の操作は、基本的に画面全体を読み込み直さずに行い、結果は右下のメッセージで知らせます。削除などの確認は、ブラウザの標準のダイアログではなく、画面の中の確認で行います。ページ・デザインの編集の開閉も、どれも同じ動きです（開くと編集欄の先頭まで移動し、閉じると編集していた行へ戻ります。絞り込み・検索・ページ送りは保たれます）。画面を読み込み直すのは、システム更新・復元、言語の切り替え、ログイン・ログアウト、初回設定、この端末を止めてサインアウトするときなど、画面の前提が変わる操作だけです。ビジュアル編集の「元に戻す・やり直す」は、描画したページ自体が変わるため再読み込みします。
+管理画面の操作は、基本的に画面全体を読み込み直さずに行い、結果は右下のメッセージで知らせます。削除などの確認は、ブラウザの標準のダイアログではなく、画面の中の確認で行います。ページ・デザインの編集の開閉も、どれも同じ動きです（開くと編集欄の先頭まで移動し、閉じると編集欄がなめらかに縮み、一覧の先頭へ戻ります。絞り込み・検索・ページ送りは保たれます）。画面を読み込み直すのは、システム更新・復元、言語の切り替え、ログイン・ログアウト、初回設定、この端末を止めてサインアウトするときなど、画面の前提が変わる操作だけです。ビジュアル編集の「元に戻す・やり直す」は、描画したページ自体が変わるため再読み込みします。
 
 #### ログアウト
 
@@ -804,7 +804,7 @@ CSVファイルを選択します。エンコーディング（UTF-8 / Shift-JIS
 
 #### [settings_backup_restore]{.material-symbols-outlined} データ移行・インポートツール{.m-btn .m-btn-blue}
 
-[データ移行・インポートツール](#data-migration)（`convert.php`）を新しいタブで開きます。
+[データ移行・インポートツール](#data-migration)を、管理画面の上に重ねて開きます（同じ画面のまま）。
 
 ### バックアップ [flat版のみ]{.type-badge .badge-flat} {#site-backup}
 
@@ -920,7 +920,7 @@ AIが操作対象を確認するためのURLです。通常は空欄のままで
 
 ## データ移行・インポートツール {#data-migration}
 
-SQLite版では、管理画面（`admin.php`）とは別の独立したツール（`convert.php`）です。ブラウザで `mikanBox/convert.php` に直接アクセスして利用します。データベースやメディアの現在の状態確認と、外部データの一括インポートを行えます。
+SQLite版では、サイト設定の「データ移行・インポートツール」を押すと、管理画面の上に重ねて開きます（同じ画面のまま。閉じると管理画面へ戻ります）。`admin.php?view=import` を直接開くこともできます。以前の `mikanBox/convert.php` へのアクセスも、この画面へ移ります。データベースやメディアの現在の状態確認と、外部データの一括インポートを行えます。
 
 ### 現在の状態
 
@@ -1693,7 +1693,7 @@ PHP版はサイト画面、Cloud版はデータ移行・インポート画面の
 - `rss`・`sitemap`・`podcast` をXML形式にすると、システムのファイル（`/rss.xml` など）と重なるため保存できません。`404` ページの出力形式はHTMLだけです。
 - **文字化けとほかのサイトからの読み込み（静的ファイル）** — mikanBoxが動的に返すMarkdown版・データ形式には、`charset=utf-8` と `Access-Control-Allow-Origin: *`（ほかのサイトのMarkdownビューアなどがブラウザから読めるようにする指定）を付けます。静的に書き出したファイルはWebサーバーがそのまま返すため、サーバーの設定で次のように扱います。
   - **Apache** — 初回設定で作るサイト直下の `.htaccess` に、`AddCharset utf-8 .md .txt .csv .js .css .json`、`AddType text/markdown .md`、`.md`・`.txt`・`.csv`・`.json`・`.xml` への `Access-Control-Allow-Origin: *` を、目印のコメントで囲んで入れています（モジュールがない環境でもエラーにならないよう `IfModule` で囲みます）。システム更新のときに、この設定がなければ末尾に追記し、古いmikanBoxの設定があればその部分だけを新しくします（ほかの行は変えません。書き込めないときは、更新後のメッセージで案内します）。メディアの `.js`・`.css` にも文字コードを指定します。
-  - **nginx** — `.htaccess` は効きません。サーバーの設定に、たとえば `charset utf-8; charset_types text/markdown text/plain text/csv text/css application/javascript application/json;` と、`.md` を `text/markdown` にする `types` の指定、`location ~ \.(md|txt|csv|json|xml)$ { add_header Access-Control-Allow-Origin *; }` を加えます（設定できない場合はサーバー会社に依頼します）。
+  - **nginx** — `.htaccess` は効きません。サーバーの設定に、たとえば `charset utf-8; charset_types text/markdown text/plain text/csv text/css application/javascript application/json;` と、`.md` を `text/markdown` にする `types` の指定、`location ~ \.(md|txt|csv|json|xml)$ { add_header Access-Control-Allow-Origin *; }` を加えます（設定できない場合はサーバー会社に依頼します）。静的ビルドを「フォルダ」構造で同じサイトのフォルダへ出すと、ページごとに `ページ名/index.html` ができます。nginxの `index` に `index.html` が入っていないと、そのフォルダを開いたときに403になります（404ページなど）。`index index.php index.html;` のように `index.html` を加えてください。
   - 静的に書き出す `.md`・`.txt`・`.csv` の先頭には、UTF-8のBOM（文字コードの目印）を付けます。サーバーが文字コードを送らない場合でも、ブラウザが正しく表示できます。ブラウザの `fetch` はBOMを取り除いて読みます。BOMを解釈しない一部の道具では、frontmatterの前に見えない1文字が入るので注意してください。`.json`・`.xml`・`.js`・`.css` にはBOMを付けません（`.json` はUTF-8が決まり、`.xml` はファイル内で文字コードを宣言できるため）。
   - 静的書き出しを別のサーバーに置くときも、そのサーバーで同じ設定をしてください。
 - 「公開(静的)」でなくなったページ（動的・下書きに変えたページ）のために以前書き出したファイルは、そのページの保存・公開設定の変更（MCPを含む）のとき、またはすべてのページの静的ビルドのときに消します。静的ファイルが動的なページを覆い隠したり、下書きにしたページが公開されたまま残ったりしないためです。

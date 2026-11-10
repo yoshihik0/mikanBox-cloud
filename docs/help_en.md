@@ -56,7 +56,7 @@
 }
 </style>
 
-# 🍊mikanBox User Manual <small class="manual-version">v2.19.0</small>
+# 🍊mikanBox User Manual <small class="manual-version">v2.19.2</small>
 
 🍊mikanBox comes in two versions: **🍊mikanBox** [SQLite Edition]{.type-badge .badge-sqlite}, which uses a SQLite database, and **🍊mikanBox flat** [flat Edition]{.type-badge .badge-flat}, a JSON file-based edition with no database. The basic usage is shared between both, so this help document covers both. Where the content differs between versions, the badges above are used to mark the difference.
 
@@ -302,7 +302,7 @@ The browser tab shows "🍊site name" (the sign-in screen shows "🍊site name -
 
 #### How actions work (no full-page reloads)
 
-Admin actions run without reloading the whole screen, and the result appears as a message at the bottom right. Confirmations (such as deleting) are shown inside the screen, never in the browser's own dialog. Opening and closing editors always looks the same: opening scrolls to the top of the editor, and closing returns to the row you were editing, keeping the filters, search and list page. The screen reloads only when what the screen is changes: system update and restore, switching the language, signing in and out, first setup, and stopping this device (which signs you out). Visual Editing's Undo and Redo reload because the rendered page itself changes.
+Admin actions run without reloading the whole screen, and the result appears as a message at the bottom right. Confirmations (such as deleting) are shown inside the screen, never in the browser's own dialog. Opening and closing editors always looks the same: opening scrolls to the top of the editor, and closing shrinks the editor smoothly and returns to the top of the list, keeping the filters, search and list page. The screen reloads only when what the screen is changes: system update and restore, switching the language, signing in and out, first setup, and stopping this device (which signs you out). Visual Editing's Undo and Redo reload because the rendered page itself changes.
 
 #### Logout
 
@@ -803,7 +803,7 @@ Bundles every uploaded file (images, etc.) into a single ZIP and downloads it.
 
 #### [settings_backup_restore]{.material-symbols-outlined} Data Import &amp; Migration Tool{.m-btn .m-btn-blue}
 
-Opens the [Data Migration &amp; Import Tool](#data-migration) (`convert.php`) in a new tab.
+Opens the [Data Migration &amp; Import Tool](#data-migration) over the admin panel (in the same window).
 
 ### Backup [flat Edition only]{.type-badge .badge-flat} {#site-backup}
 
@@ -919,7 +919,7 @@ Changes and saves the password.
 
 ## Data Migration &amp; Import Tool {#data-migration}
 
-A separate, standalone tool (`convert.php`) from the admin panel (`admin.php`). Access `mikanBox/convert.php` directly in your browser to use it. You can check the current state of the database and media, and bulk-import external data.
+In the SQLite edition, the "Data Migration & Import Tool" button in Site Settings opens the tool over the admin panel (in the same window; closing it returns you to the admin panel). You can also open `admin.php?view=import` directly, and the old `mikanBox/convert.php` address leads to the same screen. You can check the current state of the database and media, and bulk-import external data.
 
 ### Current State
 
@@ -1688,7 +1688,7 @@ For a page at `/ID`, everything with an extension lives at `/ID.extension`.
 - `rss`, `sitemap` and `podcast` cannot use the XML format, because `/rss.xml` and the others are system files. The `404` page can only be HTML.
 - **Garbled text and reading from other sites (static files)** — Markdown versions and data pages served dynamically by mikanBox carry `charset=utf-8` and `Access-Control-Allow-Origin: *` (so Markdown viewers and other sites can read them from the browser). Static files are sent by the web server as they are, so the server configuration handles them:
   - **Apache** — The site-root `.htaccess` written at first setup contains, between marker comments, `AddCharset utf-8 .md .txt .csv .js .css .json`, `AddType text/markdown .md`, and `Access-Control-Allow-Origin: *` for `.md`, `.txt`, `.csv`, `.json` and `.xml` (each part wrapped in `IfModule`, so a missing module causes no error). A system update appends this block when it is missing and brings an older mikanBox block up to date, changing nothing else (if the file cannot be written, the message after the update says so). Uploaded `.js` and `.css` in Media get a charset too.
-  - **nginx** — `.htaccess` has no effect. Add to the server configuration, for example, `charset utf-8; charset_types text/markdown text/plain text/csv text/css application/javascript application/json;`, a `types` entry that maps `.md` to `text/markdown`, and `location ~ \.(md|txt|csv|json|xml)$ { add_header Access-Control-Allow-Origin *; }` (ask your hosting provider if you cannot change it).
+  - **nginx** — `.htaccess` has no effect. Add to the server configuration, for example, `charset utf-8; charset_types text/markdown text/plain text/csv text/css application/javascript application/json;`, a `types` entry that maps `.md` to `text/markdown`, and `location ~ \.(md|txt|csv|json|xml)$ { add_header Access-Control-Allow-Origin *; }` (ask your hosting provider if you cannot change it). With the "folder" structure, a static build into the site's own folder creates `page-name/index.html` for each page. If nginx's `index` does not include `index.html`, opening that folder returns 403 (for example the 404 page). Add `index.html`, for example `index index.php index.html;`.
   - Static `.md`, `.txt` and `.csv` files start with a UTF-8 BOM (an encoding marker), so browsers show them correctly even when the server sends no charset. Browser `fetch` removes the BOM. Some tools that do not understand a BOM will see an invisible character before the front matter. `.json`, `.xml`, `.js` and `.css` get no BOM (`.json` is UTF-8 by definition, and `.xml` declares its encoding inside the file).
   - When you put a static build on another server, configure that server the same way.
 - Files built earlier for a page that is no longer Public (Static) (changed to dynamic or draft) are removed when that page is saved or its status changes (MCP included), or by a full static build, so a static file never hides a dynamic page or keeps a draft public.

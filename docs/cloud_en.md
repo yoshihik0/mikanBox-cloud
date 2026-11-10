@@ -1,6 +1,6 @@
 <style>.manual-version{font-size:.5em;font-weight:400;white-space:nowrap}</style>
 
-# 🍊mikanBox Cloudflare Manual <small class="manual-version">v0.9.2</small>
+# 🍊mikanBox Cloudflare Manual <small class="manual-version">v0.9.3</small>
 
 This manual covers installation and the Cloudflare edition’s differences. For shared operations, see the [operation manual](https://yoshihiko.com/mikanbox/help_en.html).
 
@@ -381,3 +381,12 @@ The operations rewritten in 0.9.0 were each pressed in a development environment
 ### Changes in 0.9.2
 
 The page list search now filters as you type, like the media search (the list changes 250 ms after you type, and the search term stays in the URL; clearing it with the browser's own × shows every page at once). Before, you pressed Enter to search. The README features now mention Markdown output and the other output formats (JSON, XML, CSV, text, JavaScript, CSS and mikanBox DB).
+
+### Changes in 0.9.3
+
+Follows PHP 2.19.2.
+
+- **Closing editors.** Closing a page or design editor first scrolls smoothly to the top of the list, then the editor shrinks away in 260 ms (opening takes 320 ms). Before, the shrinking looked instant. Returning to the edited row is gone.
+- **Confirmations.** With unsaved changes you get the same three choices as in the PHP edition (Save and close, Discard and close, Cancel) when closing an editor, opening another, or switching revision. If the save fails, the prompt stays open. The media rename confirmation now looks like PHP's. Deleting and the other confirmations already used the same component as the PHP edition. Unsaved changes are counted separately for the page editor and the design editor.
+- **Delete buttons.** Deleting asks for confirmation even when a required field such as the title is empty (the browser's input check no longer stops it).
+- **Data migration screen.** `/admin?view=import` is unchanged (the SQLite edition was rebuilt to match it).

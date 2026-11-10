@@ -228,7 +228,7 @@ ${opts.mediaEnabled?`<div id="drop-zone">${getIcon('cloud')} ${t('hint_drop_uplo
 
     ${view==='import'?'':mediaHtml}
 
-    <script>window.__MIKAN_UI = ${JSON.stringify({confirmTitle:t('btn_delete'),confirmOk:t('btn_delete_confirm'),cancel:t('btn_cancel'),saveFailed:t('err_save_failed'),done:t('msg_update_success'),networkError:t('err_network_error')}).replace(/</g,'\\u003c')};window.__CLOUD_EDITOR = ${JSON.stringify({editLabel:t('btn_edit'),closeLabel:t('btn_close'),editIcon:getIcon('edit'),loadFailed:t('err_editor_load_failed'),saving:t('msg_saving'),confirmDelete:t('hint_confirm_delete'),deleteTitle:t('btn_delete'),deleteOk:t('btn_delete_confirm'),saveFailed:t('err_save_failed'),done:t('msg_update_success'),networkError:t('err_network_error')}).replace(/</g,'\\u003c')};</script>
+    <script>window.__MIKAN_UI = ${JSON.stringify({confirmTitle:t('btn_delete'),confirmOk:t('btn_delete_confirm'),cancel:t('btn_cancel'),saveFailed:t('err_save_failed'),done:t('msg_update_success'),networkError:t('err_network_error')}).replace(/</g,'\\u003c')};window.__CLOUD_EDITOR = ${JSON.stringify({editLabel:t('btn_edit'),closeLabel:t('btn_close'),editIcon:getIcon('edit'),loadFailed:t('err_editor_load_failed'),saving:t('msg_saving'),unsavedTitle:t('modal_unsaved_title'),unsavedText:t('visual_js_confirm_leave'),ok:t('btn_ok'),confirmDelete:t('hint_confirm_delete'),deleteTitle:t('btn_delete'),deleteOk:t('btn_delete_confirm'),saveFailed:t('err_save_failed'),done:t('msg_update_success'),networkError:t('err_network_error')}).replace(/</g,'\\u003c')};</script>
     <script src="/mikanbox/admin-ui.js?v=${h(CLOUD_VERSION)}"></script>
     <script src="/mikanbox/ai-question.js?v=${h(CLOUD_VERSION)}" data-mcp-endpoint="/public-mcp" data-public-mcp="/public-mcp" data-help-ja="/public-help.html?language=ja" data-help-en="/public-help.html?language=en" defer></script>
     <script>
@@ -924,7 +924,7 @@ export function renderPageEditor(opts: {
                             <a href="/admin${opts.listQuery ? h('?' + opts.listQuery.slice(1)) : ''}#pages" class="btn btn-gray">${getIcon('arrow_back')} ${t('btn_back_to_list')}</a>
                         </div>
                         ${(editId && editId !== 'index') ? `
-                            <button type="submit" form="page-form" name="save_action" value="delete_page" class="btn btn-red">${getIcon('delete')} ${t('btn_delete')}</button>
+                            <button type="submit" form="page-form" name="save_action" value="delete_page" class="btn btn-red" formnovalidate>${getIcon('delete')} ${t('btn_delete')}</button>
                         ` : ''}
                     </div>
                 </form>
@@ -1161,7 +1161,7 @@ export function renderDesignEditor(opts: {
                         <a href="/admin?view=design#design" class="btn btn-gray">${getIcon('arrow_back')} ${t('btn_back_to_list')}</a>
                     </div>
                     ${editId ? `
-                        <button type="submit" form="comp-form" name="save_action" value="delete_comp" class="btn btn-red">${getIcon('delete')} ${t('btn_delete')}</button>
+                        <button type="submit" form="comp-form" name="save_action" value="delete_comp" class="btn btn-red" formnovalidate>${getIcon('delete')} ${t('btn_delete')}</button>
                     ` : ''}
                 </div>
             </form>

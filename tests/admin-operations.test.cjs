@@ -43,7 +43,7 @@ test('operations run in place: delete, save and device forms are marked for admi
   const env=environment(),auth=await login(env);
   await savePage(env,'about',{title:'About',status:'draft',content_md:'x'});
   const editor=await(await call(env,'/admin?view=pages&edit=about',undefined,auth.cookie)).text();
-  assert.match(editor,/<button type="submit" form="page-form" name="save_action" value="delete_page" class="btn btn-red">/);
+  assert.match(editor,/<button type="submit" form="page-form" name="save_action" value="delete_page" class="btn btn-red" formnovalidate>/);
   assert.match(editor,/<tr data-page-id="about">/,'rows carry the id the close motion returns to');
   const site=await(await call(env,'/admin?view=site',undefined,auth.cookie)).text();
   for(const action of ['save_memo','save_settings','save_cloud_update_repository'])assert.match(site,new RegExp(`<form method="post"[^>]*data-ajax[^>]*>[\\s\\S]{0,200}value="${action}"`),action);
@@ -91,4 +91,24 @@ test('the in-screen dialogs have the PHP admin\'s markup: unsaved prompt with sa
   assert.match(script,/guardUnsaved/);assert.doesNotMatch(script,/confirmDiscard|btn-orange/);
   // The delete confirmation is the shared one (admin-ui.js), the same in both editions.
   assert.match(script,/ui\(\)\.confirm\(C\.confirmDelete/);
+});
+
+test('closing an editor scrolls to the list top, then shrinks in 260 ms; unsaved changes are tracked and saved per editor',()=>{
+  const script=fs.readFileSync('public/mikanbox/cloud-editor.js','utf8');
+  // Order (PHP 2.19.2): refresh the list, smooth scroll to the section top, then collapse(editor, 260); no scroll back to a row.
+  const close=script.slice(script.indexOf('function spaCloseEditor'),script.indexOf('// ---- Clicks'));
+  assert.ok(close.indexOf('await refreshList(type)')<close.indexOf("block: 'start'")&&close.indexOf("block: 'start'")<close.indexOf('ui().collapse(editor, 260)'));
+  assert.doesNotMatch(close,/editedRow|block: 'center'/);
+  // The guard asks about, and saves, the editor being left; a save that cannot be done never counts as saved.
+  assert.match(script,/function guardUnsaved\(type\)/);assert.match(script,/dirty\.has\(type\)/);
+  assert.doesNotMatch(script,/discard\.click\(\)/,'a missing form or button must not discard');
+  assert.match(script,/#page-editor #page-form' : '#design-editor #comp-form'/);
+  assert.match(fs.readFileSync('public/mikanbox/admin-ui.js','utf8'),/function collapse\(el, ms = 300\)/);
+});
+
+test('delete buttons skip the browser\'s form validation, so an empty title cannot swallow the delete',async()=>{
+  const env=environment(),auth=await login(env);
+  await savePage(env,'about',{title:'About',status:'draft',content_md:'x'});
+  assert.match(await(await call(env,'/admin?view=pages&edit=about',undefined,auth.cookie)).text(),/value="delete_page" class="btn btn-red" formnovalidate>/);
+  assert.match(await(await call(env,'/admin?view=design&new=1',undefined,auth.cookie)).text()+await(await call(env,'/admin?view=design&edit=_layout',undefined,auth.cookie)).text(),/value="delete_comp" class="btn btn-red" formnovalidate>/);
 });
