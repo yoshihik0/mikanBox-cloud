@@ -215,18 +215,20 @@
           const shift = editor.getBoundingClientRect().top - before;
           if (shift) window.scrollBy({ top: shift, behavior: 'instant' });
         }
-        // 2. Scroll smoothly to the top of the list (the editor's top edge is right under it). The editor
-        //    shrinks only once its top is in view: shrinking 4000+ px while its bottom is in view pushes
-        //    the scroll position back and looks instant.
-        await settleScroll(() => ({ el: document.getElementById(sectionId), block: 'start' }));
-        // 3. Shrink (260 ms; opening takes 320 ms): height and opacity only.
-        if (editor) await ui().collapse(editor, 260);
+        // 2. Fade out in place (200 ms, opacity only: the editor keeps its height, so something visibly goes away).
+        if (editor) await ui().fadeOut(editor, 200);
+        // 3. Scroll smoothly to the top of the list (300-600 ms by distance, timers and frames of our own).
+        //    The editor keeps its height while scrolling, so the page length is stable and the position never jumps.
+        const section = document.getElementById(sectionId);
+        nav.pending++;
+        try { if (section) await ui().scrollToY(section.getBoundingClientRect().top + window.scrollY); } finally { nav.pending--; }
       } finally {
         const slot = document.getElementById(slotId);
         if (slot) slot.innerHTML = '';
         if (navEdit) navEdit.remove();
-        const section = document.getElementById(sectionId);
-        if (section && Math.abs(section.getBoundingClientRect().top) >= 40) scrollToElement(section, 'start', 'instant');
+        // 4. Only now is the editor removed (its height goes to 0 off screen); fix any drift of 4 px or more.
+        const listTop = document.getElementById(sectionId);
+        if (listTop && Math.abs(listTop.getBoundingClientRect().top) >= 4) scrollToElement(listTop, 'start', 'instant');
         setTimeout(() => {
           navigating = false;
           window.mikanNavigating = false;

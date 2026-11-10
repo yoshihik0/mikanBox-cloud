@@ -1,6 +1,6 @@
 <style>.manual-version{font-size:.5em;font-weight:400;white-space:nowrap}</style>
 
-# 🍊mikanBox Cloudflare版 マニュアル <small class="manual-version">v0.9.3</small>
+# 🍊mikanBox Cloudflare版 マニュアル <small class="manual-version">v0.9.4</small>
 
 このマニュアルはCloudflare版の導入と、PHP版との違いを説明します。共通の操作は[操作マニュアル](https://yoshihiko.com/mikanbox/help_ja.html)も参照してください。flat版・SQLite版との使い分けは、[README](https://github.com/yoshihik0/mikanBox-cloud#readme)を参照してください。
 
@@ -522,3 +522,7 @@ PHP版2.19.2に合わせました。
 - **確認の表示。** 保存していない変更があるときは、PHP版と同じ「保存して閉じる」「破棄して閉じる」「キャンセル」の確認を出します（編集を閉じる・別の編集を開く・履歴を切り替えるとき）。「保存して閉じる」は保存に失敗するとそのまま確認を残します。画像の名前変更の確認も、PHP版と同じ見た目にしました。削除などの確認は、これまでもPHP版と同じ部品です。保存していない変更は、ページ編集とデザイン編集で別々に数えます。
 - **削除ボタン。** タイトルなどの必須欄が空でも、確認が出て削除できます（ブラウザの入力チェックで止まらなくなりました）。
 - **データ移行の画面。** `/admin?view=import` は変えていません（SQLite版が、この画面に合わせて作り直されました）。
+
+### 0.9.4の変更
+
+PHP版2.19.3に合わせて、編集を閉じる動きの順序を変えました（ページ編集・デザイン編集とも）。① その場でフェードアウトします（約200ms。高さは変わりません）。② 一覧の先頭へなめらかにスクロールします（距離に応じて300〜600ms）。③ スクロールが終わってから、編集欄を取り除きます。動きを減らす設定（`prefers-reduced-motion`）のときは、すぐに閉じます。0.9.3の「スクロールしてから縮む」動きは、この順序に置き換わりました。

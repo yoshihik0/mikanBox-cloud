@@ -1,6 +1,6 @@
 <style>.manual-version{font-size:.5em;font-weight:400;white-space:nowrap}</style>
 
-# 🍊mikanBox Cloudflare Manual <small class="manual-version">v0.9.3</small>
+# 🍊mikanBox Cloudflare Manual <small class="manual-version">v0.9.4</small>
 
 This manual covers installation and the Cloudflare edition’s differences. For shared operations, see the [operation manual](https://yoshihiko.com/mikanbox/help_en.html).
 
@@ -390,3 +390,7 @@ Follows PHP 2.19.2.
 - **Confirmations.** With unsaved changes you get the same three choices as in the PHP edition (Save and close, Discard and close, Cancel) when closing an editor, opening another, or switching revision. If the save fails, the prompt stays open. The media rename confirmation now looks like PHP's. Deleting and the other confirmations already used the same component as the PHP edition. Unsaved changes are counted separately for the page editor and the design editor.
 - **Delete buttons.** Deleting asks for confirmation even when a required field such as the title is empty (the browser's input check no longer stops it).
 - **Data migration screen.** `/admin?view=import` is unchanged (the SQLite edition was rebuilt to match it).
+
+### Changes in 0.9.4
+
+The order of closing an editor follows PHP 2.19.3 (page and design editors alike). (1) It fades out in place (about 200 ms; the height does not change). (2) The screen scrolls smoothly to the top of the list (300-600 ms, by distance). (3) Only after the scroll ends is the editor removed. With reduced motion (`prefers-reduced-motion`) it closes at once. This replaces the 0.9.3 "scroll, then shrink" motion.

@@ -93,17 +93,19 @@ test('the in-screen dialogs have the PHP admin\'s markup: unsaved prompt with sa
   assert.match(script,/ui\(\)\.confirm\(C\.confirmDelete/);
 });
 
-test('closing an editor scrolls to the list top, then shrinks in 260 ms; unsaved changes are tracked and saved per editor',()=>{
+test('closing an editor: fade in place, scroll to the list top, then remove it (PHP 2.19.3)',()=>{
   const script=fs.readFileSync('public/mikanbox/cloud-editor.js','utf8');
-  // Order (PHP 2.19.2): refresh the list, smooth scroll to the section top, then collapse(editor, 260); no scroll back to a row.
   const close=script.slice(script.indexOf('function spaCloseEditor'),script.indexOf('// ---- Clicks'));
-  assert.ok(close.indexOf('await refreshList(type)')<close.indexOf("block: 'start'")&&close.indexOf("block: 'start'")<close.indexOf('ui().collapse(editor, 260)'));
-  assert.doesNotMatch(close,/editedRow|block: 'center'/);
+  // Order: refresh the list, fadeOut(editor, 200), scrollToY(list top), and only then the slot is emptied.
+  const at=text=>{const i=close.indexOf(text);assert.ok(i>=0,text);return i;};
+  assert.ok(at('await refreshList(type)')<at('ui().fadeOut(editor, 200)')&&at('ui().fadeOut(editor, 200)')<at('ui().scrollToY(')&&at('ui().scrollToY(')<at("slot.innerHTML = ''"));
+  assert.doesNotMatch(close,/collapse\(|editedRow|block: 'center'|settleScroll/,'no shrink and no scroll to a row any more');
+  const shared=fs.readFileSync('public/mikanbox/admin-ui.js','utf8');
+  assert.match(shared,/function fadeOut\(el, ms = 200\)/);assert.match(shared,/function scrollToY\(top, minMs = 300, maxMs = 600\)/);
   // The guard asks about, and saves, the editor being left; a save that cannot be done never counts as saved.
   assert.match(script,/function guardUnsaved\(type\)/);assert.match(script,/dirty\.has\(type\)/);
   assert.doesNotMatch(script,/discard\.click\(\)/,'a missing form or button must not discard');
   assert.match(script,/#page-editor #page-form' : '#design-editor #comp-form'/);
-  assert.match(fs.readFileSync('public/mikanbox/admin-ui.js','utf8'),/function collapse\(el, ms = 300\)/);
 });
 
 test('delete buttons skip the browser\'s form validation, so an empty title cannot swallow the delete',async()=>{
