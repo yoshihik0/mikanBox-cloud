@@ -42,6 +42,8 @@ This repository is the **Cloudflare edition** (🍊mikanBox Cloud), which runs o
 - **Visual editing** — Open a page as it looks, pick a part, and edit just that part's body and CSS with live updates (the same screen as the PHP editions)
 - **Modeless UI** — No page transitions; nearly all work completed on a single screen for a snappy experience (developed to match the PHP editions)
 - **Markdown Support** — Easy to edit content, and also well-suited as a content archive
+- **Markdown output** — Publish a page as Markdown alongside its HTML, or as Markdown only (`/ID.md`), so AI and external Markdown viewers can read it as it is
+- **Other output formats** — Publish the body as a file in JSON, XML, CSV, plain text, JavaScript or CSS (`/ID.json` and so on), or as mikanBox DB (`/api/ID.json`)
 - **Filter by Category** — Narrow down pages and images by category; use categories as workspaces
 - **Images Shown by Filename Alone** — Place images without thinking about file paths
 - **Component structure and scoped CSS** — Combinable page templates and parts, with CSS that doesn't interfere across components

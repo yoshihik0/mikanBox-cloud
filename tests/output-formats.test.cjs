@@ -246,7 +246,9 @@ test('2.18.2 admin alignment: title, output-format filter kept in the URL, globe
   assert.match(all,/<input type="hidden" name="fmt" value="data">/);
   // A draft's globe is grey with the PHP message; one search box with the browser's clear button only.
   assert.match(all,/<span class="btn btn-sm btn-gray btn-disabled" aria-disabled="true" title="公開されていません（下書き・承認待ち）">/);
-  assert.match(all,/<input type="search" name="q" id="admin-page-search" class="admin-search-input"/);assert.doesNotMatch(all,/admin-page-search-clear/);
+  assert.match(all,/<input type="search" name="q" id="admin-page-search" class="admin-search-input"/);
+  // The page search filters as you type, like the media search (same helper, same delay).
+  assert.match(all,/pageSearch\.addEventListener\('input'/);assert.match(all,/applyListParam\('q', pageSearch\.value\.trim\(\), 'p_pages', 'pages', refreshPageList\)/);assert.doesNotMatch(all,/admin-page-search-clear/);
   // Media: type filter and search in the heading; support notes inside Upload options; drops only on #media.
   assert.match(all,/id="media-type-filter"/);assert.match(all,/<input type="search" name="q_media" id="admin-media-search" class="admin-search-input"/);
   assert.match(all,/<div class="upload-options-body"><div class="upload-info upload-info-types">/);

@@ -1,6 +1,6 @@
 <style>.manual-version{font-size:.5em;font-weight:400;white-space:nowrap}</style>
 
-# 🍊mikanBox Cloudflare版 マニュアル <small class="manual-version">v0.9.1</small>
+# 🍊mikanBox Cloudflare版 マニュアル <small class="manual-version">v0.9.2</small>
 
 このマニュアルはCloudflare版の導入と、PHP版との違いを説明します。共通の操作は[操作マニュアル](https://yoshihiko.com/mikanbox/help_ja.html)も参照してください。flat版・SQLite版との使い分けは、[README](https://github.com/yoshihik0/mikanBox-cloud#readme)を参照してください。
 
@@ -509,3 +509,7 @@ PHP版2.19.0に合わせて、操作の基本・編集の開閉の動き・プ�
 0.9.0への更新が、GitHubの更新ワークフローで失敗していました（共通の `admin-ui.js` を、リポジトリの外にある `shared/` からコピーしようとして止まっていた）。`shared/` が無い環境（CI・更新ワークフロー）では、リポジトリに入れてある `public/mikanbox/admin-ui.js` をそのまま使うようにしました。`shared/` を並べた開発環境では、これまでどおりコピーします。
 
 0.9.0で書き換えた操作を、開発環境で一つずつ実際に押して確かめ、見つかった2件を直しました。言語を切り替えても画面が切り替わらない不具合（言語の選択欄が、再読み込みの対象にしていたフォームとは別のフォームにあった）と、端末のコードを発行しても画面にコードが出ない不具合（フォームが差し替わって、コードを置く前に処理が止まっていた）です。
+
+### 0.9.2の変更
+
+ページ一覧の検索を、メディアの検索と同じく、入力に合わせて絞り込む形にしました（入力して250ms後に一覧が変わり、検索語はURLに保たれます。ブラウザ標準の×で消すとすぐ全件に戻ります）。以前は、Enterを押して検索していました。READMEの特長に、Markdownでの出力、ほかの形式（JSON・XML・CSV・テキスト・JavaScript・CSS・mikanBox DB）での出力を加えました。

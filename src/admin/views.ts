@@ -255,9 +255,16 @@ ${opts.mediaEnabled?`<div id="drop-zone">${getIcon('cloud')} ${t('hint_drop_uplo
     const mcpUrlField = document.getElementById('mcp-url-display');
     if (mcpUrlField) mcpUrlField.value = location.origin + '/mcp';
 
-    // Clearing the page search with the browser's own × shows the whole list again.
+    // The page search filters as you type, like the media search (the list is fetched for the current URL; q is kept in it).
+    // Clearing it with the browser's own × (a "search" event) shows the whole list again at once.
     const pageSearch=document.getElementById('admin-page-search');
-    if(pageSearch)pageSearch.addEventListener('search',()=>{if(pageSearch.value==='')pageSearch.form?.requestSubmit();});
+    if(pageSearch){
+        let pageSearchTimer;
+        const applyPageSearch=()=>{clearTimeout(pageSearchTimer);applyListParam('q', pageSearch.value.trim(), 'p_pages', 'pages', refreshPageList);};
+        pageSearch.addEventListener('input',()=>{clearTimeout(pageSearchTimer);pageSearchTimer=setTimeout(applyPageSearch,250);});
+        pageSearch.addEventListener('search',applyPageSearch);
+        pageSearch.form.addEventListener('submit',(event)=>{event.preventDefault();applyPageSearch();});
+    }
 
     // List filters kept in the URL (as in PHP): the page list's output format (fmt), the media type and search.
     function applyListParam(name, value, pager, view, refresh) {

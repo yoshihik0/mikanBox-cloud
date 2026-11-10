@@ -1,6 +1,6 @@
 <style>.manual-version{font-size:.5em;font-weight:400;white-space:nowrap}</style>
 
-# 🍊mikanBox Cloudflare Manual <small class="manual-version">v0.9.1</small>
+# 🍊mikanBox Cloudflare Manual <small class="manual-version">v0.9.2</small>
 
 This manual covers installation and the Cloudflare edition’s differences. For shared operations, see the [operation manual](https://yoshihiko.com/mikanbox/help_en.html).
 
@@ -377,3 +377,7 @@ The basics of operation, the motion of opening and closing editors, previews and
 Updating to 0.9.0 failed in the GitHub update workflow: the shared `admin-ui.js` was copied from a `shared/` folder outside the repository, which does not exist there. Where `shared/` is absent (CI and the update workflow) the committed `public/mikanbox/admin-ui.js` is now used as it is; a development workspace with `shared/` beside it still copies it.
 
 The operations rewritten in 0.9.0 were each pressed in a development environment, and two problems were fixed: changing the language did not switch the screen (the language select is in a different form than the one that triggered the reload), and issuing a device code did not show the code (the form was replaced before the code could be put in).
+
+### Changes in 0.9.2
+
+The page list search now filters as you type, like the media search (the list changes 250 ms after you type, and the search term stays in the URL; clearing it with the browser's own × shows every page at once). Before, you pressed Enter to search. The README features now mention Markdown output and the other output formats (JSON, XML, CSV, text, JavaScript, CSS and mikanBox DB).
