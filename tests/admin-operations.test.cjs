@@ -76,3 +76,19 @@ test('deleting answers JSON with the deleted ID, and a device that stops itself 
   assert.equal(out.data.success,true);assert.equal(out.data.redirect,'/admin');
   assert.match(out.response.headers.get('Set-Cookie')||'',/Max-Age=0|Expires=/i);
 });
+
+test('the in-screen dialogs have the PHP admin\'s markup: unsaved prompt with save/discard/cancel, rename dialog',async()=>{
+  const env=environment(),auth=await login(env);
+  const html=await(await call(env,'/admin?view=pages',undefined,auth.cookie)).text();
+  // Unsaved changes: the three-way modal of the PHP admin (same ids, classes, texts, order), not a generic OK dialog.
+  assert.match(html,/<div id="unsaved-modal" class="unsaved-modal-overlay" style="display: none;">\s*<div class="unsaved-modal-content">\s*<h3>未保存の変更があります<\/h3>\s*<p>編集中のデータはまだ保存されていません。<br>保存してから閉じますか？<\/p>\s*<div class="unsaved-modal-actions">\s*<button id="btn-modal-save" class="btn btn-blue">[^]*?保存して閉じる<\/button>\s*<button id="btn-modal-discard" class="btn btn-red">[^]*?破棄して閉じる<\/button>\s*<button id="btn-modal-cancel" class="btn btn-gray">キャンセル<\/button>/);
+  for(const rule of ['.unsaved-modal-overlay {','.unsaved-modal-content {','.unsaved-modal-actions {','@keyframes fadeIn'])assert.ok(html.includes(rule),rule);
+  // Rename: PHP's buttons (light grey with a border) and warning icon colour.
+  assert.match(html,/<dialog id="rename-confirm-dialog" class="custom-dialog">[^]*?<span class="material-symbols-outlined" style="color: #f59e0b;">warning<\/span>/);
+  assert.match(html,/id="btn-rename-cancel"[^>]*style="background:#f1f5f9; color:#1e293b; border: 1px solid #cbd5e1;"/);
+  // The editor script uses it, not a confirm dialog with an OK button.
+  const script=fs.readFileSync('public/mikanbox/cloud-editor.js','utf8');
+  assert.match(script,/guardUnsaved/);assert.doesNotMatch(script,/confirmDiscard|btn-orange/);
+  // The delete confirmation is the shared one (admin-ui.js), the same in both editions.
+  assert.match(script,/ui\(\)\.confirm\(C\.confirmDelete/);
+});

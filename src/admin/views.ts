@@ -228,7 +228,7 @@ ${opts.mediaEnabled?`<div id="drop-zone">${getIcon('cloud')} ${t('hint_drop_uplo
 
     ${view==='import'?'':mediaHtml}
 
-    <script>window.__MIKAN_UI = ${JSON.stringify({confirmTitle:t('btn_delete'),confirmOk:t('btn_delete_confirm'),cancel:t('btn_cancel'),saveFailed:t('err_save_failed'),done:t('msg_update_success'),networkError:t('err_network_error')}).replace(/</g,'\\u003c')};window.__CLOUD_EDITOR = ${JSON.stringify({editLabel:t('btn_edit'),closeLabel:t('btn_close'),editIcon:getIcon('edit'),loadFailed:t('err_editor_load_failed'),unsavedTitle:t('modal_unsaved_title'),unsavedText:t('visual_js_confirm_leave'),ok:t('btn_ok'),confirmDelete:t('hint_confirm_delete'),deleteTitle:t('btn_delete'),deleteOk:t('btn_delete_confirm'),saveFailed:t('err_save_failed'),done:t('msg_update_success'),networkError:t('err_network_error')}).replace(/</g,'\\u003c')};</script>
+    <script>window.__MIKAN_UI = ${JSON.stringify({confirmTitle:t('btn_delete'),confirmOk:t('btn_delete_confirm'),cancel:t('btn_cancel'),saveFailed:t('err_save_failed'),done:t('msg_update_success'),networkError:t('err_network_error')}).replace(/</g,'\\u003c')};window.__CLOUD_EDITOR = ${JSON.stringify({editLabel:t('btn_edit'),closeLabel:t('btn_close'),editIcon:getIcon('edit'),loadFailed:t('err_editor_load_failed'),saving:t('msg_saving'),confirmDelete:t('hint_confirm_delete'),deleteTitle:t('btn_delete'),deleteOk:t('btn_delete_confirm'),saveFailed:t('err_save_failed'),done:t('msg_update_success'),networkError:t('err_network_error')}).replace(/</g,'\\u003c')};</script>
     <script src="/mikanbox/admin-ui.js?v=${h(CLOUD_VERSION)}"></script>
     <script src="/mikanbox/ai-question.js?v=${h(CLOUD_VERSION)}" data-mcp-endpoint="/public-mcp" data-public-mcp="/public-mcp" data-help-ja="/public-help.html?language=ja" data-help-en="/public-help.html?language=en" defer></script>
     <script>
@@ -621,7 +621,52 @@ ${opts.mediaEnabled?`<div id="drop-zone">${getIcon('cloud')} ${t('hint_drop_uplo
 
     });
     </script>
-    <dialog id="rename-confirm-dialog" class="custom-dialog"><h3 class="dialog-title" style="margin-top:0;margin-bottom:12px;font-size:1.05rem;display:flex;align-items:center;gap:8px">${getIcon('warning')} ${t('media_rename_confirm_title')}</h3><p id="rename-dialog-message" style="font-size:.9rem;line-height:1.5;margin-bottom:20px;color:#475569"></p><div class="dialog-buttons" style="display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap"><button type="button" data-rename-choice="cancel" class="btn btn-small btn-gray">${t('btn_rename_cancel')}</button><button type="button" data-rename-choice="only" class="btn btn-small btn-gray">${t('btn_rename_only')}</button><button type="button" data-rename-choice="update" class="btn btn-small btn-blue">${t('btn_rename_update')}</button></div></dialog>
+    <!-- The dialogs below have the same markup and styles as the PHP admin (admin.php) -->
+    <dialog id="rename-confirm-dialog" class="custom-dialog">
+        <h3 style="margin-top:0; margin-bottom:12px; font-size:1.05rem; display:flex; align-items:center; gap:8px; color:var(--text);">
+            <span class="material-symbols-outlined" style="color: #f59e0b;">warning</span> ${t('media_rename_confirm_title')}
+        </h3>
+        <p id="rename-dialog-message" style="font-size:0.9rem; line-height:1.5; margin-bottom:20px; color:#475569;"></p>
+        <div class="dialog-buttons" style="display:flex; justify-content:flex-end; gap:8px; flex-wrap:wrap;">
+            <button type="button" id="btn-rename-cancel" data-rename-choice="cancel" class="btn btn-small" style="background:#f1f5f9; color:#1e293b; border: 1px solid #cbd5e1;">${t('btn_rename_cancel')}</button>
+            <button type="button" id="btn-rename-only" data-rename-choice="only" class="btn btn-small" style="background:#f1f5f9; color:#1e293b; border: 1px solid #cbd5e1;">${t('btn_rename_only')}</button>
+            <button type="button" id="btn-rename-update" data-rename-choice="update" class="btn btn-small btn-blue">${t('btn_rename_update')}</button>
+        </div>
+    </dialog>
+
+    <style>
+    .unsaved-modal-overlay {
+        position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+        background: rgba(0,0,0,0.5); z-index: 10000;
+        display: flex; align-items: center; justify-content: center;
+        animation: fadeIn 0.2s ease forwards;
+    }
+    .unsaved-modal-content {
+        background: #fff; padding: 30px; border-radius: 12px;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.2); max-width: 500px; text-align: center;
+        font-family: system-ui, sans-serif;
+    }
+    .unsaved-modal-actions {
+        display: flex; gap: 10px; justify-content: center; margin-top: 20px;
+    }
+    .unsaved-modal-actions .btn {
+        white-space: nowrap;
+    }
+    .unsaved-modal-content h3 { margin-top: 0; font-size: 1.2rem; color: #333; }
+    .unsaved-modal-content p { color: #666; font-size: 0.95rem; margin-bottom: 20px; line-height: 1.5; }
+    @keyframes fadeIn { 0% { opacity: 0; } 100% { opacity: 1; } }
+    </style>
+    <div id="unsaved-modal" class="unsaved-modal-overlay" style="display: none;">
+        <div class="unsaved-modal-content">
+            <h3>${t('modal_unsaved_title')}</h3>
+            <p>${t('modal_unsaved_text')}</p>
+            <div class="unsaved-modal-actions">
+                <button id="btn-modal-save" class="btn btn-blue">${getIcon('save')} ${t('btn_save_and_close')}</button>
+                <button id="btn-modal-discard" class="btn btn-red">${getIcon('delete')} ${t('btn_discard_and_close')}</button>
+                <button id="btn-modal-cancel" class="btn btn-gray">${t('btn_cancel')}</button>
+            </div>
+        </div>
+    </div>
 
     <script src="/mikanbox/preview-editor.js?v=${h(CLOUD_VERSION)}-2" defer></script>
     <script src="/mikanbox/cloud-editor.js?v=${h(CLOUD_VERSION)}" defer></script>

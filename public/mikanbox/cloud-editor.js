@@ -100,7 +100,34 @@
       el.addEventListener('change', () => { window.isDirty = true; });
     });
   };
-  const confirmDiscard = () => ui().confirm(C.unsavedText || '', C.unsavedTitle || '', C.ok || '', 'btn-orange');
+  // Unsaved changes: the same three-way prompt as the PHP admin (#unsaved-modal): save and close,
+  // discard and close, or cancel. Resolves true when the caller may go on (saved, or discarded).
+  function guardUnsaved() {
+    if (!window.isDirty) return Promise.resolve(true);
+    const modal = document.getElementById('unsaved-modal');
+    if (!modal) return Promise.resolve(true);
+    const save = document.getElementById('btn-modal-save'), discard = document.getElementById('btn-modal-discard'), cancel = document.getElementById('btn-modal-cancel');
+    return new Promise((resolve) => {
+      const close = (value) => { modal.style.display = 'none'; save.onclick = discard.onclick = cancel.onclick = null; resolve(value); };
+      cancel.onclick = () => close(false);
+      discard.onclick = () => { window.isDirty = false; close(true); };
+      save.onclick = async () => {
+        const form = document.querySelector('#page-editor #page-form, #design-editor #comp-form');
+        const button = form && document.querySelector('button[form="' + form.getAttribute('id') + '"][name="save_action"][value^="save_"]');
+        if (!form || !button) { discard.click(); return; }
+        const savingHtml = '<span class="material-symbols-outlined icon" style="animation: spin 1s linear infinite;">sync</span> ' + (C.saving || '');
+        const original = { modal: save.innerHTML, button: button.innerHTML };
+        save.innerHTML = button.innerHTML = savingHtml; save.disabled = button.disabled = true;
+        try {
+          const ok = await saveEditor(form.getAttribute('id') === 'page-form' ? 'page' : 'design', form, button);
+          if (ok) { close(true); }  // a failed save keeps the prompt open, with the message in the toast
+        } finally {
+          save.innerHTML = original.modal; button.innerHTML = original.button; save.disabled = button.disabled = false;
+        }
+      };
+      modal.style.display = 'flex';
+    });
+  }
 
   // ---- Open ------------------------------------------------------------------------------------
   // Scripts in HTML put in with innerHTML do not run; recreate them so the editor's own script does.
@@ -213,7 +240,7 @@
     const editLink = event.target.closest('a[href*="edit="][href*="#page-editor"], a[href*="new=1"][href*="#page-editor"], a[href*="edit="][href*="#design-editor"], a[href*="new=1"][href*="#design-editor"]');
     if (editLink && !event.target.closest('.close-badge')) {
       event.preventDefault(); event.stopPropagation();
-      if (window.isDirty && !await confirmDiscard()) return;
+      if (!await guardUnsaved()) return;
       const href = editLink.getAttribute('href');
       const type = href.indexOf('#page-editor') !== -1 ? 'page' : 'design';
       const query = new URLSearchParams(href.split('?')[1]?.split('#')[0] || '');
@@ -223,7 +250,7 @@
     const closer = event.target.closest('.editor-focus-bg a.btn-gray[href*="#pages"], .editor-focus-bg a.btn-gray[href*="#design"], .side-nav .close-badge');
     if (closer) {
       event.preventDefault(); event.stopPropagation();
-      if (window.isDirty && !await confirmDiscard()) return;
+      if (!await guardUnsaved()) return;
       const target = closer.dataset.url || closer.getAttribute('href') || closer.closest('a').getAttribute('href') || '';
       spaCloseEditor(target.indexOf('#pages') !== -1 ? 'page' : 'design');
     }
@@ -232,7 +259,7 @@
   // The revision list inside the page editor opens that revision in place.
   window.spaChangeRevision = async (select) => {
     const query = new URLSearchParams((select.value.split('?')[1] || '').split('#')[0]);
-    if (window.isDirty && !await confirmDiscard()) { select.selectedIndex = 0; return; }
+    if (!await guardUnsaved()) { select.selectedIndex = 0; return; }
     spaOpenEditor('page', query.get('edit'), query.get('rev'));
   };
 
@@ -313,16 +340,23 @@
     }
     if (action !== 'save_page' && action !== 'save_comp') return;
     event.preventDefault();
+    await saveEditor(type, form, submitter);
+  });
+
+  // Saves an editor in place (toast, stamps refreshed). Resolves true when the save succeeded.
+  async function saveEditor(type, form, submitter) {
     const wasNew = !form.querySelector('input[name="old_id"]')?.value;
+    const formId = form.getAttribute('id');
     const buttons = [...document.querySelectorAll('button[form="' + formId + '"], #' + formId + ' button')];
     buttons.forEach((b) => { b.disabled = true; });
     try {
       const { ok, json } = await ui().post(form, submitter);
       ui().toast(json.message || (ok ? C.done : C.saveFailed) || '', !ok);
       if (ok) await afterSave(type, form, wasNew);
-    } catch (_) { ui().toast(C.networkError || '', true); }
+      return ok;
+    } catch (_) { ui().toast(C.networkError || '', true); return false; }
     finally { buttons.forEach((b) => { if (b.isConnected) b.disabled = false; }); }
-  });
+  }
 
   // An editor that the server rendered into the page (a link with ?edit=) starts out clean and tracked.
   document.addEventListener('DOMContentLoaded', () => {
