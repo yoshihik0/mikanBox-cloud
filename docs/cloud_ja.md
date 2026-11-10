@@ -1,6 +1,6 @@
 <style>.manual-version{font-size:.5em;font-weight:400;white-space:nowrap}</style>
 
-# 🍊mikanBox Cloudflare版 マニュアル <small class="manual-version">v0.9.0</small>
+# 🍊mikanBox Cloudflare版 マニュアル <small class="manual-version">v0.9.1</small>
 
 このマニュアルはCloudflare版の導入と、PHP版との違いを説明します。共通の操作は[操作マニュアル](https://yoshihiko.com/mikanbox/help_ja.html)も参照してください。flat版・SQLite版との使い分けは、[README](https://github.com/yoshihik0/mikanBox-cloud#readme)を参照してください。
 
@@ -503,3 +503,9 @@ PHP版2.19.0に合わせて、操作の基本・編集の開閉の動き・プ�
 - **プレビュー。** 編集中の内容を表示します（上の「プレビュー」を参照）。
 - **MCP。** `preview_page`（読み取り専用）を追加しました。`get_site_info` の `version`、接続時の案内（版が変わればツール一覧を読み直す）、`get_ai_context` の組み込みの項目 `mikanbox-output-formats` を加えました。AI指示のサンプルにも出力形式の1行を足しています。
 - **その他。** `/admin.php` は `/admin` と同じ画面です（共通のプレビュー用スクリプトのため）。共通の `admin-ui.js` は、`shared/admin-ui.js` から `npm run check`・`npm test`・`npm run build` のたびにコピーされます。
+
+### 0.9.1の変更
+
+0.9.0への更新が、GitHubの更新ワークフローで失敗していました（共通の `admin-ui.js` を、リポジトリの外にある `shared/` からコピーしようとして止まっていた）。`shared/` が無い環境（CI・更新ワークフロー）では、リポジトリに入れてある `public/mikanbox/admin-ui.js` をそのまま使うようにしました。`shared/` を並べた開発環境では、これまでどおりコピーします。
+
+0.9.0で書き換えた操作を、開発環境で一つずつ実際に押して確かめ、見つかった2件を直しました。言語を切り替えても画面が切り替わらない不具合（言語の選択欄が、再読み込みの対象にしていたフォームとは別のフォームにあった）と、端末のコードを発行しても画面にコードが出ない不具合（フォームが差し替わって、コードを置く前に処理が止まっていた）です。

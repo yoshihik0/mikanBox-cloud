@@ -1,6 +1,6 @@
 <style>.manual-version{font-size:.5em;font-weight:400;white-space:nowrap}</style>
 
-# 🍊mikanBox Cloudflare Manual <small class="manual-version">v0.9.0</small>
+# 🍊mikanBox Cloudflare Manual <small class="manual-version">v0.9.1</small>
 
 This manual covers installation and the Cloudflare edition’s differences. For shared operations, see the [operation manual](https://yoshihiko.com/mikanbox/help_en.html).
 
@@ -371,3 +371,9 @@ The basics of operation, the motion of opening and closing editors, previews and
 - **Preview.** It shows the content being edited (see Preview above).
 - **MCP.** Added `preview_page` (read-only). Added `version` to `get_site_info`, the connection guidance (read the tool list again when the version changes) and the built-in document `mikanbox-output-formats` at the end of `get_ai_context`. The AI instruction sample has one more line about output formats.
 - **Other.** `/admin.php` is the same screen as `/admin` (the shared preview script uses that address). The shared `admin-ui.js` is copied from `shared/admin-ui.js` on every `npm run check`, `npm test` and `npm run build`.
+
+### Changes in 0.9.1
+
+Updating to 0.9.0 failed in the GitHub update workflow: the shared `admin-ui.js` was copied from a `shared/` folder outside the repository, which does not exist there. Where `shared/` is absent (CI and the update workflow) the committed `public/mikanbox/admin-ui.js` is now used as it is; a development workspace with `shared/` beside it still copies it.
+
+The operations rewritten in 0.9.0 were each pressed in a development environment, and two problems were fixed: changing the language did not switch the screen (the language select is in a different form than the one that triggered the reload), and issuing a device code did not show the code (the form was replaced before the code could be put in).

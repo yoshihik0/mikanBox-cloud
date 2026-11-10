@@ -114,9 +114,11 @@
     try{const details=[...document.querySelectorAll('#site details')];sessionStorage.setItem('cloud-site-position',JSON.stringify({y:window.scrollY,open:details.flatMap((d,i)=>d.open?[i]:[])}));}catch{}
     location.reload();
   };
-  document.addEventListener('mikan:done',event=>{
+  document.addEventListener('mikan:done',async event=>{
     const json=event.detail||{},form=event.target;
     if(json.issued_code){
+      // The section is refreshed here (not by the form) so the code is put into the fresh slot; it is shown once and never fetched again.
+      await window.MikanUI.refresh('#users-mgmt');
       const slot=document.getElementById('issued-code-slot');
       if(slot){
         slot.textContent='';
@@ -127,7 +129,7 @@
         const details=slot.closest('details');if(details)details.open=true;
       }
     }
-    const language=form.matches?.('.site-settings-form')?form.querySelector('[name="system_lang"]'):null;
+    const language=form.querySelector?.('[name="system_lang"]');
     if(language&&language.value&&language.value!==document.documentElement.lang)reloadHere();
   });
   // Generating or regenerating the MCP API key: show it in place. A reload would close the accordion it lives in.

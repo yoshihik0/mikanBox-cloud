@@ -49,6 +49,13 @@ test('operations run in place: delete, save and device forms are marked for admi
   for(const action of ['save_memo','save_settings','save_cloud_update_repository'])assert.match(site,new RegExp(`<form method="post"[^>]*data-ajax[^>]*>[\\s\\S]{0,200}value="${action}"`),action);
   assert.match(site,/data-confirm="[^"]+" data-confirm-ok="[^"]*" data-confirm-title="[^"]*">/);
   assert.match(site,/<div id="issued-code-slot" data-note="/);
+  // A code is shown once: admin-ui does not refresh the form (that would replace the form before the code is placed); cloud-admin.js refreshes, then fills the slot.
+  assert.match(site,/<form method="post" data-ajax>[^]{0,200}value="device_code_create"/);assert.doesNotMatch(site,/data-refresh="#users-mgmt">[^]{0,200}value="device_code_create"/);
+  const adminScript=fs.readFileSync('public/mikanbox/cloud-admin.js','utf8');
+  assert.match(adminScript,/await window\.MikanUI\.refresh\('#users-mgmt'\)/);
+  // The language select is in an in-place form, and the script reloads for any form that contains it.
+  assert.match(site,/<form method="post" data-ajax>[^]*?<select name="system_lang">/);
+  assert.match(adminScript,/form\.querySelector\?\.\('\[name="system_lang"\]'\)/);
   assert.match(site,/<form method="post" class="device-expiry-form" data-ajax>/);
   assert.match(site,/data-refresh="#users-mgmt"/);
   // The editor lives in its slot, so closing it removes it.
