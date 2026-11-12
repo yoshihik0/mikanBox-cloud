@@ -1,6 +1,6 @@
 <style>.manual-version{font-size:.5em;font-weight:400;white-space:nowrap}</style>
 
-# 🍊mikanBox Cloudflare Manual <small class="manual-version">v0.9.4</small>
+# 🍊mikanBox Cloudflare Manual <small class="manual-version">v0.10.0</small>
 
 This manual covers installation and the Cloudflare edition’s differences. For shared operations, see the [operation manual](https://yoshihiko.com/mikanbox/help_en.html).
 
@@ -394,3 +394,12 @@ Follows PHP 2.19.2.
 ### Changes in 0.9.4
 
 The order of closing an editor follows PHP 2.19.3 (page and design editors alike). (1) It fades out in place (about 200 ms; the height does not change). (2) The screen scrolls smoothly to the top of the list (300-600 ms, by distance). (3) Only after the scroll ends is the editor removed. With reduced motion (`prefers-reduced-motion`) it closes at once. This replaces the 0.9.3 "scroll, then shrink" motion.
+
+### Changes in 0.10.0
+
+The admin page list order follows PHP 2.20.0.
+
+- **The default order ("Display order")** now matches the public lists (`NAV_LINKS` and `NAV_CARDS`): pending, then `index`, then display order, then the **newest update**, then ID. Before, pages with the same display order were ordered by ID.
+- **A sort selector** sits right of the output-format filter: Display order, Newest update, Oldest update, ID, Title (URL parameter `sort=`). Title order uses Japanese collation (an empty title is ordered by its ID). `index` is always first. Pending pages come first only in Display order; in the other orders the list is purely in that order.
+- Sorting happens before the page split. The chosen order is kept with filters, search and paging, and after opening and closing an editor.
+- The selector's tooltip explains the Update date: it is set when the page is created, updated when it goes from not public to public, and not changed by later edits.

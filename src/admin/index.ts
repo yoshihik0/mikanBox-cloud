@@ -17,7 +17,7 @@ import { renderAccountsSection } from './accounts-view';
 import { MikanBoxRenderer } from '../renderer';
 import { previewMediaUrls } from '../preview-media';
 import { pageFormatFields, withFormatFields, validatePageSave, isDataFormat, isApiFormat, formatExtension, pageOutputFormat, adminPreviewUrl } from '../output-formats';
-import { sortPagesForAdmin } from '../storage';
+import { sortPagesForAdmin, pageSortParam } from '../storage';
 import { PREVIEW_SANDBOX } from '../site-split';
 import { publicationStatus } from '../publish-status';
 import { pageId, componentId, pageStatus } from '../validation';
@@ -405,18 +405,18 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
     editData=view==='components'?await loadComponent(env,editId):await loadPage(env,editId);
     if(view==='pages'&&url.searchParams.has('rev')) {const r=pageRevisions.find(r=>r.id===Number(url.searchParams.get('rev')));if(r&&editData)editData={...JSON.parse(r.data),revision_tag:(editData as PageData).revision_tag};}
   }
-  const pages=sortPagesForAdmin(await listPages(env)),components=await listComponents(env);
+  const pageSort=pageSortParam(url.searchParams.get('sort')),pages=sortPagesForAdmin(await listPages(env),pageSort),components=await listComponents(env);
   const files=await listMediaFiles(env),cats=new Set((settings.category_candidates||'').split(',').map(x=>x.trim()).filter(Boolean));
   for(const p of pages)for(const c of(p.data.category||'').split(',').map(x=>x.trim()).filter(Boolean))cats.add(c);
   const allCategories=[...cats].sort(),category=url.searchParams.get('cat')||'',query=url.searchParams.get('q')||'';
   const formatFilter=(PAGE_FORMAT_FILTERS as readonly string[]).includes(url.searchParams.get('fmt')||'')?url.searchParams.get('fmt')||'':'';
   const filtered=pages.filter(p=>(!formatFilter||(formatFilter==='data'?isDataFormat(pageOutputFormat(p.data)):pageOutputFormat(p.data)===formatFilter))&&(!category||(p.data.category||'').split(',').map(x=>x.trim()).includes(category))&&(!query||`${p.id} ${p.data.title} ${p.data.content_md||''}`.toLowerCase().includes(query.toLowerCase())));
   const perPage=Math.min(500,Math.max(1,Number(settings.pages_per_page)||30)),totalPages=Math.max(1,Math.ceil(filtered.length/perPage)),pageNumber=Math.min(totalPages,Math.max(1,Number(url.searchParams.get('p_pages'))||1));
-  const hasNew=url.searchParams.has('new'),helpFile=help(lang),listQuery=pageListQuery({category,format:formatFilter,query,pageNumber:Number(url.searchParams.get('p_pages'))||1});
+  const hasNew=url.searchParams.has('new'),helpFile=help(lang),listQuery=pageListQuery({category,format:formatFilter,sort:pageSort,query,pageNumber:Number(url.searchParams.get('p_pages'))||1});
   const pageEditorHtml=view==='pages'&&(editId||hasNew)?renderPageEditor({t,editId,editData:editData as PageData|null,csrf,helpFile,wrapperComponents:components.filter(c=>c.data.is_wrapper),allCategories,publicBase:(env.PUBLIC_SITE_URL||String(settings.ssg_root_url||'')||url.origin).replace(/\/$/,''),settings:{...settings,_site_base:url.origin},revisions:pageRevisions,selectedRevision:pageRevisions.find(r=>r.id===Number(url.searchParams.get('rev'))),listQuery,listCategory:category}):'';
   const designEditorHtml=view==='components'&&(editId||hasNew)?renderDesignEditor({t,editId,editData:editData as ComponentData|null,csrf,helpFile}):'';
   const cloudReady=await cloudConfigured(env);
-  const pagesHtml=renderPagesView({t,pages:filtered.slice((pageNumber-1)*perPage,pageNumber*perPage),view,editId,hasNew,csrf,helpFile,settings,query,category,format:formatFilter,pageNumber,totalPages,lang,publication:await publicationStatus(env,url.origin,pages),cloudReady,publicUrl:env.CLOUDFLARE_PUBLIC_WORKER_NAME ? env.PUBLIC_SITE_URL || '' : '',editorHtml:pageEditorHtml});
+  const pagesHtml=renderPagesView({t,pages:filtered.slice((pageNumber-1)*perPage,pageNumber*perPage),view,editId,hasNew,csrf,helpFile,settings,query,category,format:formatFilter,sort:pageSort,pageNumber,totalPages,lang,publication:await publicationStatus(env,url.origin,pages),cloudReady,publicUrl:env.CLOUDFLARE_PUBLIC_WORKER_NAME ? env.PUBLIC_SITE_URL || '' : '',editorHtml:pageEditorHtml});
   const mediaQuery=url.searchParams.get('q_media')||'',mediaCategory=category,ignoreMediaCategory=url.searchParams.get('media_all')==='1';
   const mediaTypeFilter=['image','audio','video','js','css'].includes(url.searchParams.get('media_type')||'')?url.searchParams.get('media_type')!:'';
   const extensions:Record<string,string[]>={image:['jpg','jpeg','png','gif','webp','svg'],audio:['mp3','m4a'],video:['mp4'],js:['js'],css:['css']};

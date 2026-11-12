@@ -109,10 +109,11 @@ function publishBox(csrf: string, t: (key: string, ...args: (string | number)[])
  * the page editor, saving, and going back to the list keep the list as it was (as in PHP, where
  * the editor opens over the list without reloading it). Starts with "&" when not empty.
  */
-export function pageListQuery(state: { category?: string; format?: string; query?: string; pageNumber?: number }): string {
+export function pageListQuery(state: { category?: string; format?: string; sort?: string; query?: string; pageNumber?: number }): string {
   const params = new URLSearchParams();
   if (state.category) params.set('cat', state.category);
   if (state.format) params.set('fmt', state.format);
+  if (state.sort) params.set('sort', state.sort);
   if (state.query) params.set('q', state.query);
   if (state.pageNumber && state.pageNumber > 1) params.set('p_pages', String(state.pageNumber));
   const qs = params.toString();
@@ -121,6 +122,8 @@ export function pageListQuery(state: { category?: string; format?: string; query
 
 /** Values of the page list's output-format filter ("data" is every data format), as in PHP pages.php. */
 export const PAGE_FORMAT_FILTERS = ['', 'html', 'html_md', 'md', 'data', 'db'] as const;
+/** Orders of the page list (value, language key): the URL parameter is sort= (PHP 2.20.0). */
+export const PAGE_SORT_CHOICES: Array<[string, string]> = [['', 'page_sort_display'], ['updated_desc', 'page_sort_updated_desc'], ['updated_asc', 'page_sort_updated_asc'], ['id', 'page_sort_id'], ['title', 'page_sort_title']];
 
 // ===== 管理画面メインシェル =====
 export function renderAdminShell(opts: {
@@ -278,6 +281,8 @@ ${opts.mediaEnabled?`<div id="drop-zone">${getIcon('cloud')} ${t('hint_drop_uplo
     }
     const pageFormatFilter = document.getElementById('page-format-filter');
     if (pageFormatFilter) pageFormatFilter.addEventListener('change', () => applyListParam('fmt', pageFormatFilter.value, 'p_pages', 'pages', refreshPageList));
+    const pageSortOrder = document.getElementById('page-sort-order');
+    if (pageSortOrder) pageSortOrder.addEventListener('change', () => applyListParam('sort', pageSortOrder.value, 'p_pages', 'pages', refreshPageList));
     const mediaTypeFilter = document.getElementById('media-type-filter');
     if (mediaTypeFilter) mediaTypeFilter.addEventListener('change', () => applyListParam('media_type', mediaTypeFilter.value, 'p_media', 'media', refreshMediaGrid));
     const mediaSearch = document.getElementById('admin-media-search');
@@ -688,13 +693,13 @@ export function renderPagesView(opts: {
   csrf: string;
   helpFile: string;
   settings: Settings;
-  query?: string; category?:string; format?: string; pageNumber?:number; totalPages?:number;
+  query?: string; category?:string; format?: string; sort?: string; pageNumber?:number; totalPages?:number;
   lang?: string; publication?: PublicationStatus; cloudReady?: boolean; publicUrl?: string;
   /** The page editor (when ?edit= or ?new= opens it); it lives in the page-editor slot. */
   editorHtml?: string;
 }): string {
   const { t, pages, view, editId, hasNew, csrf, helpFile } = opts;
-  const listQuery = h(pageListQuery({ category: opts.category, format: opts.format, query: opts.query, pageNumber: opts.pageNumber }));
+  const listQuery = h(pageListQuery({ category: opts.category, format: opts.format, sort: opts.sort, query: opts.query, pageNumber: opts.pageNumber }));
   const ja = opts.lang !== 'en', publication = opts.publication;
   const hasEditor = view === 'pages' && (editId !== null || hasNew);
 
@@ -743,11 +748,11 @@ export function renderPagesView(opts: {
             <div class="header">
             <h1>${getIcon('page')} ${t('nav_pages')}
               <a href="?view=pages&amp;new=1${listQuery}#page-editor" class="btn btn-sm btn-blue" style="margin-left:15px;display:inline-flex;align-items:center;gap:5px;font-size:.85rem;padding:4px 10px;vertical-align:middle">${getIcon('add')} ${t('btn_create_new')}</a>
-              <a href="${h(helpFile)}#page-mgmt" target="_blank" class="manual-link">${t('admin_help')}</a><span class="component-filter-control"><select class="select-auto list-filter-select" id="page-format-filter" aria-label="${t('label_output_format')}">${PAGE_FORMAT_FILTERS.map(value=>`<option value="${value}" ${(opts.format||'')===value?'selected':''}>${h(t(value===''?'page_format_filter_all':value==='data'?'output_format_data_group':'output_format_'+value))}</option>`).join('')}</select></span>
+              <a href="${h(helpFile)}#page-mgmt" target="_blank" class="manual-link">${t('admin_help')}</a><span class="component-filter-control"><select class="select-auto list-filter-select" id="page-format-filter" aria-label="${t('label_output_format')}">${PAGE_FORMAT_FILTERS.map(value=>`<option value="${value}" ${(opts.format||'')===value?'selected':''}>${h(t(value===''?'page_format_filter_all':value==='data'?'output_format_data_group':'output_format_'+value))}</option>`).join('')}</select></span><span class="component-filter-control"><select class="select-auto list-filter-select" id="page-sort-order" aria-label="${t('page_sort_label')}" title="${h(t('page_sort_hint'))}">${PAGE_SORT_CHOICES.map(([value,key])=>`<option value="${value}" ${(opts.sort||'')===value?'selected':''}>${h(t(key))}</option>`).join('')}</select></span>
             </h1>
             <!-- Admin page search: the browser's own clear button only (as in PHP) -->
             <form method="get" action="/admin#pages" class="search-bar-wrap" role="search">
-              <input type="hidden" name="view" value="pages"><input type="hidden" name="cat" value="${h(opts.category||'')}"><input type="hidden" name="fmt" value="${h(opts.format||'')}">
+              <input type="hidden" name="view" value="pages"><input type="hidden" name="cat" value="${h(opts.category||'')}"><input type="hidden" name="fmt" value="${h(opts.format||'')}"><input type="hidden" name="sort" value="${h(opts.sort||'')}">
               <div class="admin-search">
                 <input type="search" name="q" id="admin-page-search" class="admin-search-input" value="${h(opts.query||'')}" placeholder="${t('search_placeholder')}" aria-label="${t('search_placeholder')}">
                 <span id="admin-page-search-icon" class="admin-search-icon">${getIcon('search')}</span>
@@ -763,7 +768,7 @@ export function renderPagesView(opts: {
         </table>
         </form>
         </div>
-        ${(opts.totalPages||1)>1?`<div class="pagination">${Array.from({length:opts.totalPages||1},(_,i)=>`<a class="pagination-link ${opts.pageNumber===i+1?'active':''}" href="?view=pages&amp;p_pages=${i+1}${h(pageListQuery({category:opts.category,format:opts.format,query:opts.query}))}#pages">${i+1}</a>`).join('')}</div>`:''}
+        ${(opts.totalPages||1)>1?`<div class="pagination">${Array.from({length:opts.totalPages||1},(_,i)=>`<a class="pagination-link ${opts.pageNumber===i+1?'active':''}" href="?view=pages&amp;p_pages=${i+1}${h(pageListQuery({category:opts.category,format:opts.format,sort:opts.sort,query:opts.query}))}#pages">${i+1}</a>`).join('')}</div>`:''}
         ${publishBox(csrf, t, publication, ja, opts.cloudReady !== false, opts.publicUrl || '')}
         </div>
     </div>
