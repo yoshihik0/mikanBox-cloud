@@ -16,7 +16,7 @@ export const PUBLICATION_FILE_LIMIT=20_000;
 export const PUBLICATION_FILE_BYTES=25*1024*1024;
 export const PUBLICATION_MAP_BYTES=32*1024*1024;
 export interface PublicationFile {path:string;body:Uint8Array;contentType:string}
-export interface PublicationItem {path:string;kind:'page'|'media'|'component'|'asset'|'headers'|'redirects'|'feed'|'api';id:string;size:number|null;hash?:string|null}
+export interface PublicationItem {path:string;kind:'page'|'media'|'asset'|'headers'|'redirects'|'feed'|'api';id:string;size:number|null;hash?:string|null}
 /** Same digest the browser computes in cloud-publish.js: the first 32 hex digits of SHA-256. */
 export async function publicationHash(bytes:Uint8Array):Promise<string> {
   return [...new Uint8Array(await crypto.subtle.digest('SHA-256',bytes))].map(b=>b.toString(16).padStart(2,'0')).join('').slice(0,32);
@@ -131,8 +131,6 @@ export async function publicationManifest(env:Env):Promise<PublicationManifest> 
     // HTML + Markdown: the Markdown version sits beside the HTML at /id.md (no extra alias).
     if(row.md_size!==null&&safeOutput(row.id,'/'+row.id+'.md'))entries.push({path:'/'+row.id+'.md',kind:'page',id:row.id,size:row.md_size,hash:row.md_hash});
   }
-  const components=await env.DB.prepare("SELECT id,length(CAST(json_extract(data,'$.js') AS BLOB)) size FROM components WHERE COALESCE(json_extract(data,'$.is_ai_doc'),0)=0 AND length(json_extract(data,'$.js'))>0 ORDER BY id").all<{id:string;size:number}>();
-  for(const row of components.results)if(validId(row.id,true))entries.push({path:'/component-js/'+row.id+'.js',kind:'component',id:row.id,size:row.size});
   // Every stored file is published, not only the ones static pages reference:
   // dynamic pages read /media/* from the same static assets.
   for(const file of await listMediaFiles(env))if(safeImage(file.key))entries.push({path:'/media/'+file.key,kind:'media',id:file.key,size:file.size});
@@ -170,11 +168,6 @@ export async function readPublicationEntry(env:Env,request:Request,path:string):
     const object=await getMediaObject(env,key);if(!object)return null;
     if(object.size>PUBLICATION_FILE_BYTES)throw new Error('Publication file exceeds 25 MiB: '+path);
     return checked({path,body:new Uint8Array(await object.arrayBuffer()),contentType:imageTypes[key.split('.').pop()!.toLowerCase()]});
-  }
-  if(path.startsWith('/component-js/')&&path.endsWith('.js')) {
-    const id=path.slice(14,-3);if(!validId(id,true))return null;
-    const row=await env.DB.prepare("SELECT json_extract(data,'$.js') js FROM components WHERE id=? AND COALESCE(json_extract(data,'$.is_ai_doc'),0)=0 AND length(json_extract(data,'$.js'))>0").bind(id).first<{js:string}>();
-    return row?checked({path,body:encode.encode(row.js),contentType:'text/javascript; charset=utf-8'}):null;
   }
   // Built pages: the file each one publishes, and the Markdown version of HTML + Markdown pages.
   const page=path.match(/^\/(?:api\/)?(.+)\.(html|md|json|xml|csv|txt|js|css)$/);

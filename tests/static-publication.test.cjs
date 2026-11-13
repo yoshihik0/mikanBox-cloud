@@ -21,7 +21,8 @@ test('publication manifest includes current built public pages and every stored 
   await saveComponent(value,'card',{html:'',js:'publicJS()'});await saveComponent(value,'DESIGN.md',{html:'SECRET_DOC',is_ai_doc:true,js:'SECRET_JS()'});
   const image=new Uint8Array([137,80,78,71,13,10,26,10]);await uploadMedia(value,'unused-private-context.png',image.buffer,'image/png');
   const manifest=await publicationManifest(value),paths=manifest.entries.map(e=>e.path);
-  assert.ok(paths.includes('/index.html'));assert.ok(paths.includes('/component-js/card.js'));
+  assert.ok(paths.includes('/index.html'));assert.equal(paths.some(path=>path.startsWith('/component-js/')),false);
+  assert.equal(await readPublicationEntry(value,request,'/component-js/card.js'),null);
   // Images are published even when no static page references them, because dynamic pages read the same paths.
   assert.ok(paths.includes('/media/unused-private-context.png'));
   for(const path of ['/draft.html','/pending.html','/unbuilt.html','/component-js/DESIGN.md.js','/data/settings.json'])assert.equal(paths.includes(path),false);

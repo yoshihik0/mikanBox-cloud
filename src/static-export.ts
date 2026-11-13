@@ -32,9 +32,7 @@ export async function buildStaticExportZip(env:Env,request:Request,options:Stati
   if(!snapshots.length)throw new Error('No built public_static pages to export. Build static pages first.');
   const paths=new Map(snapshots.map(row=>[row.id,outputPath(row.id,options.structure)]));
   if(new Set(paths.values()).size!==paths.size)throw new Error('Static export path collision. Rename pages with overlapping directory index URLs.');
-  const components=(await env.DB.prepare("SELECT id,json_extract(data,'$.js') js FROM components WHERE COALESCE(json_extract(data,'$.is_ai_doc'),0)=0").all<{id:string;js:string|null}>()).results;
-  const publicJs=new Map(components.filter(row=>validId(row.id,true)&&row.js).map(row=>[row.id,row.js!]));
-  const media=new Set<string>(),assets=new Set<string>(),componentScripts=new Set<string>();
+  const media=new Set<string>(),assets=new Set<string>();
   const files: Array<{name:string;data:Uint8Array}>=[];
   let bytes=22; // ZIP end record, plus each file's two headers and names below.
   const add=(name:string,data:Uint8Array)=>{
@@ -60,11 +58,6 @@ export async function buildStaticExportZip(env:Env,request:Request,options:Stati
       const key=pathname.slice(7);if(!validMediaName(key))return url.href;
       media.add(key);return relative(from,'media/'+key)+suffix;
     }
-    if(pathname.startsWith('/component-js/')) {
-      const id=pathname.slice(14).replace(/\.js$/,'');
-      if(!publicJs.has(id))return url.href;
-      componentScripts.add(id);return relative(from,'component-js/'+id+'.js')+suffix;
-    }
     if(/^\/mikanbox\/[A-Za-z0-9_.\/-]+$/.test(pathname)&&!pathname.includes('..')&&!pathname.endsWith('/ai-question.js')) {
       assets.add(pathname);return relative(from,pathname.slice(1))+suffix;
     }
@@ -85,9 +78,6 @@ export async function buildStaticExportZip(env:Env,request:Request,options:Stati
         if(!src)return tag;
         const url=resolve(src[2],sourceUrl),path=url?localPath(url):null;
         if(path==='/mikanbox/ai-question.js')return '<!-- Cloud WebMCP is unavailable in a static export. -->';
-        if(path?.startsWith('/component-js/')) {
-          const id=path.slice(14).replace(/\.js$/,'');if(!publicJs.has(id))return '';
-        }
       }
       if(/^<div\b[^>]*\bdata-mikanbox-ai-question\b/i.test(tag)) {
         return `<div class="mikanbox-export-ai-help"><a href="${escape(new URL('/public-help.html',siteOrigin).href)}">mikanBox Cloud Help / AIに質問</a>`;
@@ -113,10 +103,9 @@ export async function buildStaticExportZip(env:Env,request:Request,options:Stati
     const data=new Uint8Array(await response.arrayBuffer());
     add(path.slice(1),path.endsWith('.css')?encode.encode(css(new TextDecoder().decode(data),path.slice(1),new URL(path,live.origin))):data);
   }
-  for(const id of componentScripts)add('component-js/'+id+'.js',encode.encode(publicJs.get(id)!));
   if(media.size>39)throw new Error('Static export has too many image reads. Reduce included images.');
   const metadata=media.size?(await env.DB.prepare(`SELECT key,size,upload_id,chunk_count,object_key FROM media WHERE key IN (${[...media].map(()=>'?').join(',')})`).bind(...media).all<MediaRow>()).results:[];
-  let queries=2+(media.size?1:0),predictedBytes=bytes;
+  let queries=1+(media.size?1:0),predictedBytes=bytes;
   const accounted=new Set<string>();
   function account(key:string,row:MediaRow) {
     queries+=row.object_key?1:row.upload_id?1+(row.chunk_count||Math.ceil(row.size/MEDIA_CHUNK_SIZE)):2;

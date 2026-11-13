@@ -250,7 +250,6 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
         case 'save_comp': {
           const id=componentId(val(form,'id')),oldId=val(form,'old_id'); if(oldId) componentId(oldId);
           if(id!==oldId&&await loadComponent(env,id)) throw new Error('Component ID already exists.');
-          if(oldId&&(oldId!==id||val(form,'comp_type')==='ai_doc'))await assertNotPublished(env,['/component-js/'+oldId+'.js']);
           const kind=val(form,'comp_type')||(form.has('is_wrapper')?'wrapper':'part');if(!['part','wrapper','ai_doc'].includes(kind)) throw new Error('Invalid component type.');
           const data:ComponentData={html:val(form,'html'),css:val(form,'css'),js:val(form,'js'),memo:val(form,'memo'),is_global:!form.has('use_scope'),is_wrapper:kind==='wrapper',is_ai_doc:kind==='ai_doc'};
           if(oldId&&oldId!==id) {
@@ -259,7 +258,7 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
           } else if(!await saveComponent(env,id,data)) throw new Error(t('err_save_failed'));
           editId=id;message=t('msg_comp_saved',id);break;
         }
-        case 'delete_comp': await assertNotPublished(env,['/component-js/'+val(form,'old_id')+'.js']);{const id=componentId(val(form,'old_id')||val(form,'id'));if(!await deleteComponent(env,id)) throw new Error(t('err_save_failed'));editId=null;deletedId=id;message=t('msg_comp_deleted',id);break;}
+        case 'delete_comp': {const id=componentId(val(form,'old_id')||val(form,'id'));if(!await deleteComponent(env,id)) throw new Error(t('err_save_failed'));editId=null;deletedId=id;message=t('msg_comp_deleted',id);break;}
         case 'save_cloud_update_repository': {
           const repository=val(form,'cloud_update_repository').trim();
           if(repository&&!cloudUpdateUrl(repository))throw new Error('GitHub repository must be owner/repository.');

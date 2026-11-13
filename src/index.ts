@@ -1,5 +1,5 @@
 import type { Env } from './types';
-import { loadSettings, loadPage, loadComponent, getMediaObject, isPublicStatus } from './storage';
+import { loadSettings, loadPage, getMediaObject, isPublicStatus } from './storage';
 import { MikanBoxRenderer } from './renderer';
 import { generateSitemapXml, generateRssXml, generatePodcastXml } from './feeds';
 import { handleAdmin } from './admin/index';
@@ -40,7 +40,7 @@ async function route(request: Request, env: Env): Promise<Response> {
     // The public site lives on its own Worker. Here, nothing of the site is served
     // without a session, and signed-in users are sent to the preview of the same path.
     if(!await authenticatedUser(request,env))return new Response('Not Found',{status:404,headers:{'Cache-Control':'no-store'}});
-    const direct=['/media/','/component-js/','/preview/','/api/'].some(prefix=>pathname.startsWith(prefix))||['/sitemap.xml','/rss.xml','/podcast.xml'].includes(pathname);
+    const direct=['/media/','/preview/','/api/'].some(prefix=>pathname.startsWith(prefix))||['/sitemap.xml','/rss.xml','/podcast.xml'].includes(pathname);
     if(!direct)return Response.redirect(new URL('/preview'+pathname+url.search,url).href,302);
   }
   if(pathname.startsWith('/media/')) {
@@ -52,13 +52,6 @@ async function route(request: Request, env: Env): Promise<Response> {
     if(key.toLowerCase().endsWith('.svg'))headers['Content-Security-Policy']="sandbox; default-src 'none'; style-src 'unsafe-inline'";
     if(request.headers.get('If-None-Match')===object.httpEtag)return new Response(null,{status:304,headers});
     return new Response(object.body,{headers});
-  }
-  if(pathname.startsWith('/component-js/')) {
-    const id=pathname.slice(14).replace(/\.js$/,'');
-    if(!validId(id,true))return new Response('Not Found',{status:404});
-    const component=await loadComponent(env,id);
-    if(!component?.js||component.is_ai_doc)return new Response('Not Found',{status:404});
-    return new Response(component.js,{headers:{'Content-Type':'text/javascript; charset=utf-8','Cache-Control':'no-store'}});
   }
   const settings=await loadSettings(env),renderer=new MikanBoxRenderer(env,settings,request);
   const preview=pathname.startsWith('/preview/');

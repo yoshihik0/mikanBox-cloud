@@ -1152,12 +1152,6 @@ export function renderDesignEditor(opts: {
                     </div>
                 </div>
                 <details class="form-group js-accordion" ${d.js?'open':''}><summary>${t('label_component_js')} <span class="accordion-arrow">▼</span></summary><small class="sub-text sub-text-block">${t('component_js_hint')}</small><textarea name="js" class="textarea-md textarea-mono" rows="10">${h(d.js||'')}</textarea>
-                    ${editId && /^[A-Za-z0-9_-]+$/.test(editId) ? `
-                    <small class="sub-text sub-text-block">${t('component_js_embed_hint')}</small>
-                    <code>${h('<script src="' + editId + '.js" defer></script>')}</code>
-                    <small class="sub-text sub-text-block">${t('component_js_path_hint')}<br>
-                        <a href="/component-js/${encodeURIComponent(editId)}.js" target="_blank" rel="noopener">/component-js/${h(editId)}.js</a>
-                    </small>` : ''}
                 </details>
 
                 <div class="flex-row flex-between mt-25">

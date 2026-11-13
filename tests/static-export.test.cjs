@@ -46,18 +46,17 @@ test('flat and directory exports rewrite public page aliases and preserve exact-
   assert.ok(files.has('news/item/index.html'));assert.ok(files.has('test/index.html'));
   item=decode.decode(files.get('news/item/index.html'));assert.match(item,/href="\.\.\/\.\.\/index.html"/);assert.match(item,/\.\.\/\.\.\/test\/index.html/);
 });
-test('export includes referenced original images, scoped component JS, and public CSS assets',async()=>{
+test('export includes referenced original images, inline component JS, and public CSS assets',async()=>{
   const env=environment(),image=new Uint8Array([137,80,78,71,13,10,26,10,0]);
   await uploadMedia(env,'one.png',image.buffer,'image/png');await uploadMedia(env,'unused.png',image.buffer,'image/png');
   await saveComponent(env,'card',{html:'',js:'window.card=true;'});
   await saveComponent(env,'DESIGN.md',{html:'PRIVATE',is_ai_doc:true,js:'PRIVATE_JS'});
   env.ASSETS={fetch:async req=>new Response(new URL(req.url).pathname==='/mikanbox/site.css'?'body{background:url("../media/one.png")}':'', {status:200})};
-  await snapshot(env,'nested/page','<base href="https://cloud.test/"><link href="/mikanbox/site.css" rel="stylesheet"><img src="/media/one.png" srcset="/media/one.png 1x, /media/one.png 2x"><style>p{background:url(/media/one.png)}</style><script src="/component-js/card.js"></script><script src="/component-js/DESIGN.md.js"></script>');
+  await snapshot(env,'nested/page','<base href="https://cloud.test/"><link href="/mikanbox/site.css" rel="stylesheet"><img src="/media/one.png" srcset="/media/one.png 1x, /media/one.png 2x"><style>p{background:url(/media/one.png)}</style><script>window.card=true;</script>');
   const files=unzip(await buildStaticExportZip(env,request,{structure:'directory'}));
   assert.ok(files.has('media/one.png'));assert.equal(files.has('media/unused.png'),false);assert.deepEqual(files.get('media/one.png'),image);
-  assert.equal(decode.decode(files.get('component-js/card.js')),'window.card=true;');
-  assert.equal(files.has('component-js/DESIGN.md.js'),false);
-  const html=decode.decode(files.get('nested/page/index.html'));assert.match(html,/src="\.\.\/\.\.\/media\/one.png"/);assert.match(html,/\.\.\/\.\.\/component-js\/card.js/);assert.doesNotMatch(html,/<base|DESIGN\.md/);
+  assert.equal([...files.keys()].some(path=>path.startsWith('component-js/')),false);
+  const html=decode.decode(files.get('nested/page/index.html'));assert.match(html,/src="\.\.\/\.\.\/media\/one.png"/);assert.match(html,/window\.card=true/);assert.doesNotMatch(html,/<base|DESIGN\.md/);
   assert.match(decode.decode(files.get('mikanbox/site.css')),/\.\.\/media\/one.png/);
 });
 test('split-site export includes images from the public origin without treating other origins as local',async()=>{

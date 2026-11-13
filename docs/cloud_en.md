@@ -1,6 +1,6 @@
 <style>.manual-version{font-size:.5em;font-weight:400;white-space:nowrap}</style>
 
-# 🍊mikanBox Cloudflare Manual <small class="manual-version">v0.10.0</small>
+# 🍊mikanBox Cloudflare Manual <small class="manual-version">v0.10.1</small>
 
 This manual covers installation and the Cloudflare edition’s differences. For shared operations, see the [operation manual](https://yoshihiko.com/mikanbox/help_en.html).
 
@@ -75,7 +75,7 @@ Usage is the same as in the PHP editions; see [Visual Editing](https://yoshihiko
 - **Safety limits**: it works only while a registered device is signed in. Writes are accepted only from this site's own screen with a CSRF token. No script of the page (inline, external, component JavaScript or uploaded JS) runs on this screen, because it would run with the administrator's session. Check parts that depend on JavaScript in the preview or on the public site.
 - **Free plan and long pages**: live updates are mostly made in the browser and use no Worker CPU time or requests. When you edit a block with `{{…}}` tags, links within the site or images, among others, the server renders the whole body again (one render at a time). On the Cloudflare free plan, such renders can fail when they run back to back. In tests, bodies up to 20,000 characters did not fail; at 30,000 to 40,000 characters, some back-to-back renders failed. A failure shows "Could not update the page" in the panel, and saving still works. An open screen does not contact the server while idle.
 
-Component JavaScript is available at `/component-js/ID.js`. Page/component JavaScript is administrator-authored code executed on public pages.
+Page and component JavaScript fields are embedded in the HTML of the pages that use them. Upload standalone JavaScript files to Media.
 
 Draft/pending data cannot be read through public POST_MD embeds, navigation, feeds, or the data API.
 

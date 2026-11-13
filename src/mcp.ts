@@ -176,7 +176,6 @@ export async function handleMcp(request:Request,env:Env):Promise<Response> {
         if(name==='update_component'&&!current&&args.data===undefined)throw new Error('Component not found.');
         for(const field of ['html','css','js','memo'])if(field in incoming){if(typeof incoming[field]!=='string')throw new Error(`Invalid field: ${field}`);(next as unknown as Record<string,unknown>)[field]=incoming[field];}
         for(const field of ['is_global','is_wrapper','is_ai_doc'])if(field in incoming){if(typeof incoming[field]!=='boolean')throw new Error(`Invalid field: ${field}`);(next as unknown as Record<string,unknown>)[field]=incoming[field];}
-        if(next.is_ai_doc)await assertNotPublished(env,['/component-js/'+cid+'.js']);
         if(next.is_wrapper&&next.is_ai_doc)throw new Error('Invalid component type.');
         if(name==='create_component') {
           const saved=await env.DB.prepare('INSERT INTO components(id,data,is_wrapper) VALUES(?,?,?) ON CONFLICT(id) DO NOTHING').bind(cid,JSON.stringify(next,null,2),next.is_wrapper?1:0).run();
@@ -184,7 +183,7 @@ export async function handleMcp(request:Request,env:Env):Promise<Response> {
         }else if(!await saveComponent(env,cid,next))throw new Error('Save failed.');
         data={success:true,id:cid,...next};break;
       }
-      case 'delete_component':await assertNotPublished(env,['/component-js/'+String(args.id||'')+'.js']);if(!await deleteComponent(env,componentId(String(args.id||''))))throw new Error('Delete failed.');data={deleted:args.id};break;
+      case 'delete_component':if(!await deleteComponent(env,componentId(String(args.id||''))))throw new Error('Delete failed.');data={deleted:args.id};break;
       case 'get_revisions':data=await revisions(env,pageId(String(args.id||'')));break;
       case 'get_settings':data=Object.fromEntries(Object.entries(settings).filter(([key])=>!/(?:password|secret|token|api.?key|credential)/i.test(key)&&!['_site_base'].includes(key)));break;
       case 'get_ai_context':case 'list_ai_docs': {
