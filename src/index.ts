@@ -9,6 +9,7 @@ import { validId } from './validation';
 import { handleMcp } from './mcp';
 import { handlePublicHelp } from './public-help';
 import { splitMode, PREVIEW_SANDBOX } from './site-split';
+import { httpsRedirect } from './https-redirect';
 import { previewMediaUrls, verifyPreviewMedia } from './preview-media';
 import { pageOutputFormat, formatHasHtml, formatHasMarkdown, isDataFormat, isApiFormat, contentTypeForExtension } from './output-formats';
 
@@ -98,6 +99,8 @@ async function route(request: Request, env: Env): Promise<Response> {
 export default {
   async fetch(request: Request,env: Env):Promise<Response> {
     try {
+      const toHttps=httpsRedirect(request);
+      if(toHttps)return toHttps;
       const original=await route(request,env);
       const response=new Response(original.body,{status:original.status,headers:original.headers});
       response.headers.set('X-Content-Type-Options','nosniff');

@@ -1,6 +1,6 @@
 <style>.manual-version{font-size:.5em;font-weight:400;white-space:nowrap}</style>
 
-# 🍊mikanBox Cloudflare版 マニュアル <small class="manual-version">v0.10.1</small>
+# 🍊mikanBox Cloudflare版 マニュアル <small class="manual-version">v0.10.2</small>
 
 このマニュアルはCloudflare版の導入と、PHP版との違いを説明します。共通の操作は[操作マニュアル](https://yoshihiko.com/mikanbox/help_ja.html)も参照してください。flat版・SQLite版との使い分けは、[README](https://github.com/yoshihik0/mikanBox-cloud#readme)を参照してください。
 
@@ -205,6 +205,7 @@ Cloud版では、管理画面と公開サイトが別々のWorkerで動きます
 #### 管理側と公開側の違い
 
 - 管理側のアドレスでは、ログインしていない人にページ・画像・サイトマップなどを出しません。検索エンジンにも載せません。
+- v0.10.2から、`http://` で開いた管理側のアドレスは、同じアドレスの `https://` へ移ります（ページを開くときだけ。手元の `wrangler dev` の `localhost` などは移りません）。
 - ログインした端末で管理側の `/about` などを開くと、プレビュー（`/preview/about`）に移ります。プレビューの中では、ページのJSからCookieや `localStorage` を使えません。
 - 公開ページ、サイトマップ、RSSには公開サイトのURLを使います。サイトマップ・RSS・DBページのJSONは、公開側にファイルとして出します。
 - 404ページは、PHP版と同じくサイトマップとRSSに載せません。
