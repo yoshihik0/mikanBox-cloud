@@ -61,7 +61,7 @@ function sameOrigin(request: Request): boolean {
 function jsStrings(lang: string): Record<string, string> {
   const all = (lang === 'en' ? EN : JA) as Record<string, string>, out: Record<string, string> = {};
   for (const k of Object.keys(all)) if (k.startsWith('visual_')) out[k] = all[k];
-  for (const k of ['btn_close', 'btn_cancel', 'btn_copy', 'label_title', 'btn_visual_edit']) if (all[k] !== undefined) out[k] = all[k];
+  for (const k of ['btn_close', 'btn_cancel', 'btn_ok', 'btn_copy', 'label_title', 'btn_visual_edit']) if (all[k] !== undefined) out[k] = all[k];
   return out;
 }
 const statusLabel = (t: Translator, s: string) => {

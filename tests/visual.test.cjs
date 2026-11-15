@@ -50,6 +50,11 @@ test('the page: markers, globals, CSP and scripts',async()=>{
   assert.ok(!/script-src[^;]*'self'/.test(csp),'same-origin scripts (media, component JS) must not run with the session');
   assert.match(csp,/frame-ancestors 'self'/);assert.match(csp,/object-src 'none'/);
   assert.match(csp,/form-action 'none'/,'no form of the page can post with the session');
+  // Every label the editor script asks for is handed to it (a missing one shows its key, e.g. "btn_ok").
+  const strings=JSON.parse(/window\.__VISUAL_T=(\{.*?\});<\/script>/s.exec(html)[1]);
+  const script=require('node:fs').readFileSync(require('node:path').join(__dirname,'../public/mikanbox/visual.js'),'utf8');
+  const wanted=[...new Set([...script.matchAll(/\bT\('([a-z0-9_]+)'/g)].map(m=>m[1]))];
+  assert.ok(wanted.length>20);assert.deepEqual(wanted.filter(k=>!(k in strings)),[],'labels missing from the strings given to visual.js');
   const tokenAt=html.indexOf('window.__VISUAL_CSRF'),bodyAt=html.search(/<body/i);
   assert.ok(tokenAt>0&&bodyAt>0&&tokenAt<bodyAt,'the token is written before any page content, never after it');
   assert.match(html.slice(0,tokenAt),/^\s*(?:<!DOCTYPE[^>]*>\s*)?(?:<html[^>]*>\s*)?(?:<head[^>]*>)?<script nonce="[\w-]+">window\.__VISUAL_PAGE=[^<]*$/i,'only the document opening tags come before it');
