@@ -16,12 +16,20 @@ test('Cloud release comparison refuses PHP metadata and unavailable release feed
  const env=environment(),original=global.fetch;env.CLOUD_RELEASE_MANIFEST_URL='https://releases.example.test/cloud.json';
  try{global.fetch=async()=>Response.json({edition:'sqlite',version:'2.7.0'});assert.equal((await latestCloudRelease(env,true)).status,'error');global.fetch=async()=>Response.json({edition:'cloud',version:'v'+newer,url:'https://releases.example.test/v'+newer});const release=await latestCloudRelease(env,true);assert.equal(release.version,newer);assert.equal(release.outdated,true);}finally{global.fetch=original;}
 });
-test('Cloud release feed defaults to the published GitHub manifest',async()=>{
+test('Cloud release notice reads published releases, not a branch',async()=>{
  const env=environment(),original=global.fetch;let requested;
- try{global.fetch=async url=>{requested=url;return Response.json({edition:'cloud',version:CLOUD_VERSION});};
+ const feed=(...tags)=>'<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom">'+tags.map(tag=>`<entry><id>tag:github.com,2008:Repository/1/${tag}</id><link rel="alternate" type="text/html" href="https://github.com/yoshihik0/mikanBox-cloud/releases/tag/${tag}"/><title>${tag}</title></entry>`).join('')+'</feed>';
+ try{
+  global.fetch=async url=>{requested=url;return new Response(feed('nightly','v'+newer,'v'+CLOUD_VERSION),{headers:{'Content-Type':'application/atom+xml'}});};
   const release=await latestCloudRelease(env,true);
-  assert.match(requested,/^https:\/\/raw\.githubusercontent\.com\/yoshihik0\/mikanBox-cloud\//);
-  assert.equal(release.version,CLOUD_VERSION);
+  assert.equal(requested,'https://github.com/yoshihik0/mikanBox-cloud/releases.atom');
+  assert.doesNotMatch(requested,/raw\.githubusercontent\.com|split-prototype/);
+  assert.equal(release.version,newer);assert.equal(release.outdated,true);
+  assert.equal(release.url,'https://github.com/yoshihik0/mikanBox-cloud/releases/tag/v'+newer);
+  global.fetch=async()=>new Response(feed('v'+CLOUD_VERSION));assert.equal((await latestCloudRelease(env,true)).outdated,false);
+  global.fetch=async()=>new Response('<feed><entry><link href="https://github.com/someone/else/releases/tag/v99.0.0"/></entry></feed>');
+  assert.equal((await latestCloudRelease(env,true)).status,'error','another repository never counts');
+  global.fetch=async()=>new Response('x'.repeat(600*1024));assert.equal((await latestCloudRelease(env,true)).status,'error','an oversized answer is refused');
  }finally{global.fetch=original;}
 });
 test('AI identity URL does not redirect Cloud page rendering or change its root',()=>{
@@ -63,7 +71,8 @@ test('image replacement and WebP conversion preserve bytes, references and histo
  assert.match((await loadPage(env,'page')).content_md,/photo.webp/);assert.match(env.sqlite.prepare('SELECT data FROM post_revisions').get().data,/photo.png/);
 });
 test('publication inherits existing bindings and recovers an accepted deployment after a lost response',async()=>{
- const env=target(environment());env.CLOUDFLARE_API_TOKEN='test-token';env.ASSETS={fetch:async()=>new Response('public browser asset')};
+ // The single-Worker publication is kept only for local development (SITE_ENVIRONMENT=local).
+ const env=target(environment());env.SITE_ENVIRONMENT='local';env.CLOUDFLARE_API_TOKEN='test-token';env.ASSETS={fetch:async()=>new Response('public browser asset')};
  const request=new Request('https://cloud.test/admin'),original=global.fetch;let active='initial',metadata,deployCalls=0,failResponse=true;
  global.fetch=async(url,init={})=>{
   if(url.endsWith('/deployments')&&init.method!=='POST')return Response.json({success:true,result:{deployments:[{versions:[{version_id:active,percentage:100}]}]}});

@@ -6,5 +6,7 @@
     "cloud_publish_last": "最後の公開",
     "cloud_publish_needs_token": "公開するには、Cloudflare APIトークンの設定が必要です。",
     "cloud_publish_setup_link": "サイト →「Cloudflare公開設定」で設定する（取得方法も書いてあります）",
-    "cloud_publish_destination": "公開先"
+    "cloud_publish_destination": "公開先",
+    "cloud_publish_needs_public_worker": "公開用のWorkerが設定されていないため、公開できません。管理用とは別の公開用Workerを設定してください。",
+    "cloud_publish_public_worker_link": "設定のしかた（ヘルプ）"
 }

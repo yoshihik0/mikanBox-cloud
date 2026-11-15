@@ -92,7 +92,7 @@ function globeLink(state: PublicState | undefined, status: string, t: (key: stri
 }
 // The build is how pages reach the public site, so it sits with the page list and
 // reports there rather than in the toast at the top of the screen.
-function publishBox(csrf: string, t: (key: string, ...args: (string | number)[]) => string, publication: PublicationStatus | undefined, ja: boolean, cloudReady: boolean, publicUrl: string): string {
+function publishBox(csrf: string, t: (key: string, ...args: (string | number)[]) => string, publication: PublicationStatus | undefined, ja: boolean, cloudReady: boolean, publicUrl: string, publicWorkerMissing = false): string {
   // Shown in the viewer's time zone (the Worker formats in UTC).
   const when = publication?.publishedAt ? localTime(publication.publishedAt, ja ? 'ja' : 'en') : '';
   const summary = !publication ? '' : publication.stale
@@ -100,8 +100,10 @@ function publishBox(csrf: string, t: (key: string, ...args: (string | number)[])
     : t('cloud_publish_up_to_date');
   // Publishing needs the Cloudflare API token from Site → Cloudflare publication settings; say so here, where the button is.
   const setup = cloudReady ? '' : `<p class="publish-setup" role="note">${t('cloud_publish_needs_token')} <a href="/admin?view=site#cloud-connection" data-open-cloud-connection>${t('cloud_publish_setup_link')}</a></p>`;
+  // Without a public Worker of its own nothing is published (the server refuses); say so beside the button, always.
+  const worker = publicWorkerMissing ? `<p class="publish-setup" role="note" data-public-worker-missing>${t('cloud_publish_needs_public_worker')} <a href="/public-help.html?language=${ja ? 'ja' : 'en'}#public-worker" target="_blank" rel="noopener">${t('cloud_publish_public_worker_link')}</a></p>` : '';
   const destination = publicUrl ? `<span class="publish-status">${t('cloud_publish_destination')}: <a href="${h(publicUrl)}" target="_blank" rel="noopener noreferrer">${h(publicUrl)}</a></span>` : '';
-  return `<form method="post" class="publish-box mt-10" id="publish-box">${csrfField(csrf)}<input type="hidden" name="save_action" value="build_ssg"><button class="btn btn-blue btn-small">${getIcon('cloud')} <span data-publish-label>${t('btn_ssg_build')}</span></button><span class="publish-status" data-publish-status role="status">${h(summary)}${when ? ` ${t('cloud_publish_last')}: ${when}` : ''}</span>${destination}${setup}</form>`;
+  return `<form method="post" class="publish-box mt-10" id="publish-box">${csrfField(csrf)}<input type="hidden" name="save_action" value="build_ssg"><button class="btn btn-blue btn-small">${getIcon('cloud')} <span data-publish-label>${t('btn_ssg_build')}</span></button><span class="publish-status" data-publish-status role="status">${h(summary)}${when ? ` ${t('cloud_publish_last')}: ${when}` : ''}</span>${destination}${worker}${setup}</form>`;
 }
 
 /**
@@ -694,7 +696,7 @@ export function renderPagesView(opts: {
   helpFile: string;
   settings: Settings;
   query?: string; category?:string; format?: string; sort?: string; pageNumber?:number; totalPages?:number;
-  lang?: string; publication?: PublicationStatus; cloudReady?: boolean; publicUrl?: string;
+  lang?: string; publication?: PublicationStatus; cloudReady?: boolean; publicUrl?: string; publicWorkerMissing?: boolean;
   /** The page editor (when ?edit= or ?new= opens it); it lives in the page-editor slot. */
   editorHtml?: string;
 }): string {
@@ -769,7 +771,7 @@ export function renderPagesView(opts: {
         </form>
         </div>
         ${(opts.totalPages||1)>1?`<div class="pagination">${Array.from({length:opts.totalPages||1},(_,i)=>`<a class="pagination-link ${opts.pageNumber===i+1?'active':''}" href="?view=pages&amp;p_pages=${i+1}${h(pageListQuery({category:opts.category,format:opts.format,sort:opts.sort,query:opts.query}))}#pages">${i+1}</a>`).join('')}</div>`:''}
-        ${publishBox(csrf, t, publication, ja, opts.cloudReady !== false, opts.publicUrl || '')}
+        ${publishBox(csrf, t, publication, ja, opts.cloudReady !== false, opts.publicUrl || '', opts.publicWorkerMissing === true)}
         </div>
     </div>
 

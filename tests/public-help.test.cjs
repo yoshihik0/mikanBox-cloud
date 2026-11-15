@@ -52,4 +52,5 @@ test('navigation, search, feeds and static builds stay within Free D1 query limi
 test('public help uses a fresh nonce only for the bundled script',async()=>{
  const {environment,call}=require('./fixtures.cjs');const env=environment();const a=await call(env,'/public-help.html'),b=await call(env,'/public-help.html');const csp=a.headers.get('content-security-policy'),csp2=b.headers.get('content-security-policy');
  const nonce=csp.match(/script-src 'nonce-([^']+)'/)[1];assert.notEqual(csp,csp2);assert.match(await a.text(),new RegExp('<script nonce="'+nonce+'" src="/mikanbox/ai-question.js"'));assert.doesNotMatch(csp,/script-src 'self'/);
+ assert.match(csp,/form-action 'none'/);assert.match(csp,/frame-src 'none'/);assert.match(csp,/object-src 'none'/);
 });

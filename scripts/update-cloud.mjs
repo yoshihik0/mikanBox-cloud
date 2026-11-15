@@ -18,8 +18,17 @@ export function validateUpdateConfig(config, remote) {
   return db;
 }
 
+/** The GitHub workflow resolves the release tag to a commit; nothing runs unless that commit is checked out. */
+export function verifyReleaseCommit(expected,head) {
+  if(expected===undefined||expected==='') return;
+  if(!/^[0-9a-f]{40}$/.test(expected)) throw new Error('Invalid release commit; update stopped.');
+  if(head!==expected) throw new Error('The checked-out commit is not the release commit; update stopped.');
+}
+
 export async function updateCloud(dependencies={}) {
   const request=dependencies.fetch||fetch;
+  const head=dependencies.head||(()=>String(spawnSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).stdout||'').trim());
+  verifyReleaseCommit(process.env.MIKANBOX_UPDATE_COMMIT,process.env.MIKANBOX_UPDATE_COMMIT?head():'');
   if(!process.env.CLOUDFLARE_API_TOKEN||!process.env.MIKANBOX_UPDATE_CONFIG) throw new Error('Set CLOUDFLARE_API_TOKEN and MIKANBOX_UPDATE_CONFIG in GitHub Actions secrets first.');
   const config=JSON.parse(process.env.MIKANBOX_UPDATE_CONFIG);
   // Validate identifiers before constructing an authenticated API URL.

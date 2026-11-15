@@ -49,6 +49,10 @@ test('the page: markers, globals, CSP and scripts',async()=>{
   const csp=res.headers.get('Content-Security-Policy'),nonce=/script-src 'nonce-([\w-]+)';/.exec(csp)[1];
   assert.ok(!/script-src[^;]*'self'/.test(csp),'same-origin scripts (media, component JS) must not run with the session');
   assert.match(csp,/frame-ancestors 'self'/);assert.match(csp,/object-src 'none'/);
+  assert.match(csp,/form-action 'none'/,'no form of the page can post with the session');
+  const tokenAt=html.indexOf('window.__VISUAL_CSRF'),bodyAt=html.search(/<body/i);
+  assert.ok(tokenAt>0&&bodyAt>0&&tokenAt<bodyAt,'the token is written before any page content, never after it');
+  assert.match(html.slice(0,tokenAt),/^\s*(?:<!DOCTYPE[^>]*>\s*)?(?:<html[^>]*>\s*)?(?:<head[^>]*>)?<script nonce="[\w-]+">window\.__VISUAL_PAGE=[^<]*$/i,'only the document opening tags come before it');
   assert.equal(res.headers.get('Cache-Control'),'no-store');assert.equal(res.headers.get('X-Frame-Options'),'SAMEORIGIN');
   assert.ok(html.includes(`<script nonce="${nonce}" src="/mikanbox/visual-live.js`)&&html.indexOf('visual-live.js')<html.indexOf('/mikanbox/visual.js'),'the converter loads before the screen');
   assert.match(html,/window\.__VISUAL_PAGE="about"/);assert.match(html,/window\.__VISUAL_DOC=false/);

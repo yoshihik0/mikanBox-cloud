@@ -275,7 +275,9 @@ export class MikanBoxRenderer {
 
     // 2. ラッパーを読み込んで{{CONTENT}}を差し込む
     const wrapperCompId = pageData.wrapper_comp || '_layout';
-    const wrapperData = wrapperCompId === '__none' ? null : (await this.readComponent(wrapperCompId) || await this.readComponent('_layout'));
+    // AI documents are never published: one chosen as the wrapper falls back to _layout.
+    const usable = (component: Awaited<ReturnType<typeof this.readComponent>>) => component && !component.is_ai_doc ? component : null;
+    const wrapperData = wrapperCompId === '__none' ? null : (usable(await this.readComponent(wrapperCompId)) || usable(await this.readComponent('_layout')));
     if (wrapperData) this.includedComponentIds.add(wrapperCompId);
     let html = wrapperData?.html ?? (wrapperCompId === '__none' ? '{{CONTENT}}' : '<!DOCTYPE html><html><head>{{HEAD_CSS}}{{HEAD_JS}}</head><body>{{CONTENT}}</body></html>');
     if (wrapperData?.js) this.javascriptBuffer.set(wrapperCompId, wrapperData.js);
@@ -977,7 +979,9 @@ if(q)location.replace('https://www.google.com/search?'+new URLSearchParams({q:q,
 
     // NAV_CARDS in HTML
     const effectiveCompId = options.component || '_nav_card';
-    const compData = await this.readComponent(effectiveCompId);
+    // An AI document is never used as a card template (it is not published); the built-in card is used instead.
+    const navComponent = await this.readComponent(effectiveCompId);
+    const compData = navComponent && !navComponent.is_ai_doc ? navComponent : null;
     let customTemplate: string | null = null;
     let prefixClass = '';
     if (compData) {

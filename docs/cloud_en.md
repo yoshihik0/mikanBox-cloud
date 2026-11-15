@@ -1,6 +1,6 @@
 <style>.manual-version{font-size:.5em;font-weight:400;white-space:nowrap}</style>
 
-# 🍊mikanBox Cloudflare Manual <small class="manual-version">v0.10.2</small>
+# 🍊mikanBox Cloudflare Manual <small class="manual-version">v0.10.3</small>
 
 This manual covers installation and the Cloudflare edition’s differences. For shared operations, see the [operation manual](https://yoshihiko.com/mikanbox/help_en.html).
 
@@ -113,7 +113,7 @@ See [Site](https://yoshihiko.com/mikanbox/help_en.html#site) for shared settings
 <a id="manual-update"></a>
 ### Manual updates (v0.6.6 and later)
 
-For routine updates, select Update on GitHub in Site settings, press Run workflow on GitHub, wait for success, then reload the management page. There is no automatic update. You do not need to sync your repository or download files to your computer each time. Each run fetches the latest published release from `yoshihik0/mikanBox-cloud`, including published prereleases, but excluding unreleased development changes.
+For routine updates, select Update on GitHub in Site settings, press Run workflow on GitHub, wait for success, then reload the management page. There is no automatic update. You do not need to sync your repository or download files to your computer each time. Each run fetches the latest published release from `yoshihik0/mikanBox-cloud`, including published prereleases, but excluding unreleased development changes. From v0.10.3 the workflow first resolves the commit the release tag points to, checks out only that commit and confirms it before preparing and deploying anything; the GitHub actions it uses (`actions/checkout` and others) are pinned to the commits of their official releases. Your copy of the workflow is not updated automatically: press **Sync fork** in your repository, or replace `.github/workflows/update-cloud.yml` with the latest one. An older workflow still updates, but without the commit check.
 
 #### One-time setup
 
@@ -133,7 +133,7 @@ Save any needed backup before updating. Database migration and code deployment a
 
 Publication files are downloaded without executing code with management privileges. Public help permits only the product-provided script. Deleted pages still present on the public site remain marked as pending publication changes. Stopping a device also cancels its unused enrollment codes. Setup and recovery tokens can be consumed only once, including concurrent requests.
 
-The admin screen checks the Cloud release manifest on GitHub and shows the installed and latest versions and whether an update is available. Check again refreshes release information; reload the page after updating to see the installed version. See the manual update setup below. `CLOUD_RELEASE_MANIFEST_URL` optionally selects an HTTPS Cloud release JSON.
+The admin screen checks the releases published on GitHub (from v0.10.3 the release feed, so changes on a development branch alone do not change it) and shows the installed and latest versions and whether an update is available. Check again refreshes release information; reload the page after updating to see the installed version. See the manual update setup below. `CLOUD_RELEASE_MANIFEST_URL` optionally selects an HTTPS Cloud release JSON instead.
 
 ### Delivery and withdrawal
 
@@ -156,6 +156,11 @@ The Media screen withdraws deleted images automatically. Renamed or converted im
 ### Separate public and admin Workers
 
 Setting `CLOUDFLARE_PUBLIC_WORKER_NAME` (the public Worker's name) and `PUBLIC_SITE_URL` (the public site's URL) publishes pages to a separate Worker. The public Worker holds static files only and runs no code. The admin screen and MCP stay on the current Worker. New installations use this split configuration. Verify the destination before migrating an older installation. The public site URL appears next to the build controls on the page list and links to the public site.
+
+<a id="public-worker"></a>
+From v0.10.3, without a public Worker (with a name different from the management Worker), building, publishing and automatic image publication deploy nothing, because pages published to the management Worker would run their JavaScript on the admin address. The build button then shows "Set a public Worker". Set the public Worker with the management Worker's variables `CLOUDFLARE_PUBLIC_WORKER_NAME` (the public Worker's name) and `PUBLIC_SITE_URL` (the public site's URL): write them under `vars` in the installation's `wrangler.production.json` and deploy the management Worker again. See the [detailed reference (installation)](https://github.com/yoshihik0/mikanBox-cloud/blob/HEAD/docs/reference_ja.md#インストール手順). Sites installed and updated with the official steps already have them.
+
+Only to try the former single-Worker publication from a local `wrangler dev`, set the variable `SITE_ENVIRONMENT` to `local` explicitly (`SITE_ENVIRONMENT=local` in `.dev.vars`). Do not use this on a live site.
 
 - On the admin address, visitors without a session get no pages, images, component scripts or sitemaps, and search engines are told not to index it (`X-Robots-Tag: noindex`).
 - From v0.10.2, the admin address opened with `http://` moves to the same address on `https://` (when a page is opened; `localhost` and similar addresses of a local `wrangler dev` stay as they are).
@@ -199,7 +204,7 @@ References: [D1 limits](https://developers.cloudflare.com/d1/platform/limits/), 
 
 ### JSON backup and restore
 
-Download a single JSON backup from Site settings and select that file to restore. It includes settings, all pages, components, revisions, HTML snapshots, users and original images. Images transfer in 500KB parts. Both operations start from a confirmation screen. Backups contain private content, API keys and authentication hashes: store them securely. Large backups consume browser memory and transfer time; keep the screen open. Metadata is limited to 20MB.
+Download a single JSON backup from Site settings and select that file to restore. It includes settings, all pages, components, revisions, HTML snapshots, users and original images. Images transfer in 500KB parts. Both operations start from a confirmation screen. Backups contain private content and authentication hashes: store them securely. From v0.10.3 they no longer contain the MCP API key (JSON backup and data ZIP); a normal restore keeps the current key, and after restoring into another site you issue a new one. The D1 export (SQL) is the database itself and still includes it. Large backups consume browser memory and transfer time; keep the screen open. Metadata is limited to 20MB.
 
 Normal restore preserves current site identity, API key, users and Cloudflare connection. Explicit account restoration also restores users; devices of users missing from the backup stop. Rebuild afterward. Restore stages and validates data before atomic replacement; missing parts or concurrent edits leave existing data intact. In D1 mode, existing, incoming and other staged images must total at most 450MB; R2 mode stages image bytes in R2, and actual D1 free space may impose a lower limit.
 

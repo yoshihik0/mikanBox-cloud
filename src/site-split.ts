@@ -6,6 +6,19 @@ export const splitMode=(env:Env)=>{
  if(env.CLOUDFLARE_PUBLIC_WORKER_NAME && env.CLOUDFLARE_PUBLIC_WORKER_NAME===env.CLOUDFLARE_WORKER_NAME)throw new Error('Public and management Workers must be different.');
  return !!env.CLOUDFLARE_PUBLIC_WORKER_NAME;
 };
+/**
+ * Publication goes to a public Worker of its own, never to the management Worker. Without one (or
+ * with the same name) nothing is deployed, so site scripts never land on the admin origin.
+ * The only exception is local development (SITE_ENVIRONMENT=local, set explicitly), where the
+ * old single-Worker publication is still available for tests and `wrangler dev`.
+ */
+export const PUBLIC_WORKER_REQUIRED='公開用のWorkerを設定してください（CLOUDFLARE_PUBLIC_WORKER_NAME。管理用とは別の名前）。 / Set the public Worker (CLOUDFLARE_PUBLIC_WORKER_NAME, a name different from the management Worker).';
+export function publicWorkerMissing(env:Env):boolean{
+ const name=env.CLOUDFLARE_PUBLIC_WORKER_NAME||'';
+ if(name)return name===env.CLOUDFLARE_WORKER_NAME;
+ return env.SITE_ENVIRONMENT!=='local';
+}
+export function assertPublicWorker(env:Env):void{if(publicWorkerMissing(env))throw new Error(PUBLIC_WORKER_REQUIRED);}
 export function publicOrigin(env:Env):string{
  let url:URL;try{url=new URL(env.PUBLIC_SITE_URL||'');}catch{throw new Error('PUBLIC_SITE_URL is not configured.');}
  if(url.protocol!=='https:'&&url.hostname!=='localhost')throw new Error('PUBLIC_SITE_URL must use https.');

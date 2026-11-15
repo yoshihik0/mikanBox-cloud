@@ -2,13 +2,14 @@ import type {Env} from './types';
 import {cloudConfigured,cloudResult,cloudRequest,cloudTarget} from './cloudflare-api';
 import {publicationManifest,readPublicationEntry,WORKER_FIRST_ROUTES} from './static-publication';
 import {buildStatic} from './ssg';
-import {splitMode,publicRequest} from './site-split';
+import {splitMode,publicRequest,assertPublicWorker} from './site-split';
 import {validMediaName} from './media-policy';
 interface Job {owner:string;version:string;origin:string;excluded:string[];token?:string;completion?:string;pending?:string[];nextVersion?:string;deployed?:boolean;mediaOnly?:string;routing?:{headers:string;redirects:string};publishedAt?:string|null}
 const json=(value:unknown)=>JSON.stringify(value);
 const post=(value:unknown):RequestInit=>({method:'POST',headers:{'Content-Type':'application/json'},body:json(value)});
 // In split mode the static files go to the public Worker; otherwise to this Worker's own assets.
-const root=(env:Env)=>'/workers/scripts/'+(splitMode(env)?env.CLOUDFLARE_PUBLIC_WORKER_NAME:cloudTarget(env).worker);
+// Every deployment call goes through here, so a missing public Worker stops them all.
+const root=(env:Env)=>{assertPublicWorker(env);return '/workers/scripts/'+(splitMode(env)?env.CLOUDFLARE_PUBLIC_WORKER_NAME:cloudTarget(env).worker);};
 async function activeVersion(env:Env){const value=await cloudResult(env,root(env)+'/deployments');const versions=value.deployments?.[0]?.versions;if(versions?.length!==1||versions[0].percentage!==100)throw new Error('Gradual deployments are not supported by automatic publication.');return versions[0].version_id as string;}
 async function job(env:Env,id:string,owner:string):Promise<Job>{
  const row=await env.DB.prepare('SELECT state FROM publication_jobs WHERE id=?').bind(id).first<{state:string}>();if(!row)throw new Error('Publication job not found.');const state=JSON.parse(row.state) as Job;
@@ -18,6 +19,7 @@ async function job(env:Env,id:string,owner:string):Promise<Job>{
 }
 async function saveJob(env:Env,id:string,state:Job){await env.DB.prepare('UPDATE publication_jobs SET state=? WHERE id=?').bind(json(state),id).run();}
 export async function beginPublication(env:Env,request:Request,owner:string,rebuild:boolean,excluded:string[]=[],mediaOnly:string=''){
+ assertPublicWorker(env);
  if(!await cloudConfigured(env))throw new Error('Cloudflare配信用トークンをサイト設定で設定してください。 / Configure the Cloudflare deployment token in Site settings.');
  const version=await activeVersion(env),id=crypto.randomUUID();
  const acquired=await env.DB.prepare("INSERT INTO settings(key,value) VALUES('publication_lock',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value WHERE json_extract(settings.value,'$.expires')<?").bind(json({lease:id,expires:Date.now()+30*60*1000}),Date.now()).run();if(!acquired.meta.changes)throw new Error('Publication is already running.');

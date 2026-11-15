@@ -16,7 +16,12 @@ function encode(value:Uint8Array):string {let s='';for(let i=0;i<value.length;i+
 function decode(s:string):Uint8Array {if(typeof s!=='string'||s.length>Math.ceil(MEDIA_CHUNK_SIZE/3)*4||s.length%4)fail('Invalid image part.');let v:string;try{v=atob(s);}catch{fail('Invalid image base64.');}const b=Uint8Array.from(v!,c=>c.charCodeAt(0));if(encode(b)!==s)fail('Invalid image base64.');return b;}
 async function hash(b:Uint8Array):Promise<string>{return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',b as BufferSource)),v=>v.toString(16).padStart(2,'0')).join('');}
 async function rows(env:Env,sql:string):Promise<Row[]>{return (await env.DB.prepare(sql).all<Row>()).results;}
-export async function exportBackupManifest(env:Env):Promise<CloudBackupManifest>{
+/** The MCP API key never leaves in a backup (0.10.3); a restore keeps the installation's current key. */
+function withoutApiKey(settings:Record<string,unknown>):Record<string,unknown>{const copy={...settings};if('api_key' in copy)copy.api_key='';return copy;}
+/** What is downloaded: the snapshot without the MCP API key. */
+export async function exportBackupManifest(env:Env):Promise<CloudBackupManifest>{const manifest=await snapshotManifest(env);return {...manifest,settings:withoutApiKey(manifest.settings as Record<string,unknown>)} as CloudBackupManifest;}
+/** The complete snapshot, used internally to detect concurrent changes during a restore. */
+async function snapshotManifest(env:Env):Promise<CloudBackupManifest>{
  const [settings,pages,components,users,revisions,static_pages,media]=await Promise.all([
  rows(env,"SELECT value FROM settings WHERE key='settings'"),rows(env,'SELECT * FROM posts ORDER BY id'),rows(env,'SELECT * FROM components ORDER BY id'),rows(env,'SELECT * FROM users ORDER BY username'),rows(env,'SELECT * FROM post_revisions ORDER BY id'),rows(env,'SELECT id,html,built_at,path,md FROM static_pages ORDER BY id'),rows(env,'SELECT key,content_type,size,uploaded,etag,chunk_count,upload_id,object_key FROM media ORDER BY key')]);
  const result:CloudBackupManifest={format:'mikanbox-cloud-json',version:2,created_at:new Date().toISOString(),settings:settings[0]?JSON.parse(String(settings[0].value)):{},pages,components,users,revisions,static_pages,media:media.map(r=>({...r,chunk_count:Math.ceil(Number(r.size)/MEDIA_CHUNK_SIZE)} as unknown as BackupMedia))};
@@ -69,7 +74,7 @@ export async function createBackupRestore(env:Env,document:CloudBackupManifest,o
  validate(document);if(options.restoreUsers&&!document.users.length)fail('Restoring accounts requires at least one account.');
  await env.DB.prepare('DELETE FROM backup_sessions WHERE created_at<?').bind(Date.now()-SESSION_AGE).run();
  await env.DB.prepare('DELETE FROM backup_restore_results WHERE created_at<?').bind(Date.now()-SESSION_AGE).run();
- const current=await exportBackupManifest(env);
+ const current=await snapshotManifest(env);
 
  if(targetStore==='d1'){
  const staged=await env.DB.prepare('SELECT COALESCE(SUM(length(data)),0) n FROM backup_chunks').first<{n:number}>();

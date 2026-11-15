@@ -246,7 +246,9 @@ export async function renameMedia(env:Env,old:string,name:string):Promise<boolea
 export async function buildDataBackupZip(env: Env): Promise<Uint8Array> {
   const files: Array<{ name: string; data: Uint8Array }> = [];
 
-  const settings = await loadSettings(env);
+  // The MCP API key never leaves in a backup (0.10.3): issue a new one after restoring.
+  const settings = { ...(await loadSettings(env)) };
+  if ('api_key' in settings) settings.api_key = '';
   files.push({ name: 'data/settings.json', data: new TextEncoder().encode(JSON.stringify(settings, null, 2)) });
 
   for (const {id,data} of await listPages(env)) {

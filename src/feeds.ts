@@ -151,13 +151,13 @@ export async function generatePodcastXml(env: Env, settings: Settings, request: 
     xml += `    <description>${desc}</description>\n${pubDate ? `    <pubDate>${pubDate}</pubDate>\n` : ''}`;
     xml += `    <guid>${link}</guid>\n`;
     xml += `    <enclosure url="${esc(audioFile)}" length="${fileSize}" type="${mime}"/>\n`;
-    if (duration) xml += `    <itunes:duration>${duration}</itunes:duration>\n`;
+    if (duration) xml += `    <itunes:duration>${esc(duration)}</itunes:duration>\n`;
     if (subtitle) xml += `    <itunes:subtitle>${esc(subtitle)}</itunes:subtitle>\n`;
-    if (episodeNum) xml += `    <itunes:episode>${episodeNum}</itunes:episode>\n`;
-    if (season) xml += `    <itunes:season>${season}</itunes:season>\n`;
+    if (episodeNum) xml += `    <itunes:episode>${esc(episodeNum)}</itunes:episode>\n`;
+    if (season) xml += `    <itunes:season>${esc(season)}</itunes:season>\n`;
     if (epImage) xml += `    <itunes:image href="${esc(epImage)}"/>\n`;
-    xml += `    <itunes:episodeType>${episodeType}</itunes:episodeType>\n`;
-    xml += `    <itunes:explicit>${explicit}</itunes:explicit>\n`;
+    xml += `    <itunes:episodeType>${esc(episodeType)}</itunes:episodeType>\n`;
+    xml += `    <itunes:explicit>${esc(explicit)}</itunes:explicit>\n`;
     xml += `    <itunes:summary>${desc}</itunes:summary>\n  </item>\n`;
   }
 

@@ -39,7 +39,7 @@ function headers(type: string, n?: string): Headers {
     // Only this screen's own nonce'd scripts run.
     h.set('Content-Security-Policy', `default-src 'self'; script-src 'nonce-${n}'; `
       + "style-src 'self' 'unsafe-inline' https:; font-src 'self' https: data:; img-src * data: blob:; media-src * data: blob:; "
-      + "connect-src 'self'; frame-src 'self' https:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'");
+      + "connect-src 'self'; frame-src 'self' https:; object-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'self'");
   }
   return h;
 }
@@ -270,7 +270,7 @@ export async function handleVisual(request: Request, env: Env): Promise<Response
   const row = validId(id) ? await readPage(env, id) : null;
   if (!row) return dieHtml(t, t('visual_err_page_not_found_id', id), 404);
   if (!formatHasHtml(pageOutputFormat(row.data))) return dieHtml(t, t('visual_err_not_html'), 400);
-  const html = await renderVisual(env, settings, request, id, row.data);
+  let html = await renderVisual(env, settings, request, id, row.data);
   const n = nonce(), h = headers('text/html; charset=utf-8', n);
   if (url.searchParams.has('fv-frame')) return new Response(html, { headers: h });   // for checking widths (no editing)
   const info = {
@@ -282,7 +282,12 @@ export async function handleVisual(request: Request, env: Env): Promise<Response
   const v = encodeURIComponent(CLOUD_VERSION);
   const tags = '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,300,0,0&display=block">'
     + `<link rel="stylesheet" href="/mikanbox/visual.css?v=${v}">`
-    + `<script nonce="${n}">${globals}</script><script nonce="${n}" src="/mikanbox/visual-live.js?v=${v}"></script><script nonce="${n}" src="/mikanbox/visual.js?v=${v}"></script>`;
+    + `<script nonce="${n}" src="/mikanbox/visual-live.js?v=${v}"></script><script nonce="${n}" src="/mikanbox/visual.js?v=${v}"></script>`;
+  // The values (the CSRF token among them) go in front of everything the page itself wrote: text
+  // that follows page content could be swallowed by an unclosed attribute there and sent elsewhere
+  // as part of an address. Only the document's own opening tags, anchored at the start, come first.
+  const lead = /^\uFEFF?\s*(?:<!DOCTYPE[^>]*>\s*)?(?:<html[^>]*>\s*)?(?:<head[^>]*>)?/i.exec(html)?.[0].length ?? 0;
+  html = html.slice(0, lead) + `<script nonce="${n}">${globals}</script>` + html.slice(lead);
   const at = html.search(/<\/body>/i);
   return new Response(at >= 0 ? html.slice(0, at) + tags + html.slice(at) : html + tags, { headers: h });
 }

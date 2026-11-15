@@ -6,5 +6,7 @@
     "cloud_publish_last": "Last published",
     "cloud_publish_needs_token": "Publishing needs a Cloudflare API token.",
     "cloud_publish_setup_link": "Set it up under Site → Cloudflare publication settings (the steps are explained there)",
-    "cloud_publish_destination": "Public site"
+    "cloud_publish_destination": "Public site",
+    "cloud_publish_needs_public_worker": "Publishing is not possible: no public Worker is set. Set a public Worker separate from the management Worker.",
+    "cloud_publish_public_worker_link": "How to set it (Help)"
 }

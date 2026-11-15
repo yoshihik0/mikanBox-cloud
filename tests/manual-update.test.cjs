@@ -22,6 +22,20 @@ test('manual updater refuses mismatched installations or lost bindings before wr
  const extra=remote();extra.bindings.push({name:'KV',type:'kv_namespace'});
  assert.throws(()=>validateUpdateConfig(config(),extra),/additional bindings/);
 });
+test('the updater runs only the release commit the workflow resolved',async()=>{
+ const {verifyReleaseCommit}=await import('../scripts/update-cloud.mjs');
+ const sha='0123456789abcdef0123456789abcdef01234567';
+ assert.doesNotThrow(()=>verifyReleaseCommit(undefined,''),'a manual run without the workflow is unchanged');
+ assert.doesNotThrow(()=>verifyReleaseCommit(sha,sha));
+ assert.throws(()=>verifyReleaseCommit(sha,'f'.repeat(40)),/not the release commit/);
+ assert.throws(()=>verifyReleaseCommit('v0.10.3',sha),/Invalid release commit/);
+ const fs=require('node:fs'),workflow=fs.readFileSync(require('node:path').join(__dirname,'../.github/workflows/update-cloud.yml'),'utf8');
+ for(const line of workflow.split('\n').filter(line=>/^\s*-?\s*uses:/.test(line)))assert.match(line,/@[0-9a-f]{40} # v\d+\.\d+\.\d+$/,'actions are pinned to a commit: '+line.trim());
+ assert.match(workflow,/ref: \$\{\{ steps\.release\.outputs\.sha \}\}/,'the checkout uses the resolved commit, not the tag');
+ assert.match(workflow,/git rev-parse HEAD/);
+ assert.ok(workflow.indexOf('Verify the checked-out commit')<workflow.indexOf('npm ci'),'the commit is verified before npm ci');
+ assert.match(workflow,/MIKANBOX_UPDATE_COMMIT: \$\{\{ steps\.release\.outputs\.sha \}\}/);
+});
 test('update links stay on GitHub and newer versions are visible in both languages',()=>{
  assert.equal(cloudUpdateUrl('user/site'),'https://github.com/user/site/actions/workflows/update-cloud.yml');
  for(const value of ['https://evil.test','user/site?x=1','../site','user/..','user/site/extra','<script>'])assert.equal(cloudUpdateUrl(value),'');
