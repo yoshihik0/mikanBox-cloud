@@ -1,6 +1,6 @@
 <style>.manual-version{font-size:.5em;font-weight:400;white-space:nowrap}</style>
 
-# 🍊mikanBox Cloudflare版 マニュアル <small class="manual-version">v0.11.0</small>
+# 🍊mikanBox Cloudflare版 マニュアル <small class="manual-version">v0.11.1</small>
 
 このマニュアルはCloudflare版の導入と、PHP版との違いを説明します。共通の操作は[操作マニュアル](https://yoshihiko.com/mikanbox/help_ja.html)も参照してください。flat版・SQLite版との使い分けは、[README](https://github.com/yoshihik0/mikanBox-cloud#readme)を参照してください。
 
@@ -42,7 +42,7 @@ Node.js（22以上）とnpm、ターミナルが必要です。コマンドと�
 
 [画像付きアップデートガイド](/mikanbox/guides/update-ja.html)では、GitHubの画面を見ながら設定と更新ができます。
 
-管理画面の「サイト」で、現在のバージョンとGitHub上の最新版を確認できます。最新版は、GitHubで公開されたリリースから読み取ります（v0.10.3から。開発中のブランチの変更だけでは表示は変わりません）。「再確認」は最新版の情報を取り直します。更新後は、画面を再読み込みして現在のバージョンを確認します。
+管理画面の「サイト」で、現在のバージョンとGitHub上の最新版を確認できます。最新版は、GitHubで公開されたリリースから読み取ります（v0.10.3から。開発中のブランチの変更だけでは表示は変わりません）。「再確認」は最新版の情報を取り直します。画面は再読み込みせず、結果は右下に表示します（v0.11.1から）。更新後は、画面を再読み込みして現在のバージョンを確認します。
 
 更新は、記事や画像を初期化する操作ではありません。**更新の前に**、「データ移行・インポートツール」で必要なバックアップを保存してください。非公開データを含むため、安全に保管します。
 

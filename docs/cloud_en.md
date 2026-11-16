@@ -1,6 +1,6 @@
 <style>.manual-version{font-size:.5em;font-weight:400;white-space:nowrap}</style>
 
-# 🍊mikanBox Cloudflare Manual <small class="manual-version">v0.11.0</small>
+# 🍊mikanBox Cloudflare Manual <small class="manual-version">v0.11.1</small>
 
 This manual covers installation and the Cloudflare edition’s differences. For shared operations, see the [operation manual](https://yoshihiko.com/mikanbox/help_en.html).
 
@@ -133,7 +133,7 @@ Save any needed backup before updating. Database migration and code deployment a
 
 Publication files are downloaded without executing code with management privileges. Public help permits only the product-provided script. Deleted pages still present on the public site remain marked as pending publication changes. Stopping a device also cancels its unused enrollment codes. Setup and recovery tokens can be consumed only once, including concurrent requests.
 
-The admin screen checks the releases published on GitHub (from v0.10.3 the release feed, so changes on a development branch alone do not change it) and shows the installed and latest versions and whether an update is available. Check again refreshes release information; reload the page after updating to see the installed version. See the manual update setup below. `CLOUD_RELEASE_MANIFEST_URL` optionally selects an HTTPS Cloud release JSON instead.
+The admin screen checks the releases published on GitHub (from v0.10.3 the release feed, so changes on a development branch alone do not change it) and shows the installed and latest versions and whether an update is available. Check again refreshes release information without reloading the screen and shows the result at the bottom right (from v0.11.1); reload the page after updating to see the installed version. See the manual update setup below. `CLOUD_RELEASE_MANIFEST_URL` optionally selects an HTTPS Cloud release JSON instead.
 
 ### Delivery and withdrawal
 

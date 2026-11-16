@@ -48,7 +48,7 @@
     progress(ja?'復元が完了しました。':'Restore completed.');
     if(result.accountsRestored){location.href='/admin';return;}
     // Restored snapshots and images need a new immutable asset deployment.
-    if(window.cloudPublish){try{await window.cloudPublish(true);}catch(error){throw new Error((ja?'復元は完了しましたが、公開更新に失敗しました。ページ一覧からサイトをビルドしてください。 ':'Restore completed, but publication failed. Build the site from the page list. ')+(error.message||''));}}location.reload();
+    if(window.cloudPublish){try{await window.cloudPublish(true);}catch(error){throw new Error((ja?'復元は完了しましたが、公開更新に失敗しました。ページ一覧からサイトをビルドしてください。 ':'Restore completed, but publication failed. Build the site from the page list. ')+(error.message||''));}}window.cloudKeepPosition?.();location.reload();
    }
   }catch(error){progress(error.message);window.showToast?.(error.message,true);}finally{
    if(stage)await action('backup_restore_abort',{stage}).catch(()=>{});buttons.forEach(b=>b.disabled=false);

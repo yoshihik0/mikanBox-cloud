@@ -34,14 +34,14 @@
         switching = true; if (cancel) cancel.disabled = true;
         status.textContent = en ? 'Switching storage…' : '保存先を切り替えています…';
         await request(form, 'finish_media_migration', job.id);
-        location.href = '/admin?view=site&storage_migrated=1#image-storage';
+        window.cloudKeepPosition?.(); location.href = '/admin?view=site&storage_migrated=1#image-storage';
       } catch (error) {
         if (!cancelled) status.textContent = `${error.message} ${switching ? (en ? 'Reload to check the result.' : '再読み込みして結果を確認してください。') : (en ? 'D1 is still in use. Retry to resume.' : 'D1を引き続き使用しています。再開してやり直せます。')}`;
       } finally { running = false; submit.disabled = false; }
     });
     cancel?.addEventListener('click', async () => {
       cancelled = true; cancel.disabled = true;
-      try { await request(form, 'cancel_media_migration', form.dataset.jobId); location.reload(); }
+      try { await request(form, 'cancel_media_migration', form.dataset.jobId); window.cloudKeepPosition?.(); location.reload(); }
       catch (error) { status.textContent = error.message; cancel.disabled = false; }
     });
   });

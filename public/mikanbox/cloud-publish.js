@@ -75,7 +75,7 @@
     for(const [key,value] of Object.entries({save_action:'download_d1_export',csrf_token:window.CSRF_TOKEN,capability:result.download_capability})){const input=document.createElement('input');input.type='hidden';input.name=key;input.value=value;download.append(input);}
     document.body.append(download);download.submit();download.remove();status(ja?'D1のダウンロードを開始しました。':'D1 download started.');return;
    }
-   if(name==='restore_d1_time'){if(!await window.MikanUI.confirm(ja?'DB全体を指定時刻に戻します。現在の変更が失われます。実行しますか？':'Restore the whole database? Changes after that time will be lost.',ja?'DBを戻す':'Restore database',ja?'戻す':'Restore','btn-red'))return;data.set('restore_at',new Date(data.get('restore_at')).toISOString());await action(name,data);location.reload();return;}
+   if(name==='restore_d1_time'){if(!await window.MikanUI.confirm(ja?'DB全体を指定時刻に戻します。現在の変更が失われます。実行しますか？':'Restore the whole database? Changes after that time will be lost.',ja?'DBを戻す':'Restore database',ja?'戻す':'Restore','btn-red'))return;data.set('restore_at',new Date(data.get('restore_at')).toISOString());await action(name,data);window.cloudKeepPosition?.();location.reload();return;}
    const info=await action('media_reference_status',{file:data.get('file')});
    if(name==='rename_media'&&info.count){const choice=await renameChoice(info.message);if(choice==='cancel')return;data.set('confirmed',choice==='update'?'1':'0');}
    if(name==='rename_media'&&!info.count)data.set('confirmed','1');

@@ -18,6 +18,10 @@
         if(node.tagName==='SPAN')current.insertBefore(node,updateLink);
         else current.appendChild(node);
       }
+      // The answer is shown at the bottom right: the row often reads the same as before.
+      const fresh=replacement.querySelector('#cloud-check-updates');
+      if(fresh?.dataset.failed){updateLink.dataset.failed=fresh.dataset.failed;window.showToast?.(fresh.dataset.failed,true);}
+      else{delete updateLink.dataset.failed;window.showToast?.(updateLink.dataset.done||'');}
     } catch { if(typeof window.showToast==='function')window.showToast(ja?'更新情報を確認できませんでした。':'Could not check for updates.',true); }
     finally { updateLink.removeAttribute('aria-busy'); }
   });
@@ -100,7 +104,7 @@
   // Preserve the site section and viewport across ordinary settings submissions.
   try {
     const saved=JSON.parse(sessionStorage.getItem('cloud-site-position')||'null');
-    if(saved){sessionStorage.removeItem('cloud-site-position');const details=document.querySelectorAll('#site details');for(const i of saved.open)if(details[i])details[i].open=true;requestAnimationFrame(()=>window.scrollTo(0,saved.y));}
+    if(saved){sessionStorage.removeItem('cloud-site-position');const details=document.querySelectorAll('#site details');for(const i of saved.open)if(details[i])details[i].open=true;const back=()=>window.scrollTo(0,saved.y);requestAnimationFrame(back);setTimeout(back,60);}
   } catch {}
   document.addEventListener('submit',async event=>{
     const form=event.target;if(!form.closest?.('#site'))return;
@@ -110,6 +114,10 @@
   });
   // After an in-place action (admin-ui.js): a device code issued now is shown once in its slot, and a
   // language change reloads (every label changes; the one case where a settings save needs a reload).
+  // A reload that cannot be avoided (storage switch, restore) comes back to the same place.
+  window.cloudKeepPosition=()=>{
+    try{const details=[...document.querySelectorAll('#site details')];sessionStorage.setItem('cloud-site-position',JSON.stringify({y:window.scrollY,open:details.flatMap((d,i)=>d.open?[i]:[])}));}catch{}
+  };
   const reloadHere=()=>{
     try{const details=[...document.querySelectorAll('#site details')];sessionStorage.setItem('cloud-site-position',JSON.stringify({y:window.scrollY,open:details.flatMap((d,i)=>d.open?[i]:[])}));}catch{}
     location.reload();
