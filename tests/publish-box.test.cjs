@@ -27,7 +27,7 @@ test('the MCP API key is generated in place, and the token steps are written nex
  assert.notEqual(second.data.mcp_api_key,first.data.mcp_api_key);
 });
 
-test('split mode displays the public URL beside the build controls and removes the top shortcut',async()=>{
+test('the public URL is displayed beside the build controls and removes the top shortcut',async()=>{
  const env=environment();env.CLOUDFLARE_PUBLIC_WORKER_NAME='public-site';env.PUBLIC_SITE_URL='https://public.example.test';
  const auth=await login(env),html=await (await call(env,'/admin',undefined,auth.cookie)).text();
  assert.match(html,/<form[^>]+id="publish-box"[\s\S]*?公開先: <a href="https:\/\/public\.example\.test"[^>]*>https:\/\/public\.example\.test<\/a>/);

@@ -1,6 +1,3 @@
-import {mediaStorageMode} from '../media-mode';
-import {beginMediaMigration,copyMediaMigrationImage,finishMediaMigration,cancelMediaMigration,migrationStatus} from '../media-migration';
-import {cleanMediaObjects} from '../r2-media';
 import {importContentPackage,importWordPressContent} from '../content-import';
 import {latestCloudRelease,cloudUpdateUrl} from '../cloud-release';
 import {exportBackupManifest,exportBackupMediaPart,validateExportSnapshot,createBackupRestore,stageBackupMediaPart,commitBackupRestore,abortBackupRestore} from '../backup-restore';
@@ -28,7 +25,7 @@ import {mediaReferenceCount,mediaHasLockedReferences,renameMediaReferences,remov
 import {assertNotPublished,checkPublicationLock,isPublished} from '../publication-state';
 import {publicationManifest,readPublicationEntry} from '../static-publication';
 import {buildStaticExportZip} from '../static-export';
-import { MEDIA_FILE_LIMIT,MEDIA_TOTAL_LIMIT,MEDIA_COUNT_LIMIT,imageType,validMediaName,mediaType,isCodeMedia } from '../media-policy';
+import { MEDIA_FILE_LIMIT,imageType,validMediaName,mediaType,isCodeMedia } from '../media-policy';
 import { getSystemLanguage, createTranslator } from '../i18n';
 import { stashPreview, loadStashedForm } from '../preview-stash';
 import { renderLoginPage, renderAdminShell, renderPagesView, renderPageEditor, renderDesignView, renderDesignEditor, renderMediaView, renderSiteView, renderImportView, pageListQuery, PAGE_FORMAT_FILTERS } from './views';
@@ -356,13 +353,6 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
           if(!await uploadMedia(env,name,bytes,type))throw new Error(lang==='ja'?'保存できませんでした。空き容量と同名ファイルを確認してください。':'Save failed. Check available storage and duplicate filenames.');uploadedName=name;break;
         }
         case 'delete_media': {const name=val(form,'file');if(!/^[A-Za-z0-9_.-]+$/.test(name)||name.includes('..')) throw new Error('Invalid media name.');await assertNotPublished(env,['/media/'+name]);if(!await deleteMedia(env,name)) throw new Error(t('err_save_failed'));break;}
-        case 'begin_media_migration': {
-          return json({success:true,migration:await beginMediaMigration(env)});
-        }
-        case 'copy_media_migration': return json({success:true,migration:await copyMediaMigrationImage(env,val(form,'migration_id'))});
-        case 'finish_media_migration': await finishMediaMigration(env,val(form,'migration_id'));return json({success:true});
-        case 'cancel_media_migration': await cancelMediaMigration(env,val(form,'migration_id'));return json({success:true});
-        case 'cleanup_media': {const removed=await cleanMediaObjects(env);return json({success:true,message:lang==='en'?`${removed} unused images removed.`:`未使用の画像を${removed}件削除しました。`});}
         case 'media_reference_status': {
           const name=val(form,'file');if(!validMediaName(name)||!await getMediaObject(env,name))throw new Error('Image not found.');
           const count=await mediaReferenceCount(env,name);
@@ -423,18 +413,17 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
   const mediaPerPage=Math.min(500,Math.max(1,Number(settings.media_per_page)||100)),mediaTotalPages=Math.max(1,Math.ceil(mediaFiles.length/mediaPerPage)),mediaPage=Math.min(mediaTotalPages,Math.max(1,Number(url.searchParams.get('p_media'))||1));
   const references:Record<string,string[]>={};const mediaNames=new Set(files.map(f=>f.key));
   for(const item of [...pages.map(p=>({id:p.id,text:[p.data.content_md,p.data.css,p.data.js,p.data.ogp_image].join('\n')})),...components.filter(c=>!c.data.is_ai_doc).map(c=>({id:'component: '+c.id,text:[c.data.html,c.data.css,c.data.js].join('\n')}))])for(const name of new Set(item.text.match(/[A-Za-z0-9_.-]+\.(?:jpe?g|png|gif|webp|svg)/gi)||[]))if(mediaNames.has(name))(references[name]||=[]).push(item.id);
-  const designHtml=renderDesignView({t,components,view,editId,hasNew,helpFile,editorHtml:designEditorHtml}),mediaHtml=renderMediaView({t,files:mediaFiles.slice((mediaPage-1)*mediaPerPage,mediaPage*mediaPerPage),csrf,helpFile,mediaEnabled:true,lang,references,usage:await mediaUsage(env),storageMode:await mediaStorageMode(env),query:mediaQuery,mediaType:mediaTypeFilter,category:mediaCategory,ignoreCategory:ignoreMediaCategory,categories:allCategories,page:mediaPage,totalPages:mediaTotalPages,totalFiles:mediaFiles.length});
+  const designHtml=renderDesignView({t,components,view,editId,hasNew,helpFile,editorHtml:designEditorHtml}),mediaHtml=renderMediaView({t,files:mediaFiles.slice((mediaPage-1)*mediaPerPage,mediaPage*mediaPerPage),csrf,helpFile,mediaEnabled:true,lang,references,usage:await mediaUsage(env),query:mediaQuery,mediaType:mediaTypeFilter,category:mediaCategory,ignoreCategory:ignoreMediaCategory,categories:allCategories,page:mediaPage,totalPages:mediaTotalPages,totalFiles:mediaFiles.length});
   if(url.searchParams.has('ajax_editor'))return html(view==='components'?designEditorHtml:pageEditorHtml);
   if(url.searchParams.has('ajax_media'))return html(mediaHtml);
   if(url.searchParams.has('ajax_pages'))return html(pagesHtml);
   if(url.searchParams.has('ajax_comps'))return html(designHtml);
   const databaseProbe=await env.DB.prepare('SELECT 1').run();
   const d1Bytes=typeof databaseProbe.meta.size_after==='number'?databaseProbe.meta.size_after:null;
-  const storageMode=await mediaStorageMode(env),migration=await migrationStatus(env);
-  const target=cloudTarget(env),displaySettings={...settings,storage_migrated:url.searchParams.get('storage_migrated')==='1',media_storage:storageMode,r2_configured:!!env.MEDIA,d1_bytes:d1Bytes,media_migration:migration,r2_bytes:(await env.DB.prepare('SELECT COALESCE(SUM(size),0) bytes FROM r2_objects').first<{bytes:number}>())?.bytes||0,cloud_connection_ready:cloudReady,cloud_account_id:target.account,cloud_worker_name:target.worker};
+  const target=cloudTarget(env),displaySettings={...settings,d1_bytes:d1Bytes,media_bytes:(await mediaUsage(env)).bytes,cloud_connection_ready:cloudReady,cloud_account_id:target.account,cloud_worker_name:target.worker};
   const siteHtml=view==='import'?renderImportView({t,csrf,lang,stats:{pages:pages.length,components:components.length,users:users.length,media:files.length,mediaBytes:files.reduce((sum,file)=>sum+file.size,0)},cloudReady}):renderSiteView({t,trackingLegacy:(()=>{const id=String(settings.tracking_component||''),data=components.find(c=>c.id===id)?.data;return{id,html:trackingLegacyHtml(data),exists:!!data&&!data.is_ai_doc&&!data.is_wrapper};})(),settings:displaySettings,csrf,helpFile,users,username:auth.user.username,accountsHtml:renderAccountsSection({lang,csrf,users,me:auth.device,devices:await listDevices(env),codes:await listCodes(env),expiryDays:expiryFrom(settings),issuedCode}),lang,updateRepository:String(settings.cloud_update_repository||env.CLOUD_UPDATE_REPOSITORY||''),release:await latestCloudRelease(env,url.searchParams.has('refresh_updates'))});
   const unseen=await unseenDevices(env,auth.device);
   if(unseen.length)message=(message?message+' ':'')+(lang==='ja'?'新しい端末が登録されました: ':'New device registered: ')+unseen.map(d=>`${d.name} (${d.username})`).join(', ')+(lang==='ja'?'。心当たりがなければ「端末とユーザー」で止めてください。':'. If you do not recognise it, stop it under Devices and users.');
-  return html(renderAdminShell({lang,t,view,editId,hasNew,helpFile,message,csrf,settings:{...settings,_public_url:env.CLOUDFLARE_PUBLIC_WORKER_NAME ? env.PUBLIC_SITE_URL||'' : ''},pagesHtml,pageEditorHtml,siteHtml,designHtml,designEditorHtml,mediaHtml,
+  return html(renderAdminShell({lang,t,view,editId,hasNew,helpFile,message,csrf,settings:{...settings,_public_url:publicWorkerMissing(env)?'':env.PUBLIC_SITE_URL||''},pagesHtml,pageEditorHtml,siteHtml,designHtml,designEditorHtml,mediaHtml,
     mediaEnabled:true,aiPromptJson:JSON.stringify(settings.ai_prompt||'').replace(/</g,'\\u003c'),allCategories,category,listQuery}),statusCode);
 }

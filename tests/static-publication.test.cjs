@@ -4,8 +4,7 @@ const {environment}=require('./fixtures.cjs');
 const storage=require('../.test-build/src/storage.js');
 const {savePage,saveComponent,saveSettings,uploadMedia}=storage;
 const {buildStatic}=require('../.test-build/src/ssg.js');
-const {r2Environment}=require('./r2-fixture.cjs');
-const {publicationManifest,readPublicationEntry,publicationEntries,buildPublicationAssets,PUBLICATION_PUBLIC_ASSETS,PUBLICATION_FILE_BYTES,WORKER_FIRST_ROUTES}=require('../.test-build/src/static-publication.js');
+const {publicationManifest,readPublicationEntry,publicationEntries,buildPublicationAssets,PUBLICATION_PUBLIC_ASSETS,PUBLICATION_FILE_BYTES}=require('../.test-build/src/static-publication.js');
 const request=new Request('https://cloud.test/admin'),decode=new TextDecoder();
 function env() {
   const value=environment();value.ASSETS={fetch:async request=>new Response('public:'+new URL(request.url).pathname)};return value;
@@ -63,7 +62,7 @@ test('file metadata and asset downloads enforce the 25MiB per-file limit',async(
   const value=env();await snapshot(value,'too-big','x'.repeat(PUBLICATION_FILE_BYTES+1));
   await assert.rejects(publicationManifest(value),/25 MiB/);
   const asset=env();asset.ASSETS={fetch:async()=>new Response('small body',{headers:{'Content-Length':String(PUBLICATION_FILE_BYTES+1)}})};
-  await assert.rejects(readPublicationEntry(asset,request,'/mikanbox/admin.css'),/25 MiB/);
+  await assert.rejects(readPublicationEntry(asset,request,'/mikanbox/ai-question.js'),/25 MiB/);
 });
 test('publication generator retrieves one page body at a time',async()=>{
   const value=env();await snapshot(value,'a','A');await snapshot(value,'b','B');let bodies=0;
@@ -91,9 +90,6 @@ test('images are published as static files and are not routed to the Worker firs
   const entry=(await publicationManifest(value)).entries.find(item=>item.path==='/media/photo.png');
   assert.equal(entry.kind,'media');assert.equal(entry.size,image.length);
   assert.deepEqual((await readPublicationEntry(value,request,'/media/photo.png')).body,image);
-  assert.equal(WORKER_FIRST_ROUTES.includes('/media/*'),false);
-  // The admin and preview paths must keep reaching the Worker.
-  for(const route of ['/admin','/admin/*','/preview/*','/api/*'])assert.ok(WORKER_FIRST_ROUTES.includes(route));
 });
 test('site generation withdraws deleted pages and pages that are no longer static',async()=>{
   const value=env();
@@ -125,13 +121,4 @@ test('an edited public page keeps its built snapshot until the next rebuild',asy
   assert.match(decode.decode((await readPublicationEntry(value,request,'/page.html')).body),/First/);
   await buildStatic(value,request);
   assert.match(decode.decode((await readPublicationEntry(value,request,'/page.html')).body),/Second/);
-});
-test('images stored in R2 are published as static files too',async()=>{
-  const value=r2Environment();value.ASSETS={fetch:async request=>new Response('public:'+new URL(request.url).pathname)};
-  const image=new Uint8Array([137,80,78,71,13,10,26,10]);
-  await uploadMedia(value,'r2-photo.png',image.buffer,'image/png');
-  const entry=(await publicationManifest(value)).entries.find(item=>item.path==='/media/r2-photo.png');
-  assert.equal(entry.kind,'media');assert.equal(entry.size,image.length);
-  // The bytes must come back from R2, not only the metadata row from D1.
-  assert.deepEqual((await readPublicationEntry(value,request,'/media/r2-photo.png')).body,image);
 });

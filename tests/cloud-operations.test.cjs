@@ -34,7 +34,7 @@ test('Cloud release notice reads published releases, not a branch',async()=>{
 });
 test('AI identity URL does not redirect Cloud page rendering or change its root',()=>{
  const renderer=new MikanBoxRenderer(environment(),{site_url:'https://identity.example.test/alias'},new Request('https://cloud.test/'));
- assert.equal(renderer.getSiteUrl(),'https://cloud.test');
+ assert.equal(renderer.getSiteUrl(),'https://www.cloud.test');
 });
 test('encrypted Cloud credentials and export polling do not depend on D1 availability',async()=>{
  const env=target(environment()),original=global.fetch,token='private-test-credential-123456',requests=[];
@@ -70,18 +70,14 @@ test('image replacement and WebP conversion preserve bytes, references and histo
  assert.equal(await getMediaObject(env,'photo.png'),null);assert.deepEqual(new Uint8Array(await(await getMediaObject(env,'photo.webp')).arrayBuffer()),webp);
  assert.match((await loadPage(env,'page')).content_md,/photo.webp/);assert.match(env.sqlite.prepare('SELECT data FROM post_revisions').get().data,/photo.png/);
 });
-test('publication inherits existing bindings and recovers an accepted deployment after a lost response',async()=>{
- // The single-Worker publication is kept only for local development (SITE_ENVIRONMENT=local).
- const env=target(environment());env.SITE_ENVIRONMENT='local';env.CLOUDFLARE_API_TOKEN='test-token';env.ASSETS={fetch:async()=>new Response('public browser asset')};
+test('publication recovers an accepted deployment after a lost response',async()=>{
+ const env=target(environment());env.CLOUDFLARE_API_TOKEN='test-token';env.ASSETS={fetch:async()=>new Response('public browser asset')};
  const request=new Request('https://cloud.test/admin'),original=global.fetch;let active='initial',metadata,deployCalls=0,failResponse=true;
  global.fetch=async(url,init={})=>{
   if(url.endsWith('/deployments')&&init.method!=='POST')return Response.json({success:true,result:{deployments:[{versions:[{version_id:active,percentage:100}]}]}});
   if(url.endsWith('/assets-upload-session')){const manifest=JSON.parse(init.body).manifest;assert.ok(!manifest['/_headers']);return Response.json({success:true,result:{jwt:'upload-session',buckets:[Object.values(manifest).map(v=>v.hash)]}});}
   if(url.includes('/workers/assets/upload'))return Response.json({success:true,result:{jwt:'completed'}});
-  if(url.endsWith('/versions/initial'))return Response.json({success:true,result:{resources:{bindings:[{name:'DB',type:'d1'},{name:'JWT_SECRET',type:'secret_text'},{name:'ASSETS',type:'assets'}],script_runtime:{compatibility_date:'2026-10-03',compatibility_flags:[]}}}});
-  if(url.endsWith('/content/v2')){const form=new FormData();form.set('worker.js',new Blob(['export default{}']), 'worker.js');const response=new Response(form);response.headers.set('cf-entrypoint','worker.js');return response;}
-  if(url.endsWith('/versions?per_page=1'))return Response.json({success:true,result:{items:[{id:'initial'}]}});
-  if(url.endsWith('/versions?bindings_inherit=strict')){metadata=JSON.parse(await init.body.get('metadata').text());return Response.json({success:true,result:{id:'new-version'}});}
+  if(url.endsWith('/scripts/cloud-public/versions')&&init.method==='POST'){metadata=JSON.parse(await init.body.get('metadata').text());return Response.json({success:true,result:{id:'new-version'}});}
   if(url.endsWith('/deployments')&&init.method==='POST'){deployCalls++;active='new-version';if(failResponse){failResponse=false;throw new Error('Response lost after deploy');}return Response.json({success:true,result:{}});}
   throw new Error('Unexpected API path: '+url);
  };
@@ -92,7 +88,7 @@ test('publication inherits existing bindings and recovers an accepted deployment
   await assert.rejects(finishPublication(env,begin.job,'admin'),/not uploaded/);
   for(const entry of prepared.uploads){const file=files.find(f=>f.hash===entry.hash);await uploadPublicationFile(env,begin.job,'admin',entry.hash,new File([Buffer.from(file.bytes).toString('base64')],entry.hash,{type:file.contentType}));}
   await assert.rejects(finishPublication(env,begin.job,'admin'),/Response lost/);const result=await finishPublication(env,begin.job,'admin');assert.equal(result.version,'new-version');assert.equal(deployCalls,1);
-  assert.deepEqual(metadata.bindings.filter(b=>b.name!=='ASSETS'),[{name:'DB',type:'inherit',version_id:'latest'},{name:'JWT_SECRET',type:'inherit',version_id:'latest'}]);assert.equal(metadata.assets.config.html_handling,'none');assert.ok(metadata.assets.config._headers.includes('static'));
+  assert.equal(metadata.bindings,undefined,'the public Worker has no code and no bindings');assert.equal(metadata.main_module,undefined);assert.equal(metadata.assets.config.html_handling,'none');assert.ok(metadata.assets.config._headers.includes('static'));
   assert.equal(env.sqlite.prepare("SELECT key FROM settings WHERE key='publication_lock'").get(),undefined);
  }finally{global.fetch=original;}
 });

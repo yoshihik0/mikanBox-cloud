@@ -1,22 +1,12 @@
 import type {Env} from './types';
-// Split mode: the public site is an assets-only Worker at PUBLIC_SITE_URL and this
-// Worker serves only the admin screen, MCP and previews. Site content never runs
-// on the admin origin, so scripts on public pages cannot reach the admin session.
-export const splitMode=(env:Env)=>{
- if(env.CLOUDFLARE_PUBLIC_WORKER_NAME && env.CLOUDFLARE_PUBLIC_WORKER_NAME===env.CLOUDFLARE_WORKER_NAME)throw new Error('Public and management Workers must be different.');
- return !!env.CLOUDFLARE_PUBLIC_WORKER_NAME;
-};
-/**
- * Publication goes to a public Worker of its own, never to the management Worker. Without one (or
- * with the same name) nothing is deployed, so site scripts never land on the admin origin.
- * The only exception is local development (SITE_ENVIRONMENT=local, set explicitly), where the
- * old single-Worker publication is still available for tests and `wrangler dev`.
- */
+// The public site is an assets-only Worker at PUBLIC_SITE_URL, and this Worker serves only
+// the admin screen, MCP and previews. Site content never runs on the admin origin, so
+// scripts on public pages cannot reach the admin session. There is no other arrangement:
+// without a public Worker of its own, the admin screen still works but nothing is published.
 export const PUBLIC_WORKER_REQUIRED='公開用のWorkerを設定してください（CLOUDFLARE_PUBLIC_WORKER_NAME。管理用とは別の名前）。 / Set the public Worker (CLOUDFLARE_PUBLIC_WORKER_NAME, a name different from the management Worker).';
 export function publicWorkerMissing(env:Env):boolean{
  const name=env.CLOUDFLARE_PUBLIC_WORKER_NAME||'';
- if(name)return name===env.CLOUDFLARE_WORKER_NAME;
- return env.SITE_ENVIRONMENT!=='local';
+ return !name||name===env.CLOUDFLARE_WORKER_NAME;
 }
 export function assertPublicWorker(env:Env):void{if(publicWorkerMissing(env))throw new Error(PUBLIC_WORKER_REQUIRED);}
 export function publicOrigin(env:Env):string{
@@ -26,7 +16,6 @@ export function publicOrigin(env:Env):string{
 }
 /** Renders and feeds built for the public site must carry the public origin, never the admin one. */
 export function publicRequest(env:Env,request:Request):Request{
- if(!splitMode(env))return request;
  const url=new URL(request.url),origin=publicOrigin(env);if(origin===url.origin)throw new Error('Public and management URLs must be different.');return new Request(origin+url.pathname+url.search);
 }
 // The preview shows site scripts on the admin origin. A sandboxed document gets an

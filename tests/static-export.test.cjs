@@ -39,7 +39,7 @@ test('flat and directory exports rewrite public page aliases and preserve exact-
   await savePage(env,'dynamic',{title:'Live',status:'public_dynamic'});
   let files=unzip(await buildStaticExportZip(env,request,{structure:'flat'}));
   assert.match(decode.decode(files.get('index.html')),/href="news\/item.html"/);
-  assert.match(decode.decode(files.get('index.html')),/href="https:\/\/cloud.test\/test\/"/);
+  assert.match(decode.decode(files.get('index.html')),/href="https:\/\/www.cloud.test\/test\/"/);
   assert.match(decode.decode(files.get('index.html')),/https:\/\/other.test\/a\?x=1&amp;y=2/);
   let item=decode.decode(files.get('news/item.html'));assert.match(item,/href="\.\.\/index.html"/);assert.match(item,/\.\.\/test\/index.html\?q=1&amp;x=2#section/);
   files=unzip(await buildStaticExportZip(env,request,{structure:'directory'}));

@@ -4,14 +4,9 @@ import { validId } from './validation';
 import { validMediaName, CODE_MEDIA_TYPES } from './media-policy';
 import { MikanBoxRenderer } from './renderer';
 import { generateSitemapXml, generateRssXml, generatePodcastXml } from './feeds';
-import { splitMode, publicRequest } from './site-split';
+import { publicRequest } from './site-split';
 import { contentTypeForExtension, RESERVED_OUTPUT_FILES } from './output-formats';
 
-// Paths the Worker must answer itself. Everything else is served from the
-// published static assets, falling through to the Worker when no file exists.
-// /media/* is absent on purpose: published images are static files, and images
-// not yet published still reach the Worker through that fall-through.
-export const WORKER_FIRST_ROUTES=['/admin','/admin/*','/mikanBox/*','/mcp','/public-mcp','/public-help.html','/api/*','/preview/*','/preview-media/*'];
 export const PUBLICATION_FILE_LIMIT=20_000;
 export const PUBLICATION_FILE_BYTES=25*1024*1024;
 export const PUBLICATION_MAP_BYTES=32*1024*1024;
@@ -22,8 +17,9 @@ export async function publicationHash(bytes:Uint8Array):Promise<string> {
   return [...new Uint8Array(await crypto.subtle.digest('SHA-256',bytes))].map(b=>b.toString(16).padStart(2,'0')).join('').slice(0,32);
 }
 export interface PublicationManifest {entries:PublicationItem[];count:number;totalKnownBytes:number}
-// These are public source assets only. Never enumerate the workspace or include runtime files.
-export const PUBLICATION_PUBLIC_ASSETS=['/mikanbox/ai-question.js','/mikanbox/preview-editor.js','/mikanbox/admin.css','/mikanbox/cloud-admin.js','/mikanbox/cloud-publish.js','/mikanbox/cloud-media.js','/mikanbox/cloud-backup.js','/mikanbox/cloud-storage.js','/mikanbox/cloud-import.js','/mikanbox/cloud-release.json'] as const;
+// Only the scripts public pages load; the admin scripts stay on the admin Worker.
+// Never enumerate the workspace or include runtime files.
+export const PUBLICATION_PUBLIC_ASSETS=['/mikanbox/ai-question.js'] as const;
 const assetTypes=new Map<string,string>(PUBLICATION_PUBLIC_ASSETS.map(path=>[path,path.endsWith('.css')?'text/css; charset=utf-8':path.endsWith('.json')?'application/json; charset=utf-8':'text/javascript; charset=utf-8']));
 const imageTypes:Record<string,string>={jpg:'image/jpeg',jpeg:'image/jpeg',png:'image/png',gif:'image/gif',webp:'image/webp',svg:'image/svg+xml',...CODE_MEDIA_TYPES};
 const blockedRoots=new Set(['preview','admin','api','mcp','public-mcp','public-help','media','mikanbox','component-js','sitemap.xml','rss.xml','podcast.xml']);
@@ -57,10 +53,7 @@ function checked(file:PublicationFile):PublicationFile {
 }
 
 const FEEDS:Record<string,typeof generateSitemapXml>={'/sitemap.xml':generateSitemapXml,'/rss.xml':generateRssXml,'/podcast.xml':generatePodcastXml};
-// Only the scripts public pages load; the admin scripts stay on the admin Worker.
-const SPLIT_PUBLIC_ASSETS=new Set(['/mikanbox/ai-question.js']);
 // mikanBox DB answers cross-origin requests through the CORS rules headersFor() adds.
-const SPLIT_HEADERS=STATIC_HEADERS;
 // Cloudflare's static delivery types a file by its extension, and in production the type
 // comes without "charset=utf-8" (checked on a deployed site, 2026-11-09), so UTF-8 text is
 // garbled. _headers therefore sets the Content-Type of every text extension a page can publish
@@ -78,7 +71,7 @@ const FEED_TYPES:Record<string,string>={'/sitemap.xml':'application/xml; charset
 const CORS='  Access-Control-Allow-Origin: *\n';
 const headerRule=(path:string,type:string,cors=!type.startsWith('text/html'))=>`${path}\n  Content-Type: ${type}\n${cors?CORS:''}`;
 async function headersFor(env:Env):Promise<string> {
- const base=splitMode(env)?SPLIT_HEADERS:STATIC_HEADERS;
+ const base=STATIC_HEADERS;
  const rules=WILDCARD_TYPES.map(ext=>headerRule('/*.'+ext,outputType('/x.'+ext)));
  for(const [path,type] of Object.entries(FEED_TYPES))rules.push(headerRule(path,type,false));
  const {files,aliases}=await publishedRoutes(env);
@@ -134,10 +127,8 @@ export async function publicationManifest(env:Env):Promise<PublicationManifest> 
   // Every stored file is published, not only the ones static pages reference:
   // dynamic pages read /media/* from the same static assets.
   for(const file of await listMediaFiles(env))if(safeImage(file.key))entries.push({path:'/media/'+file.key,kind:'media',id:file.key,size:file.size});
-  for(const path of PUBLICATION_PUBLIC_ASSETS)if(!splitMode(env)||SPLIT_PUBLIC_ASSETS.has(path))entries.push({path,kind:'asset',id:path,size:null});
-  if(splitMode(env)) {
-    for(const path of Object.keys(FEEDS))entries.push({path,kind:'feed',id:path,size:null});
-  }
+  for(const path of PUBLICATION_PUBLIC_ASSETS)entries.push({path,kind:'asset',id:path,size:null});
+  for(const path of Object.keys(FEEDS))entries.push({path,kind:'feed',id:path,size:null});
   entries.push({path:'/_headers',kind:'headers',id:'_headers',size:encode.encode(await headersFor(env)).byteLength});
   if(entries.length>PUBLICATION_FILE_LIMIT)throw new Error('Publication exceeds 20,000 files.');
   entries.push({path:'/_redirects',kind:'redirects',id:'_redirects',size:encode.encode(await redirects(env)).byteLength});
@@ -151,7 +142,7 @@ export async function readPublicationEntry(env:Env,request:Request,path:string):
   if(!safePath(path))return null;
   if(path==='/_redirects')return checked({path,body:encode.encode(await redirects(env)),contentType:'text/plain; charset=utf-8'});
   if(path==='/_headers')return checked({path,body:encode.encode(await headersFor(env)),contentType:'text/plain; charset=utf-8'});
-  if(splitMode(env)&&FEEDS[path]) {
+  if(FEEDS[path]) {
     const xml=await FEEDS[path](env,await loadSettings(env),publicRequest(env,request));
     return checked({path,body:encode.encode(xml),contentType:path==='/sitemap.xml'?'application/xml; charset=utf-8':'application/rss+xml; charset=utf-8'});
   }

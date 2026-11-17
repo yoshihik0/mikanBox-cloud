@@ -15,7 +15,7 @@ function outputPath(id:string,structure:StaticExportOptions['structure']) {
   return id==='index'?'index.html':structure==='flat'||id.endsWith('/index')?id+'.html':id+'/index.html';
 }
 interface PageRow {id:string;status:string;html:string|null}
-interface MediaRow {key:string;size:number;upload_id:string|null;chunk_count:number;object_key:string|null}
+interface MediaRow {key:string;size:number;upload_id:string|null;chunk_count:number}
 
 /** Export already-built public snapshots; this operation never renders private content or writes data. */
 export async function buildStaticExportZip(env:Env,request:Request,options:StaticExportOptions):Promise<Uint8Array> {
@@ -104,11 +104,11 @@ export async function buildStaticExportZip(env:Env,request:Request,options:Stati
     add(path.slice(1),path.endsWith('.css')?encode.encode(css(new TextDecoder().decode(data),path.slice(1),new URL(path,live.origin))):data);
   }
   if(media.size>39)throw new Error('Static export has too many image reads. Reduce included images.');
-  const metadata=media.size?(await env.DB.prepare(`SELECT key,size,upload_id,chunk_count,object_key FROM media WHERE key IN (${[...media].map(()=>'?').join(',')})`).bind(...media).all<MediaRow>()).results:[];
+  const metadata=media.size?(await env.DB.prepare(`SELECT key,size,upload_id,chunk_count FROM media WHERE key IN (${[...media].map(()=>'?').join(',')})`).bind(...media).all<MediaRow>()).results:[];
   let queries=1+(media.size?1:0),predictedBytes=bytes;
   const accounted=new Set<string>();
   function account(key:string,row:MediaRow) {
-    queries+=row.object_key?1:row.upload_id?1+(row.chunk_count||Math.ceil(row.size/MEDIA_CHUNK_SIZE)):2;
+    queries+=row.upload_id?1+(row.chunk_count||Math.ceil(row.size/MEDIA_CHUNK_SIZE)):2;
     if(queries>42)throw new Error('Static export exceeds the 42-query image budget. Reduce included images.');
     predictedBytes+=row.size+76+2*encode.encode('media/'+key).length;
     if(predictedBytes>MEDIA_ZIP_LIMIT)throw new Error('Static export ZIP exceeds 20 MB. Reduce images or page size.');
@@ -117,7 +117,7 @@ export async function buildStaticExportZip(env:Env,request:Request,options:Stati
   for(const key of media){const row=metadata.find(row=>row.key===key);if(!row)throw new Error('Missing image: '+key);account(key,row);}
   for(const key of media) {
     let row=metadata.find(row=>row.key===key);
-    if(!row){queries++;row=await env.DB.prepare('SELECT key,size,upload_id,chunk_count,object_key FROM media WHERE key=?').bind(key).first<MediaRow>()||undefined;}
+    if(!row){queries++;row=await env.DB.prepare('SELECT key,size,upload_id,chunk_count FROM media WHERE key=?').bind(key).first<MediaRow>()||undefined;}
     if(!row)throw new Error('Missing image: '+key);
     if(!accounted.has(key))account(key,row);
     const object=await getMediaObject(env,key);if(!object)throw new Error('Missing image: '+key);

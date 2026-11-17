@@ -55,5 +55,5 @@ response=await fetch(base+'/mcp',{method:'POST',headers:{'Content-Type':'applica
 const rpc=await response.json();assert.equal(rpc.result.isError,false);const info=JSON.parse(rpc.result.content[0].text);assert.notEqual(info.site_id,'site-56ae1fb3a5c501fc');
 response=await request('/admin',new URLSearchParams({save_action:'download_backup_data',csrf_token:csrf}));assert.equal(response.headers.get('content-type'),'application/zip');assert.equal(new Uint8Array(await response.arrayBuffer())[0],0x50);
 await mkdir(new URL('../artifacts/',import.meta.url),{recursive:true});
-await writeFile(new URL('../artifacts/live-smoke.json',import.meta.url),JSON.stringify({passed:true,runtime:'Wrangler local D1/R2',checks:['setup/login','page/component writes','private-page access','static snapshot','CSRF rejection','CSS assets','R2 upload/read','authenticated MCP site identity','ZIP export'],port:8788},null,2));
-console.log('Live smoke passed: local authentication, D1, R2, static publication, MCP, and ZIP export.');
+await writeFile(new URL('../artifacts/live-smoke.json',import.meta.url),JSON.stringify({passed:true,runtime:'Wrangler local D1',checks:['setup/login','page/component writes','private-page access','static snapshot','CSRF rejection','CSS assets','media upload/read','authenticated MCP site identity','ZIP export'],port:8788},null,2));
+console.log('Live smoke passed: local authentication, D1, media, static publication, MCP, and ZIP export.');

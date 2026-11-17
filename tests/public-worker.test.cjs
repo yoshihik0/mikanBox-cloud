@@ -5,20 +5,20 @@ const {beginPublication,preparePublication}=require('../.test-build/src/publicat
 const {publicWorkerMissing}=require('../.test-build/src/site-split.js');
 const request=new Request('https://cloud.test/admin');
 // Publication goes to a public Worker of its own. Without one nothing is deployed anywhere.
-function target(env,extra={}){return Object.assign(env,{CLOUDFLARE_ACCOUNT_ID:'a'.repeat(32),CLOUDFLARE_WORKER_NAME:'admin-site',CLOUDFLARE_D1_ID:'db',CLOUDFLARE_API_TOKEN:'test-token',ASSETS:{fetch:async()=>new Response('asset')}},extra);}
+function target(env,extra={}){delete env.CLOUDFLARE_PUBLIC_WORKER_NAME;delete env.PUBLIC_SITE_URL;return Object.assign(env,{CLOUDFLARE_ACCOUNT_ID:'a'.repeat(32),CLOUDFLARE_WORKER_NAME:'admin-site',CLOUDFLARE_D1_ID:'db',CLOUDFLARE_API_TOKEN:'test-token',ASSETS:{fetch:async()=>new Response('asset')}},extra);}
 async function noCloudflare(run){const original=global.fetch;let calls=0;global.fetch=async url=>{calls++;throw new Error('Unexpected Cloudflare call: '+url);};try{return {result:await run(),calls};}catch(error){return {error,calls};}finally{global.fetch=original;}}
 
-test('the public Worker is missing unless it is set and differs, or local development says otherwise',()=>{
+test('the public Worker is missing unless it is set and differs from the management Worker',()=>{
  assert.equal(publicWorkerMissing({CLOUDFLARE_WORKER_NAME:'a'}),true);
  assert.equal(publicWorkerMissing({CLOUDFLARE_WORKER_NAME:'a',CLOUDFLARE_PUBLIC_WORKER_NAME:'a'}),true);
  assert.equal(publicWorkerMissing({CLOUDFLARE_WORKER_NAME:'a',CLOUDFLARE_PUBLIC_WORKER_NAME:'a',SITE_ENVIRONMENT:'local'}),true,'the same name is never allowed');
  assert.equal(publicWorkerMissing({CLOUDFLARE_WORKER_NAME:'a',SITE_ENVIRONMENT:'production'}),true);
  assert.equal(publicWorkerMissing({CLOUDFLARE_WORKER_NAME:'a',CLOUDFLARE_PUBLIC_WORKER_NAME:'b'}),false);
- assert.equal(publicWorkerMissing({CLOUDFLARE_WORKER_NAME:'a',SITE_ENVIRONMENT:'local'}),false,'explicit local development keeps the single-Worker path');
+ assert.equal(publicWorkerMissing({CLOUDFLARE_WORKER_NAME:'a',SITE_ENVIRONMENT:'local'}),true,'local development is no exception');
 });
 
 test('building, publishing and image auto-publication deploy nothing without a public Worker',async()=>{
- for(const extra of [{},{CLOUDFLARE_PUBLIC_WORKER_NAME:'admin-site'},{SITE_ENVIRONMENT:'staging'}]){
+ for(const extra of [{},{CLOUDFLARE_PUBLIC_WORKER_NAME:'admin-site'},{SITE_ENVIRONMENT:'staging'},{SITE_ENVIRONMENT:'local'}]){
   const env=target(environment(),extra);await savePage(env,'index',{title:'Top',status:'public_static',content_md:'x'});
   for(const args of [[true],[false],[false,[],'photo.png']]){
    const {error,calls}=await noCloudflare(()=>beginPublication(env,request,'admin',...args));
@@ -51,5 +51,5 @@ test('the admin screen refuses publication and says where to set the public Work
  env.CLOUDFLARE_PUBLIC_WORKER_NAME='public-site';env.PUBLIC_SITE_URL='https://public.example.test';
  assert.doesNotMatch(await (await call(env,'/admin',undefined,auth.cookie)).text(),/data-public-worker-missing/);
  delete env.CLOUDFLARE_PUBLIC_WORKER_NAME;env.SITE_ENVIRONMENT='local';
- assert.doesNotMatch(await (await call(env,'/admin',undefined,auth.cookie)).text(),/data-public-worker-missing/,'local development shows no notice');
+ assert.match(await (await call(env,'/admin',undefined,auth.cookie)).text(),/data-public-worker-missing/,'local development is no exception');
 });

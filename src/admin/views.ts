@@ -8,6 +8,7 @@ import type { Settings, PageData, ComponentData } from '../types';
 import type { User } from '../accounts';
 import type { Revision } from '../revisions';
 import {CLOUD_VERSION} from '../version';
+import {MEDIA_TOTAL_LIMIT,MEDIA_COUNT_LIMIT,MEDIA_WARNING_BYTES,D1_WARNING_BYTES} from '../media-policy';
 import {localTime,isoInstant,utcFallback,localTimeScript} from './local-time';
 import {trackingConfigured} from '../tracking';
 import type {PublicationStatus,PublicState} from '../publish-status';
@@ -679,7 +680,7 @@ ${opts.mediaEnabled?`<div id="drop-zone">${getIcon('cloud')} ${t('hint_drop_uplo
     <script src="/mikanbox/cloud-editor.js?v=${h(CLOUD_VERSION)}" defer></script>
     <script src="/mikanbox/cloud-admin.js?v=${h(CLOUD_VERSION)}-3" defer></script>
     <script src="/mikanbox/cloud-media.js?v=${h(CLOUD_VERSION)}" defer></script>
-    <script src="/mikanbox/cloud-backup.js?v=${h(CLOUD_VERSION)}-2" defer></script><script src="/mikanbox/cloud-publish.js?v=${h(CLOUD_VERSION)}-7" defer></script><script src="/mikanbox/cloud-storage.js?v=${h(CLOUD_VERSION)}-2" defer></script>
+    <script src="/mikanbox/cloud-backup.js?v=${h(CLOUD_VERSION)}-2" defer></script><script src="/mikanbox/cloud-publish.js?v=${h(CLOUD_VERSION)}-7" defer></script>
 </div>
 </body>
 </html>`;
@@ -1184,7 +1185,6 @@ export function renderMediaView(opts: {
   mediaEnabled?: boolean;
   lang?: string;
   usage?: {bytes:number;files:number};
-  storageMode?: 'd1'|'r2';
   query?:string;
   category?:string;
   categories?:string[];
@@ -1300,7 +1300,7 @@ export function renderMediaView(opts: {
                     <button type="button" id="upload-publication-retry" class="btn btn-gray btn-small" hidden style="display:none">${opts.lang==='ja'?'画像の公開を再試行':'Retry image publication'}</button>
                     <details class="resize-details upload-options" id="upload-options"><summary class="resize-summary">${t('upload_options')}<span class="resize-arrow">▼</span></summary><div class="upload-options-body"><div class="upload-info upload-info-types">${t('media_support_types')}: JPEG, PNG, GIF, WebP, SVG, JS, CSS<br>${t('media_code_hint')}</div><label class="upload-option"><input type="checkbox" name="opt_resize" value="1" id="opt-resize" checked> ${t('upload_opt_resize')} <input type="text" name="opt_max_dim" id="opt-max-dim" value="2000" class="resize-input" inputmode="numeric" pattern="[0-9]*"> px</label><label class="upload-option"><input type="checkbox" name="opt_webp" id="opt-webp" value="1"> ${t('upload_opt_webp')}</label></div></details>
                     <div class="upload-info">
-                        ${opts.usage?`<span id="media-usage">${opts.lang==='ja'?'メディアの使用量':'Media storage'}: ${opts.storageMode==='r2'?`${(opts.usage.bytes/1_000_000_000).toFixed(3)} GB (R2)`:`${(opts.usage.bytes/1_000_000).toFixed(1)} / 400 MB (D1)`} · ${opts.usage.files.toLocaleString()} / 10,000 ${t('media_file_count')}</span><br>`:''}
+                        ${opts.usage?`<span id="media-usage">${opts.lang==='ja'?'メディアの使用量':'Media storage'}: ${(opts.usage.bytes/1_000_000).toFixed(1)} / ${MEDIA_TOTAL_LIMIT/1_000_000} MB · ${opts.usage.files.toLocaleString()} / ${MEDIA_COUNT_LIMIT.toLocaleString('en-US')} ${t('media_file_count')}</span>${opts.usage.bytes>=MEDIA_WARNING_BYTES||opts.usage.files>=MEDIA_COUNT_LIMIT*0.9?`<br><strong id="media-usage-warning" role="status">${opts.lang==='ja'?'上限に近づいています。使っていないメディアを削除するか、画像のサイズを小さくしてください。':'Storage is close to its limit. Delete unused media, or reduce image sizes.'}</strong>`:''}<br>`:''}
                         <br>
                         ${t('hint_media_display')}<br>
                         ${t('hint_media_resize')}
@@ -1535,27 +1535,19 @@ export function renderSiteView(opts: {
 `;
 }
 
-function renderStorageView(settings:Settings,csrf:string,lang:string):string {
- const en=lang==='en',r2=settings.media_storage==='r2';
- const migration=settings.media_migration as {id:string;total:number;copied:number}|null;
- const d1Bytes=settings.d1_bytes as number|null, r2Bytes=Number(settings.r2_bytes||0);
- const warning=(d1Bytes!==null&&d1Bytes>=400_000_000)||r2Bytes>=8_000_000_000;
- return `<div id="image-storage" class="section-large-bottom"><div class="section-container section-tight"><details class="section-accordion" ${migration||settings.storage_migrated?'open':''}>
- <summary class="header section-header accordion-summary"><h2 class="accordion-title">${en?'Media storage':'メディアの保存先'} <span class="accordion-arrow">▼</span></h2></summary>
+function renderStorageView(settings:Settings,_csrf:string,lang:string):string {
+ const en=lang==='en';
+ const d1Bytes=settings.d1_bytes as number|null,mediaBytes=Number(settings.media_bytes||0);
+ const warning=(d1Bytes!==null&&d1Bytes>=D1_WARNING_BYTES)||mediaBytes>=MEDIA_WARNING_BYTES;
+ return `<div id="image-storage" class="section-large-bottom"><div class="section-container section-tight"><details class="section-accordion">
+ <summary class="header section-header accordion-summary"><h2 class="accordion-title">${en?'Storage usage':'保存容量'} <span class="accordion-arrow">▼</span></h2></summary>
  <div class="editor-container editor-container-sub">
- ${settings.storage_migrated&&r2?`<p role="status">${en?'Media migrated to R2.':'メディアをR2へ移行しました。'}</p>`:''}
- <p>${en?'Current media storage':'現在のメディアの保存先'}: <strong>${r2?'R2':'D1'}</strong></p>
+ <p>${en?'Pages, history and media are all kept in the D1 database.':'ページ・履歴・メディアは、すべてD1データベースに保存します。'}</p>
  <p>${en?'D1 database usage':'D1データベースの使用量'}: ${d1Bytes===null?(en?'Check in Cloudflare':'Cloudflareで確認'):`${(d1Bytes/1_000_000).toFixed(1)} MB`}<br>
- ${en?'Free plan: 500 MB per database. Paid plan: up to 10 GB per database. The plan must be upgraded separately.':'無料プランは1データベース500 MBまで。有料プランは10 GBまでです。プランの変更は別途必要です。'}</p>
- ${r2||migration||r2Bytes>0?`<p>${en?'Tracked R2 media storage (including temporary and retained files)':'R2メディアの使用量（管理対象の一時ファイル・保持ファイルを含む）'}: ${(r2Bytes/1_000_000_000).toFixed(3)} GB<br>${en?'The monthly free allowance is 10 GB-month across the account. This is not a storage limit; excess storage and requests are billed.':'月間の無料枠はアカウント全体で10 GB-monthです。容量の上限ではなく、超過した容量やリクエストは課金対象です。'}</p>`:''}
- ${warning?`<p role="status" class="sub-text">${en?'Usage is approaching the free allowance. Check account usage and billing.':'無料枠に近づいています。アカウント全体の使用量と料金を確認してください。'}</p>`:''}
- <p><a href="https://dash.cloudflare.com/" target="_blank" rel="noopener">${en?'Check usage and set billing alerts in Cloudflare':'Cloudflareで使用量の確認・料金通知の設定'}</a><br><small>${en?'This screen shows this site’s recorded storage. Account totals and request usage are available in Cloudflare. Billing alerts do not stop usage.':'この画面はこのサイトが管理する容量を表示します。アカウント全体の容量・リクエスト数はCloudflareで確認してください。料金通知は利用を停止する機能ではありません。'}</small></p>
- ${!r2?`<p>${en?'Start with D1 without enabling R2. To migrate, enable R2 in Cloudflare (a payment method is required), create a bucket and configure the MEDIA binding. Media files are copied and verified before switching; media URLs remain unchanged. Media changes are paused during migration.':'R2を有効にせずD1で利用を始められます。移行するにはCloudflareでR2を有効にし（支払い方法の登録が必要）、バケットを作成してMEDIA接続を設定してください。メディアファイルをコピー・確認してから切り替え、メディアURLは変わりません。移行中はメディアの変更を停止します。'}</p>
- <p><a href="https://developers.cloudflare.com/r2/get-started/" target="_blank" rel="noopener">${en?'R2 setup instructions':'R2の設定手順'}</a></p>
- <form data-media-migration data-job-id="${h(migration?.id||'')}" data-lang="${h(lang)}" method="post">${csrfField(csrf)}
- ${migration?`<p data-storage-progress role="status">${migration.copied} / ${migration.total}</p><button type="submit" class="btn btn-blue btn-small">${en?'Resume migration':'移行を再開'}</button> <button type="button" data-storage-cancel class="btn btn-gray btn-small">${en?'Cancel migration':'移行を中止'}</button>`:`<button type="submit" class="btn btn-blue btn-small" ${settings.r2_configured?'':'disabled'}>${en?'Migrate from D1 to R2':'D1からR2へ移行'}</button> <button type="button" data-storage-cancel class="btn btn-gray btn-small" hidden style="display:none">${en?'Cancel migration':'移行を中止'}</button><p data-storage-progress role="status">${settings.r2_configured?'':(en?'R2 is not connected. Configure the MEDIA binding first.':'R2未接続です。先にMEDIA接続を設定してください。')}</p>`}
- </form>`:''}
- ${r2||(settings.r2_configured&&r2Bytes>0)?`<form method="post" data-storage-cleanup>${csrfField(csrf)}<input type="hidden" name="save_action" value="cleanup_media"><button class="btn btn-gray btn-small">${en?'Clean unused temporary files':'不要な一時ファイルを整理'}</button> <span role="status"></span><p class="sub-text">${en?'Unused files retained for at least 24 hours are removed, up to 20 per run.':'24時間以上保持した未使用のファイルを、1回につき最大20件削除します。'}</p></form>`:''}
+ ${en?'Media':'メディア'}: ${(mediaBytes/1_000_000).toFixed(1)} / ${MEDIA_TOTAL_LIMIT/1_000_000} MB<br>
+ ${en?'The Cloudflare free plan allows 500 MB per database.':'Cloudflareの無料プランは、1データベース500 MBまでです。'}</p>
+ ${warning?`<p role="status"><strong>${en?'Storage is close to its limit. Delete unused media, or reduce image sizes.':'上限に近づいています。使っていないメディアを削除するか、画像のサイズを小さくしてください。'}</strong></p>`:''}
+ <p><a href="https://dash.cloudflare.com/" target="_blank" rel="noopener">${en?'Check usage in Cloudflare':'Cloudflareで使用量を確認'}</a><br><small>${en?'This screen shows this site’s storage. Account totals and request usage are available in Cloudflare.':'この画面はこのサイトの容量を表示します。アカウント全体の容量・リクエスト数はCloudflareで確認してください。'}</small></p>
  </div></details></div></div>`;
 }
 
@@ -1655,17 +1647,17 @@ function buildTagGuide(
 export function renderImportView(opts: {t:(key:string,...args:(string|number)[])=>string;csrf:string;lang:string;stats?:{pages:number;components:number;users:number;media:number;mediaBytes:number};cloudReady?:boolean}):string {
   const {t,csrf,lang}=opts;
   const d1BackupHtml=`<div class="data-tool-grid data-backup-grid"><section id="cloud-d1-backup" class="data-tool-card"><h2>${getIcon('database')} ${lang==='en'?'Export D1 database as SQL':'D1データベースのSQL書き出し'}</h2>
-    <p>${lang==='en'?'Save the current D1 database as an SQL file. Importing it requires a compatible database tool; this screen cannot restore the file. R2 image files are not included.':'現在のD1データベースをSQLファイルとして保存します。利用には対応するデータベースのツールが必要で、この画面からSQLファイルを復元することはできません。R2の画像ファイルは含まれません。'}</p>
+    <p>${lang==='en'?'Save the current D1 database as an SQL file. Importing it requires a compatible database tool; this screen cannot restore the file.':'現在のD1データベースをSQLファイルとして保存します。利用には対応するデータベースのツールが必要で、この画面からSQLファイルを復元することはできません。'}</p>
     <p>${lang==='en'?'The unencrypted file contains sensitive information. Store it securely. The database may be temporarily unavailable during export.':'暗号化されないファイルには認証情報などが含まれます。安全に保管してください。書き出し中はD1が一時的に利用できなくなる場合があります。'}</p>
     ${opts.cloudReady?`<form method="post" data-cloudbackup="d1-export">${csrfField(csrf)}<input type="hidden" name="save_action" value="begin_d1_export"><button class="btn btn-gray btn-small">${getIcon('download')} ${lang==='en'?'Export D1 as SQL':'D1のSQLを書き出す'}</button><span data-transfer-status role="status"></span></form>`:`<p>${lang==='en'?'Configure Cloudflare publication settings with D1 edit permission.':'D1編集権限を持つトークンをCloudflare公開設定に登録してください。'}</p>`}</section>
-    <section id="cloud-d1-restore" class="data-tool-card"><h2>${getIcon('history')} ${lang==='en'?'Restore D1 to a past time':'D1の指定時刻への復元'}</h2><p>${lang==='en'?'Cloudflare Time Travel returns the database to a time within its retention period. This does not use the downloaded SQL file. R2 images and published files are not restored; rebuild the public site afterward.':'CloudflareのTime Travelで、保持期間内の指定時刻にデータベースを戻します。保存したSQLファイルは使いません。R2の画像と公開済みファイルは復元されないため、復元後に公開サイトをビルドしてください。'}</p>
+    <section id="cloud-d1-restore" class="data-tool-card"><h2>${getIcon('history')} ${lang==='en'?'Restore D1 to a past time':'D1の指定時刻への復元'}</h2><p>${lang==='en'?'Cloudflare Time Travel returns the database to a time within its retention period. This does not use the downloaded SQL file. Published files are not restored; rebuild the public site afterward.':'CloudflareのTime Travelで、保持期間内の指定時刻にデータベースを戻します。保存したSQLファイルは使いません。公開済みファイルは復元されないため、復元後に公開サイトをビルドしてください。'}</p>
     ${opts.cloudReady?`<form method="post" data-cloudbackup="d1-restore">${csrfField(csrf)}<input type="hidden" name="save_action" value="restore_d1_time"><label class="form-group backup-field">${lang==='en'?'Restore to time':'復元する時刻'} <input type="datetime-local" name="restore_at" required></label><button class="btn btn-orange btn-small">${lang==='en'?'Restore D1 to this time':'D1を指定時刻に戻す'}</button><p class="data-action-hint">${lang==='en'?'This replaces the current database with its past state.':'現在のデータベースを指定時刻の状態に置き換えます。'}</p><span data-transfer-status role="status"></span></form>`:`<p>${lang==='en'?'Configure Cloudflare publication settings with D1 edit permission.':'D1編集権限を持つトークンをCloudflare公開設定に登録してください。'}</p>`}</section></div>`;
   const cloudBackupHtml=`<div class="data-tool-grid data-backup-grid"><section id="cloud-json-backup" class="data-tool-card"><h2>${getIcon('download')} ${lang==='en'?'JSON backup':'JSONバックアップ'}</h2>
     <p>${lang==='en'?'Save pages, components, images, accounts and revision history together. The unencrypted file contains private content, API keys and password hashes. Restrict access and store it securely, preferably encrypted.':'ページ・コンポーネント・画像・アカウント・編集履歴をまとめて保存します。ファイルは暗号化されず、非公開内容・APIキー・パスワードのハッシュを含みます。アクセスを制限し、できれば暗号化して保管してください。'}</p>
     <form method="post" data-cloudbackup="export">${csrfField(csrf)}<input type="hidden" name="save_action" value="download_backup_json"><button type="submit" class="btn btn-gray btn-small">${getIcon('download')} ${lang==='en'?'Download JSON backup':'JSONバックアップを保存'}</button><span data-transfer-status role="status"></span></form></section>
     <section id="cloud-json-restore" class="data-tool-card"><h2>${getIcon('upload')} ${lang==='en'?'Restore a JSON backup':'バックアップJSONファイルの復元'}</h2>
     <p>${lang==='en'?'Restoring replaces current site data. Accounts are restored only if selected. Current site identity, API key and Cloud connection are kept.':'復元すると、現在のサイトの内容がバックアップの内容に置き換わります。ユーザーは選択した場合のみ復元され、現在のサイトID・APIキー・Cloud接続は維持されます。'}</p>
-    <p>${lang==='en'?'For D1, existing and temporary restore images must fit within 450 MB. R2 also needs space for both sets.':'D1では現在の画像と復元用の一時画像の合計が450 MB以内である必要があります。R2でも両方の保存領域が必要です。'}</p>
+    <p>${lang==='en'?'Existing images and the temporary images for the restore must fit within 450 MB together.':'現在の画像と復元用の一時画像の合計が、450 MB以内である必要があります。'}</p>
     <form method="post" enctype="multipart/form-data" data-cloudbackup="restore">${csrfField(csrf)}<input type="hidden" name="save_action" value="restore_backup_json"><label class="form-group backup-field">${lang==='en'?'Backup JSON file':'バックアップJSONファイル'} <input type="file" name="backup_file" accept="application/json,.json" required></label><label class="form-group backup-field"><input type="checkbox" name="restore_users" value="1"> ${lang==='en'?'Also restore user accounts (signs everyone out)':'ユーザーも復元（全員ログアウト）'}</label><button type="submit" class="btn btn-orange btn-small">${lang==='en'?'Restore and replace':'復元して置き換え'}</button><span data-transfer-status role="status"></span></form></section></div>`;
   return renderDataImportView({t,csrf,lang,stats:opts.stats||{pages:0,components:0,users:0,media:0,mediaBytes:0},cloudBackupHtml:d1BackupHtml+cloudBackupHtml+`<section id="static-zip" class="data-tool-card"><h2>${getIcon('archive')} ${lang==='en'?'Static HTML (ZIP)':'静的HTML（ZIP）'}</h2><form method="post">${csrfField(csrf)}<input type="hidden" name="save_action" value="download_static_zip"><div class="data-tool-form-row"><label>${lang==='en'?'HTML file structure':'HTMLファイルの構造'} <select name="structure"><option value="flat">ID.html</option><option value="directory">ID/index.html</option></select></label><button class="btn btn-gray btn-small">${getIcon('download')} ${lang==='en'?'Download static ZIP':'静的ZIPを保存'}</button></div><p class="data-action-hint">${lang==='en'?'Exports already-built static pages and referenced local images, up to 20 MB. Dynamic pages and external images remain live links; images loaded dynamically by JavaScript are not collected.':'ビルド済みの静的ページと参照するサイト内画像を、合計20 MBまで保存します。動的ページと外部画像は元のURLのままです。JavaScriptが動的に読み込む画像は収集しません。'}</p></form></section>`});
 }

@@ -45,8 +45,8 @@ test('navigation, search, feeds and static builds stay within Free D1 query limi
  for(let i=0;i<80;i++)await savePage(env,'page'+i,{title:'Find me '+i,status:'public_static',content_md:'Content'});
  await savePage(env,'search',{title:'Search',status:'public_dynamic',content_md:'{{SEARCH_RESULTS}}'});
  const prepare=env.DB.prepare.bind(env.DB);let queries=0;env.DB.prepare=(...args)=>{queries++;return prepare(...args);};
- queries=0;const rss=await call(env,'/rss.xml');assert.equal(rss.status,200);assert.ok(queries<10);
- queries=0;await require('../.test-build/src/ssg.js').buildStatic(env,new Request('https://cloud.test/'));assert.ok(queries<10);assert.equal(env.sqlite.prepare('SELECT COUNT(*) n FROM static_pages').get().n,81); // the search page is public too
+ const auth=await login(env);queries=0;const rss=await call(env,'/rss.xml',undefined,auth.cookie);assert.equal(rss.status,200);assert.ok(queries<14,'feed queries: '+queries);
+ queries=0;await require('../.test-build/src/ssg.js').buildStatic(env,new Request('https://cloud.test/'));assert.ok(queries<10);assert.equal(env.sqlite.prepare('SELECT COUNT(*) n FROM static_pages').get().n,env.sqlite.prepare("SELECT COUNT(*) n FROM posts WHERE status LIKE 'public%'").get().n); // the search page is public too
 });
 
 test('public help uses a fresh nonce only for the bundled script',async()=>{

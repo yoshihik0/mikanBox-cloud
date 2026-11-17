@@ -72,7 +72,7 @@ const statusLabel = (t: Translator, s: string) => {
 
 /**
  * Renders the page with the site's own renderer: with block markers, a CSS range marker and as a draft.
- * Links and images use this origin, so they work inside the signed-in admin screen (including split mode).
+ * Links and images use this origin, so they work inside the signed-in admin screen.
  */
 export async function renderVisual(env: Env, settings: Settings, request: Request, id: string, page: PageData): Promise<string> {
   const md = nl(String(page.content_md ?? ''));
@@ -256,7 +256,7 @@ export async function handleVisual(request: Request, env: Env): Promise<Response
       }
     } catch (error) {
       if (error instanceof VisualError) return out({ error: error.message }, error.status);
-      // Media operations throw readable messages (for example while images are moving to R2); everything else stays generic.
+      // Media operations throw readable messages (for example a full image quota); everything else stays generic.
       if (apiName === 'upload' && error instanceof Error) return out({ error: error.message }, 409);
       console.error('Visual editing failed', error instanceof Error ? error.name : 'UnknownError');
       return out({ error: t('visual_err_save') }, 500);

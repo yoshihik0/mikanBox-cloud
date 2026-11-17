@@ -1,6 +1,6 @@
 <style>.manual-version{font-size:.5em;font-weight:400;white-space:nowrap}</style>
 
-# 🍊mikanBox Cloudflare Manual <small class="manual-version">v0.11.1</small>
+# 🍊mikanBox Cloudflare Manual <small class="manual-version">v0.12.0</small>
 
 This manual covers installation and the Cloudflare edition’s differences. For shared operations, see the [operation manual](https://yoshihiko.com/mikanbox/help_en.html).
 
@@ -21,7 +21,7 @@ To change the public URL later, connect the new domain to the public Worker, upd
 5. Create a Cloudflare API token scoped to the intended account with Workers Scripts Edit permission and save it in Site → Cloudflare publication settings. This token is separate from Wrangler login. D1 export and restore additionally require D1 edit permission.
 6. Build the static site from the page list and open the public URL. Verify anonymous access to the management side, public pages and images, private pages, updates and withdrawal. Keep the browser open until the build completes.
 
-`npm run deploy:cloud` updates only the management Worker. The admin build updates the public Worker. The legacy `npm run publish:static` command cannot be used for a split site.
+`npm run deploy:cloud` updates only the management Worker. The admin build updates the public Worker.
 
 #### Device authentication
 
@@ -53,12 +53,12 @@ See [Pages](https://yoshihiko.com/mikanbox/help_en.html#page-mgmt) and [Page edi
 - Page lists, search, category filtering, pagination, creation, editing, and deletion.
 - Separate draft, pending and public statuses. The former DB status is the output format "mikanBox DB" (as in PHP 2.18.0).
 - Memos, Markdown/HTML input, page CSS/JavaScript, SEO fields, and wrapper selection.
-- Revision recording, selection of the last 50 revisions (visual editing keeps one per editing session), edit locks, and stale-edit protection.
+- Revision recording, the newest 10 revisions kept per page, older ones removed automatically (visual editing keeps one per editing session), edit locks, and stale-edit protection.
 - Draft and pending pages are private. Registered, signed-in editors can preview both; the labels describe workflow state and have identical access permissions.
 - Component CRUD, part/wrapper/AI-document types, memos, CSS, and JavaScript.
 - Site settings, language, site memo, adding and stopping devices, and inviting and deleting users.
 - Changing your own display name (the field on your own user in "Devices and users"). The username cannot be changed.
-- Image upload, streaming delivery and deletion without R2, up to 10 MB per file. Existing filenames are not overwritten.
+- Image upload, streaming delivery and deletion, stored in D1, up to 10 MB per file. Existing filenames are not overwritten.
 - ZIP downloads of JSON content and media; these are not a complete D1 backup/restore.
 - Bulk acquisition for pages, components, search, navigation, feeds, data backups and static builds avoids one query per content item. Platform data/CPU limits still apply.
 - Category deletion also removes the category from affected pages and records revisions. Active edits or concurrent changes cancel the entire operation.
@@ -71,7 +71,7 @@ Usage is the same as in the PHP editions; see [Visual Editing](https://yoshihiko
 - **The public site**: a save changes the page on the management side. A published page is a static file, so the public site does not change until you publish it again (see Delivery and withdrawal). Saving a published page shows a note saying so.
 - **History**: the time from opening the page to closing it counts as one editing session, and only the state before it is kept, once, in the page's history (small, frequent saves do not push older history out). Undo and redo cover the last three steps and are discarded when the session changes.
 - **Conflicts and edit locks**: a save is refused unless the page is still as it was read. If another device or the management screen changed it, reload. A page another user is editing (edit lock) cannot be saved. After a visual save, a page editor that is still open holds stale content and cannot save it until reloaded.
-- **Images**: the list is newest first and works the same with D1 or R2 storage. You can add png, jpg, gif and webp images (up to 10 MB and 40 megapixels) by pasting, dragging or choosing.
+- **Images**: the list is newest first. You can add png, jpg, gif and webp images (up to 10 MB and 40 megapixels) by pasting, dragging or choosing.
 - **Safety limits**: it works only while a registered device is signed in. Writes are accepted only from this site's own screen with a CSRF token. No script of the page (inline, external, component JavaScript or uploaded JS) runs on this screen, because it would run with the administrator's session. Check parts that depend on JavaScript in the preview or on the public site.
 - **Free plan and long pages**: live updates are mostly made in the browser and use no Worker CPU time or requests. When you edit a block with `{{…}}` tags, links within the site or images, among others, the server renders the whole body again (one render at a time). On the Cloudflare free plan, such renders can fail when they run back to back. In tests, bodies up to 20,000 characters did not fail; at 30,000 to 40,000 characters, some back-to-back renders failed. A failure shows "Could not update the page" in the panel, and saving still works. An open screen does not contact the server while idle.
 
@@ -119,15 +119,15 @@ For routine updates, select Update on GitHub in Site settings, press Run workflo
 
 1. Place the upstream `.github/workflows/update-cloud.yml` in the default branch of a GitHub repository you control. Use your existing installation repository if available. Enable Actions in the Actions tab if disabled on a fork. Do not register your secrets in the upstream repository. Sites on v0.6.5 or earlier can run this workflow for the first update; the management link appears afterward.
 2. In Settings → Secrets and variables → Actions → Repository secrets, add:
-   - `CLOUDFLARE_API_TOKEN`: a Cloudflare token scoped to the target account with Workers Scripts Edit and D1 Edit permissions. If R2 is connected, also grant the permissions Wrangler needs to handle that binding.
-   - `MIKANBOX_UPDATE_CONFIG`: the complete installation `wrangler.production.json` as JSON. Use current management Worker, account, D1, connected R2, routes and custom-domain settings. Do not use a sample or another site's configuration. Do not add JWT_SECRET, SETUP_TOKEN or API tokens to this JSON.
+   - `CLOUDFLARE_API_TOKEN`: a Cloudflare token scoped to the target account with Workers Scripts Edit and D1 Edit permissions.
+   - `MIKANBOX_UPDATE_CONFIG`: the complete installation `wrangler.production.json` as JSON. Use current management Worker, account, D1, routes and custom-domain settings. Do not use a sample or another site's configuration. Do not add JWT_SECRET, SETUP_TOKEN or API tokens to this JSON.
 3. Open GitHub Actions → Update mikanBox Cloud → Run workflow. If the management settings already include manual updates, save your repository as `owner/repository` there. Updates through Actions configure the link automatically.
 
 If Cloudflare Workers Builds or another system already deploys on GitHub pushes, disable that automatic deployment separately to keep updates manual. This workflow has no push or scheduled trigger.
 
 #### Preservation and failures
 
-The updater checks the existing management Worker and D1/R2 bindings, verifies the build, applies pending D1 migrations and deploys the management Worker. It does not initialize articles, images or settings; existing secrets including JWT_SECRET for registered devices and existing environment variables are retained. It does not overwrite the public Worker with a placeholder. Mismatched targets or unsupported additional bindings stop the update. Update the saved GitHub JSON when your bindings or routes change.
+The updater checks the existing management Worker and D1 binding, verifies the build, applies pending D1 migrations and deploys the management Worker. It does not initialize articles, images or settings; existing secrets including JWT_SECRET for registered devices and existing environment variables are retained. It does not overwrite the public Worker with a placeholder. Mismatched targets or unsupported additional bindings stop the update. Update the saved GitHub JSON when your bindings or routes change.
 
 Save any needed backup before updating. Database migration and code deployment are not a single transaction. If a run fails, inspect the failed step, fix its configuration or permissions and run again. Applied migrations are not repeated. After success, reload the management page and check the version, articles and images. Use the management build when changes need to reach published pages.
 
@@ -160,7 +160,7 @@ Setting `CLOUDFLARE_PUBLIC_WORKER_NAME` (the public Worker's name) and `PUBLIC_S
 <a id="public-worker"></a>
 From v0.10.3, without a public Worker (with a name different from the management Worker), building, publishing and automatic image publication deploy nothing, because pages published to the management Worker would run their JavaScript on the admin address. The build button then shows "Set a public Worker". Set the public Worker with the management Worker's variables `CLOUDFLARE_PUBLIC_WORKER_NAME` (the public Worker's name) and `PUBLIC_SITE_URL` (the public site's URL): write them under `vars` in the installation's `wrangler.production.json` and deploy the management Worker again. See the [detailed reference (installation)](https://github.com/yoshihik0/mikanBox-cloud/blob/HEAD/docs/reference_ja.md#インストール手順). Sites installed and updated with the official steps already have them.
 
-Only to try the former single-Worker publication from a local `wrangler dev`, set the variable `SITE_ENVIRONMENT` to `local` explicitly (`SITE_ENVIRONMENT=local` in `.dev.vars`). Do not use this on a live site.
+From v0.12.0 a local `wrangler dev` uses the same arrangement (the former publication to a single Worker is gone, for development too). Without a public Worker the management Worker still returns only the admin screen, MCP and previews, and no site content to anyone who is not signed in.
 
 - On the admin address, visitors without a session get no pages, images, component scripts or sitemaps, and search engines are told not to index it (`X-Robots-Tag: noindex`).
 - From v0.10.2, the admin address opened with `http://` moves to the same address on `https://` (when a page is opened; `localhost` and similar addresses of a local `wrangler dev` stay as they are).
@@ -178,39 +178,28 @@ Rebuild generates public HTML and updates static delivery together, removing unp
 
 JPEG, PNG and WebP images can be resized and converted to WebP in the browser. Uploads default to a 2,000px maximum side. Existing conversion replaces the image and updates references with page history. GIF and SVG uploads preserve original bytes. Browser processing accepts dimensions up to 16,000px and 40 million pixels.
 
-### Migrate from D1 to R2
+### Storage
 
-Start with D1 without enabling R2. Site → Media storage shows the current storage and usage and provides “Migrate from D1 to R2”. Only image storage switches; content, settings, users and other records remain in D1.
+Pages, history and media (images, and uploaded JS and CSS) are all kept in the D1 database. No payment method has to be registered with Cloudflare to stay within the free plan. Storing media in R2, and the migration from D1 to R2, were removed in v0.12.0.
 
-R2 requires registering a payment method even when usage stays in the free allowance. Enable R2, create a bucket, and bind it to the Worker as `MEDIA`. Local Wrangler includes a test binding; production does not yet include R2. Add this configuration to `wrangler.production.json`, replace the bucket name, and deploy the code. Connecting a bucket alone does not switch storage.
+- Media may total **400 MB**. The D1 free plan allows 500 MB per database; the rest is for pages, history and database overhead.
+- Site → Storage usage shows the D1 database size and the media usage. The media screen also shows the media usage and the file count.
+- A notice appears from 320 MB of media (80% of the limit) or 450 MB of database. Delete unused media or reduce image sizes; the upload options "Limit long edge to" and "Convert to WebP" store the same image smaller.
+- The figures are this site's own. Check account totals in Cloudflare.
 
-```json
-"r2_buckets": [{"binding": "MEDIA", "bucket_name": "your-bucket-name"}]
-```
+Images keep the stable `/media/filename` public URL. Published images are served from Static Assets; images not yet published are served by the management Worker to signed-in editors. Built page HTML is also served directly from Static Assets. See "Static image delivery" below.
 
-Start from the confirmation screen. Each image is copied and its checksum and R2 write are verified. D1 originals remain visible while image additions, modifications and deletions are paused. Resume or cancel from the same menu after closing the browser. After all images are verified, one database transaction removes D1 image bytes and switches pointers to R2. Incomplete, failed and cancelled migrations retain D1 originals. There is no reverse-switch menu after successful migration. Save a complete JSON backup first. Image URLs and content filenames stay unchanged.
-
-D1 image storage is limited to 400 MB. D1 Free allows 500 MB per database; Paid allows 10 GB per database and requires a separate plan upgrade. R2 removes the 400 MB combined image limit, retaining 10 MB per image and 10,000 images. R2 Standard’s account-wide monthly free allowance is 10 GB-month, one million Class A operations and ten million Class B operations. These are billing allowances, not hard limits; excess usage is charged.
-
-Site settings display D1 database size and tracked R2 storage, including temporary and retained images, with a notice near 80% of the free storage allowance. Other sites and untracked bucket objects are excluded. Check account totals, requests, billing and alerts in Cloudflare. Billing alerts do not stop usage. Removing D1 images does not necessarily shrink allocated database storage immediately.
-
-R2 writes use new immutable objects followed by atomic D1 pointer changes. “Clean unused temporary images” removes up to 20 unreferenced images retained for at least 24 hours, excluding live migration and restore objects. Complete JSON backups include image bytes and can restore to either storage mode while preserving the destination’s storage choice. D1 restoration is limited to 400 MB images and 450 MB of existing plus staged images; both current and temporary R2 images count toward storage usage. D1 Time Travel and SQL export do not contain R2 image bytes; older pointers may reference already-cleaned objects. Use complete JSON backups with R2.
-
-Images keep the stable `/media/filename` public URL in both storage modes. Published images are served from Static Assets; images not yet published are served by the Worker from D1/R2. Built page HTML is also served directly from Static Assets. Updated page/component references after renaming or WebP conversion still require the usual rebuild and publication to update deployed HTML. See "Static image delivery" below.
-
-Run `node scripts/test-r2-local.mjs` from the Cloud directory to test the official local Worker, D1 and R2 bindings without registering a payment method. It creates disposable isolated state, runs 15 integration checks covering migration/cancellation, image operations and backup restoration, then removes the state. It does not use existing local data or remote services. Local integration testing does not verify live R2 permissions, network access or billing. Results are saved to `artifacts/r2-local-system-test.json`.
-
-References: [D1 limits](https://developers.cloudflare.com/d1/platform/limits/), [R2 pricing](https://developers.cloudflare.com/r2/pricing/), [R2 setup](https://developers.cloudflare.com/r2/get-started/), [Usage-based billing](https://developers.cloudflare.com/billing/understand/usage-based-billing/).
+References: [D1 limits](https://developers.cloudflare.com/d1/platform/limits/), [D1 pricing](https://developers.cloudflare.com/d1/platform/pricing/).
 
 ### JSON backup and restore
 
 Download a single JSON backup from Site settings and select that file to restore. It includes settings, all pages, components, revisions, HTML snapshots, users and original images. Images transfer in 500KB parts. Both operations start from a confirmation screen. Backups contain private content and authentication hashes: store them securely. From v0.10.3 they no longer contain the MCP API key (JSON backup and data ZIP); a normal restore keeps the current key, and after restoring into another site you issue a new one. The D1 export (SQL) is the database itself and still includes it. Large backups consume browser memory and transfer time; keep the screen open. Metadata is limited to 20MB.
 
-Normal restore preserves current site identity, API key, users and Cloudflare connection. Explicit account restoration also restores users; devices of users missing from the backup stop. Rebuild afterward. Restore stages and validates data before atomic replacement; missing parts or concurrent edits leave existing data intact. In D1 mode, existing, incoming and other staged images must total at most 450MB; R2 mode stages image bytes in R2, and actual D1 free space may impose a lower limit.
+Normal restore preserves current site identity, API key, users and Cloudflare connection. Explicit account restoration also restores users; devices of users missing from the backup stop. Rebuild afterward. Restore stages and validates data before atomic replacement; missing parts or concurrent edits leave existing data intact. Existing, incoming and other staged images must total at most 450MB, and actual D1 free space may impose a lower limit.
 
 ### D1 database backup
 
-D1 SQL export and Time Travel are separate server operations available from Site settings with a token granting D1 edit permission. Free Time Travel covers the previous seven days and restores the whole database, including D1 original images (but not R2 image bytes), users and stored connection settings. D1 can be unavailable during SQL export; the UI polls through a short-lived encrypted capability without querying D1. Keep the screen open until completion. Time Travel does not rewind deployed static files; rebuild afterward and verify code/schema compatibility for older snapshots. Uploading a SQL file to restore D1 is not implemented in this admin UI.
+D1 SQL export and Time Travel are separate server operations available from Site settings with a token granting D1 edit permission. Free Time Travel covers the previous seven days and restores the whole database, including original images, users and stored connection settings. D1 can be unavailable during SQL export; the UI polls through a short-lived encrypted capability without querying D1. Keep the screen open until completion. Time Travel does not rewind deployed static files; rebuild afterward and verify code/schema compatibility for older snapshots. Uploading a SQL file to restore D1 is not implemented in this admin UI.
 
 Publication, backup and restore consume Worker requests and D1 reads/writes. Static delivery is free, but updates remain subject to account-wide daily limits. Updating the maximum 20,000 files daily is not guaranteed within the Free tier.
 
@@ -238,7 +227,7 @@ Program updates run the build, pending database migrations, and management Worke
 
 The import/export screen follows SQLite’s status cards, ZIP import, WordPress XML import and execution log, followed by CSV and Cloud-specific complete JSON backup/restore. ZIP/XML add content while retaining existing IDs; images, accounts and site settings are not imported. Limits: 20 MB files, 15 MB ZIP expansion, 1 MB imported content and 300 records. Settings fields and category add-button alignment use the shared PHP CSS.
 
-Changing an unpublished image needs no Cloudflare publication settings. Deleting or renaming a published image publishes a withdrawal, so it does require the connection. Renaming uses the reference confirmation dialog. See “Migrate from D1 to R2” for storage limits, migration and complete backup behavior.
+Changing an unpublished image needs no Cloudflare publication settings. Deleting or renaming a published image publishes a withdrawal, so it does require the connection. Renaming uses the reference confirmation dialog. See “Storage” for storage limits.
 
 
 
@@ -292,16 +281,16 @@ The type filter and filename search sit in the heading row (the list follows wha
 In D1 storage, Rename updates references in page content, CSS, JavaScript, OGP images and components. It cannot overwrite another file or change extensions. Memos and previous revisions remain unchanged; affected pages get new revisions. A lock or concurrent change cancels every write, including the image rename. Rebuild affected static pages; component changes invalidate all static snapshots. Large reference sets can exceed the operation limit. External sites and dynamically constructed JavaScript URLs are not updated.
 
 - Each image: **10 MB** (10,000,000 bytes).
-- D1 images: **400 MB** total. R2 removes this total-byte limit. Both modes allow **10,000 files**.
+- Media: **400 MB** total and **10,000 files**.
 - Formats: **JPEG, PNG, GIF, WebP, SVG**. Extension and leading format signature must match. D1 audio/video uploads are unsupported.
 - Duplicate names are rejected. Optional browser resizing and WebP conversion are available before storage; the stored original is the processed file.
 - Media ZIP: **20 MB** total, with a file count that fits the request query budget (about 20 small images, or two 10 MB images). Download individually when exceeded.
 
 Static builds add `width`, `height` and loading hints to local images (JPEG, PNG, GIF, WebP; not SVG), as the PHP editions do: the first large image gets `fetchpriority="high"`, later ones `loading="lazy"`. This applies to `![alt](filename)` and `{{IMAGE:}}`; a hand-written `<img>` is left alone. The size is read from the start of the image file and is not stored. One build looks up at most 30 images; any beyond that get no attributes. Live (unbuilt) rendering and the admin preview do not add them.
 
-The D1-only 400 MB image allowance reserves space for content, history and database overhead. It does not apply to R2. Platform storage limits may be reached first.
+The 400 MB media allowance reserves space for content, history and database overhead. Platform storage limits may be reached first.
 
-[D1 Free](https://developers.cloudflare.com/d1/platform/pricing/) includes 5 million rows read/day, 100,000 rows written/day, and 5 GB account-wide storage. [Workers Free](https://developers.cloudflare.com/workers/platform/limits/) allows 100,000 requests/day. D1 image reads use one row per 500 KB chunk. R2 image delivery reads D1 metadata and R2 objects. Allowances are shared with other account applications. Free-plan daily exhaustion stops operations until reset. The application does not change your plan automatically. Existing Paid contracts remain subject to their pricing.
+[D1 Free](https://developers.cloudflare.com/d1/platform/pricing/) includes 5 million rows read/day, 100,000 rows written/day, and 5 GB account-wide storage. [Workers Free](https://developers.cloudflare.com/workers/platform/limits/) allows 100,000 requests/day. D1 image reads use one row per 500 KB chunk. Allowances are shared with other account applications. Free-plan daily exhaustion stops operations until reset. The application does not change your plan automatically. Existing Paid contracts remain subject to their pricing.
 
 Images are published after upload, including images used only in drafts. Do not upload images that must remain private. JavaScript and CSS files are published when the site is built.
 
@@ -335,7 +324,7 @@ Media accepts browser-ready `.js` and `.css` files: nonempty UTF-8 text, up to 1
 
 Code files receive no category prefix, stay visible across category filters, and bypass image conversion. File-type filtering, same-extension renaming, and deletion are available. Existing names are rejected rather than overwritten. Uploading a folder hierarchy is not supported.
 
-Files follow the existing D1/R2 media storage setting and keep `/media/filename` URLs. Complete JSON backup/restore and D1-to-R2 migration include them; code fields remain in D1. Static publication serves these files from the deployed static files; see "Static image delivery". Portable static ZIPs include files referenced by HTML.
+Files are stored in D1 and keep `/media/filename` URLs. Complete JSON backup/restore includes them; code fields remain in D1. Static publication serves these files from the deployed static files; see "Static image delivery". Portable static ZIPs include files referenced by HTML.
 
 ## Tags
 
@@ -409,3 +398,14 @@ The admin page list order follows PHP 2.20.0.
 - **A sort selector** sits right of the output-format filter: Display order, Newest update, Oldest update, ID, Title (URL parameter `sort=`). Title order uses Japanese collation (an empty title is ordered by its ID). `index` is always first. Pending pages come first only in Display order; in the other orders the list is purely in that order.
 - Sorting happens before the page split. The chosen order is kept with filters, search and paging, and after opening and closing an editor.
 - The selector's tooltip explains the Update date: it is set when the page is created, updated when it goes from not public to public, and not changed by later edits.
+
+### Changes in 0.12.0
+
+One arrangement only, on the way to a supported release.
+
+- **Media is stored in D1 only.** Storing media in R2 and the migration from D1 to R2 were removed, so the site keeps working without a payment method registered with Cloudflare. Media may total 400 MB; near the limit a notice appears on the media screen and under Site → Storage usage (formerly "Media storage").
+- **A site that keeps images in R2 cannot be updated to this version.** The update stops at the D1 change and no data is altered. Stay on 0.11.1.
+- **History keeps the newest 10 entries per page** (as in the SQLite edition). Before, there was no limit and the screen listed the last 50. The update removes entries older than the tenth of each page; save a JSON backup first if you want to keep them.
+- **Only the separated arrangement remains.** The management Worker returns the admin screen, MCP and previews whether or not a public Worker is set. The publication to a single Worker kept for development (`SITE_ENVIRONMENT=local`) and the old `npm run publish:static` command were removed. Without a public Worker, as before, a notice under the build button says where to set it and nothing is deployed.
+- The only script sent to the public site is `ai-question.js`, which public pages load (admin scripts are not sent; this was already so in the separated arrangement).
+

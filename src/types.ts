@@ -62,7 +62,6 @@ export interface Settings {
 
 export interface Env {
   DB: D1Database;
-  MEDIA?: R2Bucket;
   JWT_SECRET: string;
   SETUP_TOKEN: string;
   SITE_ENVIRONMENT?: string;

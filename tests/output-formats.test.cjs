@@ -13,7 +13,7 @@ const formats=require('../.test-build/src/output-formats.js');
 const request=new Request('https://cloud.test/admin'),decode=new TextDecoder();
 const site={site_name:'Site',description:'',ssg_root_url:'https://www.example.test'};
 
-function env(){const value=environment();value.ASSETS={fetch:async r=>new Response('public:'+new URL(r.url).pathname)};return value;}
+function env(){const value=environment();value.PUBLIC_SITE_URL='https://www.example.test';value.ASSETS={fetch:async r=>new Response('public:'+new URL(r.url).pathname)};return value;}
 async function sample(value){
   await saveSettings(value,{...site});
   await saveComponent(value,'_layout',{html:'<html><head></head><body>{{CONTENT}}</body></html>',is_wrapper:true});
@@ -127,9 +127,9 @@ test('legacy DB status reads as output format db, and a migration-free save stor
   assert.equal(value.sqlite.prepare("SELECT status FROM posts WHERE id='old'").get().status,'public_static');
 });
 
-test('Worker preview and development routing follow the /id.<extension> rules',async()=>{
+test('Worker preview routing follows the /id.<extension> rules',async()=>{
   const value=env();await sample(value);const auth=await login(value);
-  const get=async path=>{const r=await call(value,path,undefined,auth.cookie);return {status:r.status,type:r.headers.get('Content-Type'),body:await r.text()};};
+  const get=async path=>{const r=await call(value,'/preview'+path,undefined,auth.cookie);return {status:r.status,type:r.headers.get('Content-Type'),body:await r.text()};};
   let r=await get('/notes.md');assert.equal(r.status,200);assert.equal(r.type,'text/markdown; charset=utf-8');assert.match(r.body,/^---\ntitle: "Notes"/);
   r=await get('/notes');assert.equal(r.type,'text/markdown; charset=utf-8');
   r=await get('/notes.html');assert.equal(r.status,404);
@@ -139,15 +139,16 @@ test('Worker preview and development routing follow the /id.<extension> rules',a
   r=await get('/article.md');assert.equal(r.type,'text/markdown; charset=utf-8');
   r=await get('/index.md');assert.equal(r.status,404);
   r=await get('/secret.txt');assert.equal(r.status,200);assert.equal(r.body,'draft text');
-  r=await get('/preview/notes.md');assert.equal(r.type,'text/markdown; charset=utf-8');
+  assert.equal((await call(value,'/notes.md',undefined,auth.cookie)).headers.get('Location'),'https://cloud.test/preview/notes.md');
   // Visitors never get pages from the Worker; the API answers both /api/ID.json and /api/ID, and a draft API stops.
   assert.equal((await call(value,'/notes.md')).status,404);
-  const api=await call(value,'/api/shop.json'),alias=await call(value,'/api/shop');
+  assert.equal((await call(value,'/api/shop.json')).status,404);
+  const api=await call(value,'/api/shop.json',undefined,auth.cookie),alias=await call(value,'/api/shop',undefined,auth.cookie);
   assert.equal(api.headers.get('Content-Type'),'application/json; charset=utf-8');assert.equal(api.headers.get('Access-Control-Allow-Origin'),'*');
   assert.equal(await api.text(),await alias.text());
   await savePage(value,'shop',{...await loadPage(value,'shop'),status:'draft'});
-  assert.equal((await call(value,'/api/shop.json')).status,403);assert.equal((await call(value,'/api/shop')).status,403);
-  assert.equal((await call(value,'/api/list.json')).status,404);
+  assert.equal((await call(value,'/api/shop.json',undefined,auth.cookie)).status,403);assert.equal((await call(value,'/api/shop',undefined,auth.cookie)).status,403);
+  assert.equal((await call(value,'/api/list.json',undefined,auth.cookie)).status,404);
 });
 
 test('admin page list puts index first, labels formats, greys out visual editing and previews text as UTF-8',async()=>{

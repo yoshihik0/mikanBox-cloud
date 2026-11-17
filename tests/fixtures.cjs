@@ -13,7 +13,8 @@ function environment() {
     };},
     async batch(statements){sqlite.exec('BEGIN');try{const results=[];for(const statement of statements)results.push(await statement.run());sqlite.exec('COMMIT');return results;}catch(e){sqlite.exec('ROLLBACK');throw e;}}
   };
-  return {DB,sqlite,JWT_SECRET:'test-secret-'.repeat(4),SETUP_TOKEN:'test-setup-token'};
+  // The public site is always a Worker of its own: admin at cloud.test, public site at www.cloud.test.
+  return {DB,sqlite,JWT_SECRET:'test-secret-'.repeat(4),SETUP_TOKEN:'test-setup-token',CLOUDFLARE_WORKER_NAME:'cloud-admin',CLOUDFLARE_PUBLIC_WORKER_NAME:'cloud-public',PUBLIC_SITE_URL:'https://www.cloud.test'};
 }
 const worker=require('../.test-build/src/index.js').default;
 async function call(env,url='/admin',data,cookie) {

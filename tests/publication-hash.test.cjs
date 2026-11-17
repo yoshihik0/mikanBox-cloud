@@ -8,8 +8,7 @@ const {beginPublication}=require('../.test-build/src/publication-service.js');
 const request=new Request('https://cloud.test/admin');
 // The digest the browser computes in cloud-publish.js.
 const browserHash=bytes=>createHash('sha256').update(bytes).digest('hex').slice(0,32);
-// Local development (SITE_ENVIRONMENT=local) keeps the single-Worker publication these hashing checks use.
-function env(){const value=environment();Object.assign(value,{SITE_ENVIRONMENT:'local',CLOUDFLARE_ACCOUNT_ID:'a'.repeat(32),CLOUDFLARE_WORKER_NAME:'test-cloud',CLOUDFLARE_API_TOKEN:'test-token',ASSETS:{fetch:async r=>new Response('asset:'+new URL(r.url).pathname)}});return value;}
+function env(){const value=environment();Object.assign(value,{CLOUDFLARE_ACCOUNT_ID:'a'.repeat(32),CLOUDFLARE_WORKER_NAME:'test-cloud',CLOUDFLARE_API_TOKEN:'test-token',ASSETS:{fetch:async r=>new Response('asset:'+new URL(r.url).pathname)}});return value;}
 async function withDeployments(run){const original=global.fetch;global.fetch=async url=>{if(url.endsWith('/deployments'))return Response.json({success:true,result:{deployments:[{versions:[{version_id:'v1',percentage:100}]}]}});throw new Error('Unexpected API path: '+url);};try{return await run();}finally{global.fetch=original;}}
 
 test('built pages carry the hash the browser would compute, so publication skips reading them',async()=>{

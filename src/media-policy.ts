@@ -1,6 +1,10 @@
 export const MEDIA_FILE_LIMIT=10_000_000;
-export const MEDIA_TOTAL_LIMIT=100_000_000_000;
+/** All media together, kept in D1 (the free plan allows 500 MB per database). */
+export const MEDIA_TOTAL_LIMIT=400_000_000;
 export const MEDIA_COUNT_LIMIT=10_000;
+/** The admin screen warns from here on (80% of the media limit; 90% of the free D1 database). */
+export const MEDIA_WARNING_BYTES=MEDIA_TOTAL_LIMIT*0.8;
+export const D1_WARNING_BYTES=450_000_000;
 export const MEDIA_CHUNK_SIZE=500_000;
 export const MEDIA_ZIP_LIMIT=20_000_000;
 export function validMediaName(name:string) {

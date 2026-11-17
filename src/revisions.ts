@@ -1,8 +1,10 @@
 import type { Env, PageData } from './types';
 export interface Revision { id: number; post_id: string; data: string; created_at: string; editor_id: string }
+/** Entries kept per page. The trigger post_revisions_keep (migration 0020) removes older ones on every insert. */
+export const REVISION_KEEP = 10;
 export async function revisions(env: Env, id: string) {
-  return (await env.DB.prepare('SELECT * FROM post_revisions WHERE post_id = ? ORDER BY id DESC LIMIT 50')
-    .bind(id).all<Revision>()).results;
+  return (await env.DB.prepare('SELECT * FROM post_revisions WHERE post_id = ? ORDER BY id DESC LIMIT ?')
+    .bind(id, REVISION_KEEP).all<Revision>()).results;
 }
 export async function saveWithRevision(env: Env, id: string, oldId: string, data: PageData, editor: string, expected: string) {
   const current = oldId ? await env.DB.prepare('SELECT data FROM posts WHERE id = ?').bind(oldId).first<{data: string}>() : null;

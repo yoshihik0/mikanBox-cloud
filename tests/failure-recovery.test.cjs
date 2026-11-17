@@ -1,18 +1,18 @@
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
-const {r2Environment}=require('./r2-fixture.cjs');
+const {environment}=require('./fixtures.cjs');
 const {savePage,loadPage,uploadMedia,getMediaObject}=require('../.test-build/src/storage.js');
 const {exportBackupManifest,exportBackupMediaPart,createBackupRestore,stageBackupMediaPart,commitBackupRestore}=require('../.test-build/src/backup-restore.js');
 const pixel=Uint8Array.from(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+X2ioAAAAASUVORK5CYII=','base64'));
-async function scenario(mode){
- const env=r2Environment(mode);
+async function scenario(){
+ const env=environment();
  await savePage(env,'restored',{title:'Backup',status:'draft',content_md:'backup content'});
  await uploadMedia(env,'original.png',pixel.buffer,'image/png');
  const manifest=await exportBackupManifest(env),part=await exportBackupMediaPart(env,'original.png',0);
  await savePage(env,'restored',{title:'Current',status:'draft',content_md:'current content'});
  return {env,manifest,part};
 }
-for(const mode of ['d1','r2']){
+for(const mode of ['restore']){
  test(mode+': interrupted part transfer can retry the same part and commit safely',async()=>{
   const {env,manifest,part}=await scenario(mode),stage=await createBackupRestore(env,manifest);
   await stageBackupMediaPart(env,stage,part); // accepted, but pretend its response was lost

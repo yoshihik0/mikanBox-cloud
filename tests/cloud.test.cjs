@@ -159,7 +159,8 @@ test('older dynamic statuses are stored as public',async()=>{
 });
 test('authenticated preview works and private pages remain uncached',async()=>{
   const env=environment(),auth=await login(env);await savePage(env,'secret',page());
-  const r=await call(env,'/secret',undefined,auth.cookie);assert.equal(r.status,200);assert.equal(r.headers.get('Cache-Control'),'no-store');assert.match(await r.text(),/private-content/);
+  const direct=await call(env,'/secret',undefined,auth.cookie);assert.equal(direct.status,302);assert.equal(direct.headers.get('Location'),'https://cloud.test/preview/secret');
+  const r=await call(env,'/preview/secret',undefined,auth.cookie);assert.equal(r.status,200);assert.equal(r.headers.get('Cache-Control'),'no-store');assert.match(await r.text(),/private-content/);
 });
 test('component cycles end and JS is emitted once',async()=>{
   const env=environment();await saveComponent(env,'cycle',{html:'{{COMPONENT:cycle}}',js:'window.cycle=1;'});
@@ -317,7 +318,7 @@ test('template tags are upper case only, as in the PHP edition',async()=>{
   const env=environment();
   await savePage(env,'case',{...page('public_static','{{TITLE}}|{{title}}|{{Title}}|{{SITE_NAME}}|{{site_name}}|{{PAGE_URL}}|{{page_url}}|{{UPDATE_DATE}}|{{update_date}}|{{ TITLE }}'),wrapper_comp:'__none'});
   const {html}=await new MikanBoxRenderer(env,{site_name:'S'},new Request('https://cloud.test/case')).render('case');
-  assert.match(html,/Test\|\{\{title\}\}\|\{\{Title\}\}\|S\|\{\{site_name\}\}\|https:\/\/cloud\.test\/case\/?\|\{\{page_url\}\}\|[0-9-]{10}\|\{\{update_date\}\}\|Test/);
+  assert.match(html,/Test\|\{\{title\}\}\|\{\{Title\}\}\|S\|\{\{site_name\}\}\|https:\/\/www\.cloud\.test\/case\/?\|\{\{page_url\}\}\|[0-9-]{10}\|\{\{update_date\}\}\|Test/);
 });
 test('CSS scope handles functional selectors, media groups, strings and keyframes',()=>{
   const {scopeCss}=require('../.test-build/src/cssScope.js');
@@ -371,7 +372,7 @@ test('a rename race leaves the page and all its history at the original ID',asyn
   assert.equal(env.sqlite.prepare("SELECT COUNT(*) n FROM post_revisions WHERE post_id='renamed'").get().n,2);
 });
 
-test('deployment without R2 offers D1 image uploads and usage information',async()=>{
+test('the media screen offers uploads and shows usage against the D1 limit',async()=>{
   const env=environment();env.SITE_ENVIRONMENT='staging';const auth=await login(env);
   assert.equal((await loadSettings(env)).site_environment,'staging');
   const body=await(await call(env,'/admin?view=media',undefined,auth.cookie)).text();
@@ -417,11 +418,12 @@ test('D1 image upload validates content, authentication and duplicates, then ser
   assert.equal((await upload('actual.png',new TextEncoder().encode('<html>not an image</html>'))).data.success,false);
   assert.equal((await upload('actual.png',image)).data.success,true);
   assert.equal((await upload('actual.png',image)).data.success,false);
-  const response=await call(env,'/media/actual.png');assert.equal(response.status,200);assert.equal(response.headers.get('content-type'),'image/png');assert.deepEqual(new Uint8Array(await response.arrayBuffer()),image);
+  assert.equal((await call(env,'/media/actual.png')).status,404,'the admin Worker serves no media without a session');
+  const response=await call(env,'/media/actual.png',undefined,auth.cookie);assert.equal(response.status,200);assert.equal(response.headers.get('content-type'),'image/png');assert.deepEqual(new Uint8Array(await response.arrayBuffer()),image);
   const etag=response.headers.get('etag');
   const worker=require('../.test-build/src/index.js').default;
-  const head=await worker.fetch(new Request('https://cloud.test/media/actual.png',{method:'HEAD'}),env);assert.equal(head.status,200);assert.equal((await head.arrayBuffer()).byteLength,0);
-  assert.equal((await worker.fetch(new Request('https://cloud.test/media/actual.png',{headers:{'If-None-Match':etag}}),env)).status,304);
+  const head=await worker.fetch(new Request('https://cloud.test/media/actual.png',{method:'HEAD',headers:{Cookie:auth.cookie}}),env);assert.equal(head.status,200);assert.equal((await head.arrayBuffer()).byteLength,0);
+  assert.equal((await worker.fetch(new Request('https://cloud.test/media/actual.png',{headers:{'If-None-Match':etag,Cookie:auth.cookie}}),env)).status,304);
   assert.equal((await post(env,auth,{save_action:'delete_media',file:'actual.png'})).data.success,true);
   assert.equal((await call(env,'/media/actual.png')).status,404);
   assert.equal(env.sqlite.prepare('SELECT COUNT(*) n FROM media_chunks').get().n,0);

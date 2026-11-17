@@ -9,7 +9,7 @@ const admin=new Request('https://admin.cloud.test/admin'),decode=new TextDecoder
 function split(env){Object.assign(env,{CLOUDFLARE_ACCOUNT_ID:'a'.repeat(32),CLOUDFLARE_WORKER_NAME:'cloud-admin',CLOUDFLARE_PUBLIC_WORKER_NAME:'cloud-public',PUBLIC_SITE_URL:'https://www.example.test',ASSETS:{fetch:async request=>new Response('asset:'+new URL(request.url).pathname)}});return env;}
 const page=(status,content_md='Body')=>({title:'T',status,content_md});
 
-test('the admin Worker serves no site content without a session in split mode',async()=>{
+test('the admin Worker serves no site content without a session',async()=>{
  const env=split(environment());await savePage(env,'index',page('public_static'));await savePage(env,'about',page('public_dynamic'));await savePage(env,'data',page('db'));
  await saveComponent(env,'card',{html:'',js:'cardJS()'});await uploadMedia(env,'draft.png',new Uint8Array([137,80,78,71,13,10,26,10]).buffer,'image/png');
  for(const url of ['/','/about','/index.php?page=about','/preview/about','/media/draft.png','/component-js/card.js','/api/data','/sitemap.xml','/rss.xml']) {
@@ -149,9 +149,9 @@ test('editor preview renders submitted changes without saving or publishing them
  const newPage=await call(env,'/admin?editor_preview=1',{...form,id:'new-page',old_id:''},auth.cookie);assert.equal(newPage.status,200);assert.equal(await require('../.test-build/src/storage.js').loadPage(env,'new-page'),null);
 });
 
-test('split publication rejects using the management Worker as the public Worker',()=>{
- const {splitMode}=require('../.test-build/src/site-split.js');
- assert.throws(()=>splitMode({CLOUDFLARE_WORKER_NAME:'same',CLOUDFLARE_PUBLIC_WORKER_NAME:'same'}),/must be different/);
+test('publication rejects using the management Worker as the public Worker',()=>{
+ const {assertPublicWorker}=require('../.test-build/src/site-split.js');
+ assert.throws(()=>assertPublicWorker({CLOUDFLARE_WORKER_NAME:'same',CLOUDFLARE_PUBLIC_WORKER_NAME:'same'}),/CLOUDFLARE_PUBLIC_WORKER_NAME/);
 });
 
 test('installation examples keep management routing and public assets separate',()=>{
@@ -201,9 +201,11 @@ test('draft and pending previews require a registered editing device',async()=>{
  }
 });
 
-test('legacy configuration also isolates rendered HTML from the management session',async()=>{
- const env=environment(),auth=await login(env);await savePage(env,'unsafe',page('draft','<script>window.pwned=1</script>'));
- for(const path of ['/preview/unsafe','/unsafe']) {
+test('without a public Worker the management Worker behaves the same: previews only, isolated from the session',async()=>{
+ const env=environment(),auth=await login(env);delete env.CLOUDFLARE_PUBLIC_WORKER_NAME;delete env.PUBLIC_SITE_URL;await savePage(env,'unsafe',page('draft','<script>window.pwned=1</script>'));
+ assert.equal((await call(env,'/unsafe')).status,404);
+ const moved=await call(env,'/unsafe',null,auth.cookie);assert.equal(moved.status,302);assert.equal(moved.headers.get('Location'),'https://cloud.test/preview/unsafe');
+ for(const path of ['/preview/unsafe']) {
   const response=await call(env,path,null,auth.cookie);assert.equal(response.status,200);
   assert.match(response.headers.get('Content-Security-Policy'),/^sandbox allow-scripts/);
   assert.doesNotMatch(response.headers.get('Content-Security-Policy'),/allow-same-origin/);

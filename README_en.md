@@ -21,14 +21,14 @@ This repository is the **Cloudflare edition** (🍊mikanBox Cloud), which runs o
 | :--- | :--- | :--- | :--- |
 | Best for | Sites with few pages (up to about 100) | Sites that keep growing in page count | Sites you want to manage and publish on Cloudflare |
 | Runs on | A PHP-enabled server, or your own computer | A PHP-enabled server, or your own computer | Cloudflare Workers |
-| Storage | JSON files | SQLite (single DB file) | D1 (images can move to R2 as needed) |
+| Storage | JSON files | SQLite (single DB file) | D1 |
 | Requirements | PHP 8.0+ | PHP 8.0+ with the SQLite3 extension | A Cloudflare account and Node.js |
 | Public site delivery | Dynamic, static, or mixed | Dynamic, static, or mixed | Static files only (no Worker or D1 runs when someone views a page) |
 | Login | Password | Registered devices (no password) | Registered devices (no password) |
 
 > [!TIP]
 > **If you run it on your own computer and just upload a static site, flat (or the SQLite edition) is enough.** Manage the site locally, then place the exported HTML on a rental server, Cloudflare, or anywhere else — the public side needs neither PHP nor an admin screen.
-> **Use the Cloudflare edition when you want to manage the site itself on Cloudflare.** You can reach the admin screen from anywhere and run both management and publishing without preparing a server. With D1, you can start within the free tier without registering a payment method (conditions and limits apply).
+> **Use the Cloudflare edition when you want to manage the site itself on Cloudflare.** You can reach the admin screen from anywhere and run both management and publishing without preparing a server. It runs within the free tier without registering a payment method (conditions and limits apply).
 
 - [🍊mikanBox flat →](https://github.com/yoshihik0/mikanBox-flat/)
 - [🍊mikanBox (SQLite edition) →](https://github.com/yoshihik0/mikanBox)
@@ -51,7 +51,7 @@ This repository is the **Cloudflare edition** (🍊mikanBox Cloud), which runs o
 - **AI Agent Integration (MCP)** — AI understands your site structure and design direction, and reads and writes files directly
 - **DESIGN.md Management** — Manage your instructions to AI on the site and pass them along
 - **DB Less DB** — Embed data in pages and serve it through an API; works as a headless CMS
-- **Start images on D1, move to R2 later** — Begin with D1 alone, and move to R2 when you need more capacity
+- **No payment method needed** — Pages and images are stored in D1 and run within the free tier (images up to 400 MB in total)
 - **Backup and export** — JSON backup and restore, and static HTML ZIP export
 
 ---
@@ -64,7 +64,7 @@ For the PHP editions, the minimum version describes compatibility. Use the lates
 - A GitHub account
 - Node.js, npm, and a terminal
 
-Cloudflare's screens, pricing, and free tiers may change. Using R2 requires registering a payment method with Cloudflare.
+Cloudflare's screens, pricing, and free tiers may change.
 
 ---
 
@@ -123,11 +123,11 @@ There is no per-page choice between static and dynamic. Pages you stop publishin
 
 The build button below the page list generates the published pages as static HTML and delivers them to the public side. Only changed files are sent.
 
-### Images (D1 and R2)
+### Images
 
-You can start without R2, storing images in D1 (up to 400 MB in total and 10 MB per image). When you need more capacity, switch to R2 with "Migrate from D1 to R2" in the admin screen. In either case, the public URL is `/media/filename`.
+Images are stored in D1 (up to 400 MB in total and 10 MB per image). No payment method has to be registered with Cloudflare. The public URL is `/media/filename`.
 
-Migrating to R2 requires registering a payment method with Cloudflare. The free tier is generous, but usage beyond it is billed, so please be careful.
+The upload options "Limit long edge to" and "Convert to WebP" store images smaller. Usage is shown on the media screen and under Site → Storage usage.
 
 ---
 

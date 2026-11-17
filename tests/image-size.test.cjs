@@ -1,6 +1,5 @@
 const {test}=require('node:test'),assert=require('node:assert/strict');
 const {environment}=require('./fixtures.cjs');
-const {r2Environment}=require('./r2-fixture.cjs');
 const {imageSize}=require('../.test-build/src/image-size.js');
 const {uploadMedia,savePage,saveComponent,loadSettings,listPages,listComponents}=require('../.test-build/src/storage.js');
 const {MikanBoxRenderer}=require('../.test-build/src/renderer.js');
@@ -16,7 +15,7 @@ test('image sizes are read from PNG, GIF and JPEG headers, and refused for other
  assert.equal(imageSize(new Uint8Array([1,2,3,4,5,6,7,8,9,10,11,12])),null);
 });
 
-for(const [label,make] of [['D1',environment],['R2',r2Environment]])test(`${label}: static builds add width, height and loading hints to local images in PHP's order`,async()=>{
+for(const [label,make] of [['D1',environment]])test(`${label}: static builds add width, height and loading hints to local images in PHP's order`,async()=>{
  const env=make();
  await uploadMedia(env,'big.png',png(800,600).buffer,'image/png');
  await uploadMedia(env,'second.png',png(640,360).buffer,'image/png');
@@ -26,16 +25,16 @@ for(const [label,make] of [['D1',environment],['R2',r2Environment]])test(`${labe
  const settings=await loadSettings(env),snapshot={pages:await listPages(env),components:await listComponents(env)};
  const render=(snap,options)=>new MikanBoxRenderer(env,settings,new Request('https://x.test/p'),snap,options).render('p').then(r=>r.html);
  const html=await render(snapshot);
- assert.match(html,/<img src="https:\/\/x\.test\/media\/big\.png" alt="a" width="800" height="600" fetchpriority="high">/);
- assert.match(html,/<img src="https:\/\/x\.test\/media\/icon\.png" alt="b" width="32" height="32">/);
- assert.match(html,/<img src="https:\/\/x\.test\/media\/second\.png" alt="c" width="640" height="360" loading="lazy" decoding="async">/);
+ assert.match(html,/<img src="https:\/\/www\.cloud\.test\/media\/big\.png" alt="a" width="800" height="600" fetchpriority="high">/);
+ assert.match(html,/<img src="https:\/\/www\.cloud\.test\/media\/icon\.png" alt="b" width="32" height="32">/);
+ assert.match(html,/<img src="https:\/\/www\.cloud\.test\/media\/second\.png" alt="c" width="640" height="360" loading="lazy" decoding="async">/);
  assert.match(html,/style="max-width:100%; height:auto;" width="1200" height="800" loading="lazy" decoding="async">/);
- assert.match(html,/<img src="https:\/\/x\.test\/media\/missing\.png" alt="gone">/);
+ assert.match(html,/<img src="https:\/\/www\.cloud\.test\/media\/missing\.png" alt="gone">/);
  assert.match(html,/<img src="https:\/\/example\.com\/x\.png" alt="ext">/);
- assert.match(html,/<img src="https:\/\/x\.test\/media\/big\.png">/);
+ assert.match(html,/<img src="https:\/\/www\.cloud\.test\/media\/big\.png">/);
  assert.doesNotMatch(html,/data-mkn-dim/);
  // Live rendering reads nothing and leaves the image tags as before.
  const live=await render(undefined);
  assert.doesNotMatch(live,/data-mkn-dim|width="800"/);
- assert.match(live,/<img src="https:\/\/x\.test\/media\/big\.png" alt="a">/);
+ assert.match(live,/<img src="https:\/\/www\.cloud\.test\/media\/big\.png" alt="a">/);
 });

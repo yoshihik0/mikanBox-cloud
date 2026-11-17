@@ -14,5 +14,12 @@
     "database_id": "00000000-0000-0000-0000-000000000000",
     "migrations_dir": "migrations"
   }],
-  "r2_buckets": [{ "binding": "MEDIA", "bucket_name": "mikanbox-cloud-media" }]
+  // Local development (`npm run dev`): the admin screen and previews. The public site is always
+  // a Worker of its own, so these names only describe the arrangement; nothing is published locally.
+  "vars": {
+    "SITE_ENVIRONMENT": "local",
+    "CLOUDFLARE_WORKER_NAME": "mikanbox-cloud",
+    "CLOUDFLARE_PUBLIC_WORKER_NAME": "mikanbox-cloud-public",
+    "PUBLIC_SITE_URL": "http://localhost:8788"
+  }
 }
