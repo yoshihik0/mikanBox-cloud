@@ -127,7 +127,7 @@ The build button below the page list generates the published pages as static HTM
 
 Images are kept on the public site and D1 keeps their information (10 MB per file, 10,000 files). No payment method has to be registered with Cloudflare. The public site is the only place images are kept, so save them regularly with "Download media" on the Site screen. The public URL is `/media/filename`.
 
-The upload options "Limit long edge to" and "Convert to WebP" store images smaller. Usage is shown on the media screen and under Site → Storage usage.
+The upload options "Limit long edge to" and "Convert to WebP" store images smaller.
 
 ---
 

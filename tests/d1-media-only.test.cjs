@@ -43,15 +43,15 @@ test('a site that keeps media in R2 is not updated: the migration stops and chan
  }
 });
 
-test('the media screen shows the size of the media and warns near the file limit',async()=>{
+test('the media screen shows no usage line, only a warning near the file limit, as in PHP',async()=>{
  const {putMedia}=require('./fixtures.cjs'),{MEDIA_COUNT_LIMIT}=require('../.test-build/src/media-policy.js');
  const env=environment(),auth=await login(env);await putMedia(env,'one.png',png);
  let body=await(await call(env,'/admin?view=media',undefined,auth.cookie)).text();
- assert.match(body,/id="media-usage"[^<]*0\.0 MB · 1 \/ 10,000/);assert.doesNotMatch(body,/id="media-usage-warning"|400 MB/);
+ assert.doesNotMatch(body,/id="media-usage"|id="media-usage-warning"|400 MB|10,000/);
  env.sqlite.prepare('UPDATE media_usage SET files=? WHERE id=1').run(MEDIA_COUNT_LIMIT*0.9);
  body=await(await call(env,'/admin?view=media',undefined,auth.cookie)).text();assert.match(body,/id="media-usage-warning"/);
  const site=await(await call(env,'/admin?view=site',undefined,auth.cookie)).text();
- assert.match(site,/id="image-storage"/);assert.match(site,/公開サイトに保存|kept on the public site/);assert.doesNotMatch(site,/R2|data-media-migration|cleanup_media/);
+ assert.match(site,/id="image-storage"/);assert.match(site,/公開サイトに保存|kept on the public site/);assert.doesNotMatch(site,/公開サイトのメディア|Media on the public site/);assert.doesNotMatch(site,/R2|data-media-migration|cleanup_media/);
 });
 
 test('page history keeps the newest 10 entries of each page, and the update trims older ones',async()=>{

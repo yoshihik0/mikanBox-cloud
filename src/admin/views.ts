@@ -417,9 +417,6 @@ ${opts.mediaEnabled?`<div id="drop-zone">${getIcon('cloud')} ${t('hint_drop_uplo
             const newWrap = temp.querySelector('#media-list-wrap');
             const oldWrap = document.querySelector('#media-list-wrap');
             replaceListPreservingScroll(oldWrap, newWrap);
-            const newUsage = temp.querySelector('#media-usage');
-            const oldUsage = document.querySelector('#media-usage');
-            if (newUsage && oldUsage) oldUsage.textContent = newUsage.textContent;
         } catch(err) {}
     }
     window.refreshMediaGrid = refreshMediaGrid;
@@ -1291,8 +1288,7 @@ export function renderMediaView(opts: {
                     <div id="upload-publication-status" role="status" class="sub-text"></div>
                     <details class="resize-details upload-options" id="upload-options"><summary class="resize-summary">${t('upload_options')}<span class="resize-arrow">▼</span></summary><div class="upload-options-body"><div class="upload-info upload-info-types">${t('media_support_types')}: JPEG, PNG, GIF, WebP, SVG, JS, CSS<br>${t('media_code_hint')}</div><label class="upload-option"><input type="checkbox" name="opt_resize" value="1" id="opt-resize" checked> ${t('upload_opt_resize')} <input type="text" name="opt_max_dim" id="opt-max-dim" value="2000" class="resize-input" inputmode="numeric" pattern="[0-9]*"> px</label><label class="upload-option"><input type="checkbox" name="opt_webp" id="opt-webp" value="1"> ${t('upload_opt_webp')}</label></div></details>
                     <div class="upload-info">
-                        ${opts.usage?`<span id="media-usage">${opts.lang==='ja'?'メディアの使用量':'Media storage'}: ${(opts.usage.bytes/1_000_000).toFixed(1)} MB · ${opts.usage.files.toLocaleString()} / ${MEDIA_COUNT_LIMIT.toLocaleString('en-US')} ${t('media_file_count')}</span>${opts.usage.files>=MEDIA_COUNT_LIMIT*0.9?`<br><strong id="media-usage-warning" role="status">${opts.lang==='ja'?'ファイル数の上限に近づいています。使っていないメディアを削除してください。':'The file count is close to its limit. Delete unused media.'}</strong>`:''}<br>`:''}
-                        <br>
+                        ${opts.usage&&opts.usage.files>=MEDIA_COUNT_LIMIT*0.9?`<strong id="media-usage-warning" role="status">${opts.lang==='ja'?'ファイル数の上限に近づいています。使っていないメディアを削除してください。':'The file count is close to its limit. Delete unused media.'}</strong><br>`:''}
                         ${t('hint_media_display')}<br>
                         ${t('hint_media_resize')}
                     </div>
@@ -1555,14 +1551,13 @@ export function renderSiteView(opts: {
 
 function renderStorageView(settings:Settings,_csrf:string,lang:string):string {
  const en=lang==='en';
- const d1Bytes=settings.d1_bytes as number|null,mediaBytes=Number(settings.media_bytes||0);
+ const d1Bytes=settings.d1_bytes as number|null;
  const warning=d1Bytes!==null&&d1Bytes>=D1_WARNING_BYTES;
  return `<div id="image-storage" class="section-large-bottom"><div class="section-container section-tight"><details class="section-accordion">
  <summary class="header section-header accordion-summary"><h2 class="accordion-title">${en?'Storage usage':'保存容量'} <span class="accordion-arrow">▼</span></h2></summary>
  <div class="editor-container editor-container-sub">
  <p>${en?'Pages, history and settings are kept in the D1 database. Media files are kept on the public site.':'ページ・履歴・設定はD1データベースに、メディアのファイルは公開サイトに保存します。'}</p>
  <p>${en?'D1 database usage':'D1データベースの使用量'}: ${d1Bytes===null?(en?'Check in Cloudflare':'Cloudflareで確認'):`${(d1Bytes/1_000_000).toFixed(1)} MB`}<br>
- ${en?'Media on the public site':'公開サイトのメディア'}: ${(mediaBytes/1_000_000).toFixed(1)} MB<br>
  ${en?'The Cloudflare free plan allows 500 MB per database, and 20,000 files of up to 25 MiB each on the public site.':'Cloudflareの無料プランは、1データベース500 MBまで、公開サイトは1ファイル25 MiB・20,000ファイルまでです。'}</p>
  ${warning?`<p role="status"><strong>${en?'The database is close to its limit.':'データベースが上限に近づいています。'}</strong></p>`:''}
  <p><a href="https://dash.cloudflare.com/" target="_blank" rel="noopener">${en?'Check usage in Cloudflare':'Cloudflareで使用量を確認'}</a></p>

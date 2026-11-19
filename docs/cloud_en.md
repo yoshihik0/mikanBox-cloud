@@ -1,6 +1,6 @@
 <style>.manual-version{font-size:.5em;font-weight:400;white-space:nowrap}</style>
 
-# 🍊mikanBox Cloudflare Manual <small class="manual-version">v0.13.0</small>
+# 🍊mikanBox Cloudflare Manual <small class="manual-version">v0.13.1</small>
 
 This manual covers installation and the Cloudflare edition’s differences. For shared operations, see the [operation manual](https://yoshihiko.com/mikanbox/help_en.html).
 
@@ -182,8 +182,8 @@ JPEG, PNG and WebP images can be resized and converted to WebP in the browser. U
 
 Pages, history and settings are kept in the D1 database; media files (images, and uploaded JS and CSS) are kept on the public site. D1 keeps only the information about each media file (name, size and so on). No payment method has to be registered with Cloudflare to stay within the free plan.
 
-- Site → Storage usage shows the D1 database size and the total of the media on the public site; a notice appears when the database passes 450 MB.
-- Media may hold files of up to 10 MB each and 10,000 files (Cloudflare's free plan allows 20,000 files of up to 25 MiB each on the public site).
+- Site → Storage usage shows the D1 database size; a notice appears when it passes 450 MB.
+- Media may hold files of up to 10 MB each and 10,000 files (Cloudflare's free plan allows 20,000 files of up to 25 MiB each on the public site). The media screen warns when the file count passes 90% of the limit.
 - The public site is the only place the media is kept. Save it regularly with "Download media" or "JSON backup".
 
 References: [D1 limits](https://developers.cloudflare.com/d1/platform/limits/), [Workers limits](https://developers.cloudflare.com/workers/platform/limits/).
@@ -386,4 +386,9 @@ Differences from the PHP editions and unused parts tidied up, on the way to a su
 - **Recent operations** were added to the Site screen (the same items as PHP, up to 200).
 - **WebP conversion asks for confirmation** (in all three editions).
 - Every file on the public site allows cross-origin reads (`Access-Control-Allow-Origin: *`), so the admin screen's exports can read it; only published files are concerned.
+
+### Changes in 0.13.1
+
+- The "Media storage" line on the media screen and the media total under Site → Storage usage were removed (as in PHP), since the total size has no limit. A warning appears only when the file count passes 90% of the limit.
+- The JS/CSS note in the upload options now reads "JS and CSS run on public pages. Upload only files you trust." (in all three editions).
 

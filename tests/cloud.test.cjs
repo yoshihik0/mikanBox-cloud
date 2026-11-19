@@ -372,11 +372,11 @@ test('a rename race leaves the page and all its history at the original ID',asyn
   assert.equal(env.sqlite.prepare("SELECT COUNT(*) n FROM post_revisions WHERE post_id='renamed'").get().n,2);
 });
 
-test('the media screen offers uploads and shows the media size and file count',async()=>{
+test('the media screen offers uploads, without a usage line',async()=>{
   const env=environment();env.SITE_ENVIRONMENT='staging';const auth=await login(env);
   assert.equal((await loadSettings(env)).site_environment,'staging');
   const body=await(await call(env,'/admin?view=media',undefined,auth.cookie)).text();
-  assert.match(body,/id="upload-form"/);assert.match(body,/id="drop-zone"/);assert.match(body,/0\.0 MB · 0 \/ 10,000/);assert.doesNotMatch(body,/400 MB/);
+  assert.match(body,/id="upload-form"/);assert.match(body,/id="drop-zone"/);assert.doesNotMatch(body,/id="media-usage"/);assert.doesNotMatch(body,/400 MB/);
   const result=await post(env,auth,{save_action:'media_prepare'});assert.equal(result.data.success,false);
 });
 
