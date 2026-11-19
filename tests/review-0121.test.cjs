@@ -50,8 +50,8 @@ test('the design list puts AI instructions first and has a search field instead 
 test('the leftover R2, password and site-URL data are gone after the update',()=>{
  const env=environment();
  const names=env.sqlite.prepare('SELECT name FROM sqlite_master').all().map(r=>r.name).join(' ');
- assert.doesNotMatch(names,/r2_|media_migration|backup_parts|backup_images/);
- for(const [table,column] of [['media','object_key'],['backup_sessions','target_store'],['users','password_hash'],['users','security_question']])
+ assert.doesNotMatch(names,/r2_|media_migration|backup_/,'no R2 tables, and no staging of the former JSON restore (0024)');
+ for(const [table,column] of [['media','object_key'],['users','password_hash'],['users','security_question']])
   assert.doesNotMatch(env.sqlite.prepare("SELECT sql FROM sqlite_master WHERE name=?").get(table).sql,new RegExp(column));
 });
 

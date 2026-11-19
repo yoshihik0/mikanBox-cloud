@@ -144,7 +144,7 @@
   document.addEventListener('submit',async event=>{
     const form=event.target;if(!form.closest?.('#site'))return;
     const name=form.querySelector('[name="save_action"]')?.value;
-    if(event.defaultPrevented||form.matches('[data-mcp-key-form],[data-cloudbackup]')||['begin_d1_export','restore_d1_time'].includes(name))return;
+    if(event.defaultPrevented||form.matches('[data-mcp-key-form],[data-cloudbackup],[data-transfer]')||['restore_d1_time'].includes(name))return;
     try{const details=[...document.querySelectorAll('#site details')];sessionStorage.setItem('cloud-site-position',JSON.stringify({y:window.scrollY,open:details.flatMap((d,i)=>d.open?[i]:[])}));}catch{}
   });
   // After an in-place action (admin-ui.js): a device code issued now is shown once in its slot, and a

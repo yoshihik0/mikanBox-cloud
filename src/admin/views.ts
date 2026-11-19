@@ -666,7 +666,7 @@ ${opts.mediaEnabled?`<div id="drop-zone">${getIcon('cloud')} ${t('hint_drop_uplo
     <script src="/mikanbox/cloud-editor.js?v=${h(CLOUD_VERSION)}" defer></script>
     <script src="/mikanbox/cloud-admin.js?v=${h(CLOUD_VERSION)}-3" defer></script>
     <script src="/mikanbox/cloud-media.js?v=${h(CLOUD_VERSION)}" defer></script>
-    <script src="/mikanbox/cloud-zip.js?v=${h(CLOUD_VERSION)}" defer></script><script src="/mikanbox/cloud-export.js?v=${h(CLOUD_VERSION)}" defer></script><script src="/mikanbox/cloud-backup.js?v=${h(CLOUD_VERSION)}-3" defer></script><script src="/mikanbox/cloud-publish.js?v=${h(CLOUD_VERSION)}-8" defer></script>
+    <script src="/mikanbox/cloud-zip.js?v=${h(CLOUD_VERSION)}" defer></script><script src="/mikanbox/cloud-export.js?v=${h(CLOUD_VERSION)}" defer></script><script src="/mikanbox/data-transfer.js?v=${h(CLOUD_VERSION)}" defer></script><script src="/mikanbox/cloud-transfer.js?v=${h(CLOUD_VERSION)}" defer></script><script src="/mikanbox/cloud-publish.js?v=${h(CLOUD_VERSION)}-8" defer></script>
 </div>
 </body>
 </html>`;
@@ -1446,10 +1446,8 @@ export function renderSiteView(opts: {
                     </h2>
                 </summary>
                 <div class="editor-container editor-container-sub">
-                    <small class="sub-text sub-text-intro">${t('backup_hint_cloud')}</small>
+                    <small class="sub-text sub-text-intro">${t('backup_hint')}</small>
                     <div class="flex-row gap-10">
-                        <form method="post">${csrfField(csrf)}<input type="hidden" name="save_action" value="download_backup_data"><button type="submit" class="btn btn-gray btn-small">${getIcon('download')} ${t('backup_data_json')}</button></form>
-                        <form method="post" data-cloud-export="media">${csrfField(csrf)}<button type="submit" class="btn btn-gray btn-small">${getIcon('download')} ${t('backup_media')}</button><span data-transfer-status role="status" class="sub-text"></span></form>
                         <a class="btn btn-orange btn-small" href="/admin?view=import" style="text-decoration: none; display: inline-flex; align-items: center; gap: 4px;">${getIcon('settings_backup_restore')} ${t('btn_data_tool')}</a>
                     </div>
                 </div>
@@ -1657,23 +1655,14 @@ function buildTagGuide(
     </details>`;
 }
 
-export function renderImportView(opts: {t:(key:string,...args:(string|number)[])=>string;csrf:string;lang:string;stats?:{pages:number;components:number;users:number;media:number;mediaBytes:number};cloudReady?:boolean}):string {
+export function renderImportView(opts: {t:(key:string,...args:(string|number)[])=>string;csrf:string;lang:string;cloudReady?:boolean}):string {
   const {t,csrf,lang}=opts,en=lang==='en';
   const needsToken=`<p>${en?'Configure Cloudflare publication settings with D1 edit permission.':'D1編集権限を持つトークンをCloudflare公開設定に登録してください。'}</p>`;
-  // In the order people use them: full backup, restoring it, the D1 database itself, then the public site.
-  const backupHtml=`<div class="data-tool-grid data-backup-grid"><section id="cloud-json-backup" class="data-tool-card"><h2>${getIcon('download')} ${en?'Full backup':'フルバックアップ'}</h2>
-    <p>${en?'Saves the pages, settings, components, users and images in one ZIP file. It also holds what is not public, such as drafts and notes: keep it somewhere safe and do not share it.':'ページ・設定・コンポーネント・ユーザー・画像を、1つのZIPファイルに保存します。下書きや管理メモなど、公開していない内容も入るので、人に渡さず、安全な場所に保管してください。'}</p>
-    <form method="post" data-cloudbackup="export">${csrfField(csrf)}<label class="form-group backup-field"><input type="checkbox" name="include_revisions" value="1"> ${en?'Include page history (restoring a backup without it leaves history empty)':'ページの履歴も含める（含めずに保存したファイルで復元すると、履歴は空になります）'}</label><button type="submit" class="btn btn-gray btn-small">${getIcon('download')} ${en?'Save a full backup':'フルバックアップを保存'}</button><span data-transfer-status role="status"></span></form></section>
-    <section id="cloud-json-restore" class="data-tool-card"><h2>${getIcon('upload')} ${en?'Restore a backup file':'バックアップファイルの復元'}</h2>
-    <p>${en?'Replaces the current pages, settings and images with the backup. The images are put on the public site again; images that are not in the backup disappear. If it stops partway, restore again with the same file. The site ID, MCP API key and Cloudflare connection stay as they are.':'今のページ・設定・画像を、バックアップの内容に置き換えます。画像は公開サイトに置き直し、バックアップに無い画像は消えます。途中で止まったときは、同じファイルでもう一度復元してください。サイトID・MCP APIキー・Cloudflare接続は今のままです。'}</p>
-    <form method="post" enctype="multipart/form-data" data-cloudbackup="restore">${csrfField(csrf)}<input type="hidden" name="save_action" value="restore_backup_json"><label class="form-group backup-field">${en?'Backup file (ZIP)':'バックアップファイル（ZIP）'} <input type="file" name="backup_file" accept="application/zip,.zip" required></label><label class="form-group backup-field"><input type="checkbox" name="restore_users" value="1"> ${en?'Also restore users (devices of users missing from the backup stop)':'ユーザーも復元（バックアップにないユーザーの端末は止まります）'}</label><button type="submit" class="btn btn-orange btn-small">${en?'Restore and replace':'復元して置き換え'}</button><span data-transfer-status role="status"></span></form></section>
-    <section id="cloud-d1-backup" class="data-tool-card"><h2>${getIcon('database')} ${en?'Export the D1 database as SQL':'D1データベースのSQL書き出し'}</h2>
-    <p>${en?'Saves the whole database (pages, settings, accounts and the media information) as one SQL file; the image files are not included. To restore it, load it into a Cloudflare database with wrangler d1 execute.':'データベース全体（ページ・設定・アカウント・メディアの情報）を、1つのSQLファイルに保存します。画像のファイルそのものは含みません。戻すには、wrangler d1 execute でCloudflareのデータベースへ読み込ませます。'}</p>
-    ${opts.cloudReady?`<form method="post" data-cloudbackup="d1-export">${csrfField(csrf)}<input type="hidden" name="save_action" value="begin_d1_export"><button class="btn btn-gray btn-small">${getIcon('download')} ${en?'Export D1 as SQL':'D1のSQLを書き出す'}</button><span data-transfer-status role="status"></span></form>`:needsToken}</section>
-    <section id="cloud-d1-restore" class="data-tool-card"><h2>${getIcon('history')} ${en?'Restore D1 to a past time':'D1の指定時刻への復元'}</h2><p>${en?'Returns the database to a time within Cloudflare’s retention period (the last 7 days on the free plan). The public site is not changed: to restore it, build the site.':'データベースを、Cloudflareが保持している期間内（無料プランは直近7日）の指定時刻に戻します。公開サイトは変わらないので、復元にはサイトをビルドしてください。'}</p>
+  // After Save and Read (import-view.ts), the Cloud edition's own: D1 to a past time, then the public site.
+  const extraHtml=`<section id="cloud-d1-restore" class="data-tool-card"><h2>${getIcon('history')} ${en?'Restore D1 to a past time':'D1の指定時刻への復元'}</h2><p>${en?'Returns the database to a time within Cloudflare’s retention period (the last 7 days on the free plan). The public site is not changed: to restore it, build the site.':'データベースを、Cloudflareが保持している期間内（無料プランは直近7日）の指定時刻に戻します。公開サイトは変わらないので、復元にはサイトをビルドしてください。'}</p>
     ${opts.cloudReady?`<form method="post" data-cloudbackup="d1-restore">${csrfField(csrf)}<input type="hidden" name="save_action" value="restore_d1_time"><label class="form-group backup-field">${en?'Restore to time':'復元する時刻'} <input type="datetime-local" name="restore_at" required></label><button class="btn btn-orange btn-small">${en?'Restore D1 to this time':'D1を指定時刻に戻す'}</button><span data-transfer-status role="status"></span></form>`:needsToken}</section>
-    <section id="site-export" class="data-tool-card"><h2>${getIcon('archive')} ${en?'Export the public site':'公開サイトの書き出し'}</h2>
-    <p>${en?'Downloads the public site as it is now, as a ZIP.':'現状の公開サイトを、そのままZIPでダウンロードします。'}</p>
-    <form method="post" data-cloud-export="site">${csrfField(csrf)}<button type="submit" class="btn btn-gray btn-small">${getIcon('download')} ${en?'Download the public site':'公開サイトをダウンロード'}</button><span data-transfer-status role="status"></span></form></section></div>`;
-  return renderDataImportView({t,csrf,lang,stats:opts.stats||{pages:0,components:0,users:0,media:0,mediaBytes:0},cloudBackupHtml:backupHtml});
+    <section id="site-export" class="data-tool-card"><h2>${getIcon('download')} ${t('site_export_title')}</h2>
+    <p>${t('site_export_hint')}</p>
+    <form method="post" data-cloud-export="site">${csrfField(csrf)}<div class="flex-row flex-row-wrap items-center"><label class="transfer-field"><input type="checkbox" name="relative" value="1"> ${t('site_export_relative')}</label><button type="submit" class="btn btn-gray btn-small">${getIcon('download')} ${t('site_export_btn')}</button></div><span data-transfer-status role="status"></span></form></section>`;
+  return renderDataImportView({t,csrf,cloudReady:!!opts.cloudReady,extraHtml});
 }

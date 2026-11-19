@@ -1,14 +1,13 @@
 import {audit,recentAudit} from '../audit';
 import {mcpLastUsed} from '../mcp';
-import {importContentPackage,importWordPressContent} from '../content-import';
 import {latestCloudRelease,cloudUpdateUrl} from '../cloud-release';
-import {exportBackupManifest,validateExportSnapshot,createBackupRestore,commitBackupRestore,abortBackupRestore} from '../backup-restore';
+import {transferExport,transferImportData,transferImportMedia,transferFinish,transferMode} from '../data-transfer';
 import {cloudConfigured,saveCloudToken,cloudTarget,beginD1Export,pollD1Export,prepareD1Download,openD1Download,d1Restore,cloudToken} from '../cloudflare-api';
 import {beginPublication,hashPublicationFiles,preparePublication,uploadPublicationFile,finishPublication,cancelPublication} from '../publication-service';
 import {inspectMedia,getMedia,addMedia,replaceMedia,deleteMedia} from '../media-store';
 import {trackingIdValid,trackingLegacyHtml,trackingSnippets} from '../tracking';
 import type { Env, PageData, ComponentData } from '../types';
-import { loadSettings, saveSettings, loadPage, getSortedPageIds, loadComponent, saveComponent, deleteComponent, listComponentIds, listPages, listComponents, listMediaFiles, mediaUsage, buildDataBackupZip } from '../storage';
+import { loadSettings, saveSettings, loadPage, getSortedPageIds, loadComponent, saveComponent, deleteComponent, listComponentIds, listPages, listComponents, listMediaFiles, mediaUsage } from '../storage';
 import { verifyCsrf } from '../auth';
 import { authenticatedUser, getUser, listUsers, addInitialUser, rateLimit } from '../accounts';
 import { onProbation, PROBATION_DAYS, createDevice, claimCode, codeKind, issueCode, cancelCode, revokeDevice, setExpiryDays, setupTokenUsable, consumeSetupToken, clearDeviceCookie, listDevices, listCodes, unseenDevices, expiryFrom } from '../devices';
@@ -160,7 +159,7 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
       await checkPublicationLock(env,val(form,'publication_lease'));
       // A device added within the probation period cannot take access away from others,
       // so a leaked add code cannot be used to lock the original owner out.
-      const lockout=['delete_user','restore_d1_time'].includes(action)||(action==='update_user'&&val(form,'old_username')!==auth.user.username)||(action==='restore_backup_json'&&val(form,'restore_users')==='1');
+      const lockout=['delete_user','restore_d1_time'].includes(action)||(action==='update_user'&&val(form,'old_username')!==auth.user.username);
       if(lockout&&onProbation(auth.device))throw new Error(`追加から${PROBATION_DAYS}日間の端末では、この操作はできません。 / A device added within ${PROBATION_DAYS} days cannot do this.`);
       switch(action) {
         case 'preview_stash': return json({success:true,token:await stashPreview(env,auth.user.username,form)});
@@ -170,21 +169,14 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
         case 'publication_upload': {const file=form.get('asset_data');if(!(file instanceof File))throw new Error('Missing upload.');return json({success:true,...await uploadPublicationFile(env,val(form,'publication_lease'),auth.user.username,val(form,'hash'),file)});}
         case 'publication_finish': return json({success:true,...await finishPublication(env,val(form,'publication_lease'),auth.user.username)});
         case 'publication_cancel': await cancelPublication(env,val(form,'publication_lease'),auth.user.username);return json({success:true});
-        case 'download_backup_json': {
-          return json({success:true,manifest:await exportBackupManifest(env,{revisions:val(form,'include_revisions')==='1'})});
+        // Data tool (data-transfer.ts, data-transfer.js): Save and Read.
+        case 'transfer_export': return json({success:true,...await transferExport(env,val(form,'include_revisions')==='1')});
+        case 'transfer_import_data': return json({success:true,...await transferImportData(env,transferMode(val(form,'mode')),JSON.parse(val(form,'part')||'{}'),auth.user.username)});
+        case 'transfer_import_media': {
+          const file=form.get('file');if(!(file instanceof File))throw new Error(t('err_upload_failed'));
+          return json({success:true,outcome:await transferImportMedia(env,transferMode(val(form,'mode')),val(form,'name'),new Uint8Array(await file.arrayBuffer()))});
         }
-        case 'backup_export_validate': await validateExportSnapshot(env,JSON.parse(val(form,'manifest')));return json({success:true});
-        case 'restore_backup_json': {
-          const stage=await createBackupRestore(env,JSON.parse(val(form,'manifest')),{restoreUsers:val(form,'restore_users')==='1'});
-          await env.DB.prepare('UPDATE backup_sessions SET owner=? WHERE id=?').bind(auth.user.username,stage).run();
-          return json({success:true,stage});
-        }
-        case 'backup_restore_commit': case 'backup_restore_abort': {
-          const stage=val(form,'stage'),owned=await env.DB.prepare('SELECT id FROM backup_sessions WHERE id=? AND owner=?').bind(stage,auth.user.username).first();if(!owned){const completed=action==='backup_restore_commit'&&await env.DB.prepare('SELECT result FROM backup_restore_results WHERE id=? AND owner=?').bind(stage,auth.user.username).first<{result:string}>();if(completed)return json({success:true,...JSON.parse(completed.result)});throw new Error('Restore session not found.');}
-          if(action==='backup_restore_abort'){await abortBackupRestore(env,stage);return json({success:true});}
-          const restored=await commitBackupRestore(env,stage);await audit(env,'data_restored',{actor:auth.user.username,target:'json-backup',request});
-          return json({success:true,...restored});
-        }
+        case 'transfer_import_finish': return json({success:true,deleted:await transferFinish(env,transferMode(val(form,'mode')),JSON.parse(val(form,'keep')||'{}'),auth.user.username,request)});
         case 'save_cloud_connection': {
           const target=cloudTarget(env);if(val(form,'cloud_account_id')!==target.account||val(form,'cloud_worker_name')!==target.worker)throw new Error('Cloudflare target must match this installation.');
           if(val(form,'cloud_api_token'))await saveCloudToken(env,val(form,'cloud_api_token'));break;
@@ -214,12 +206,6 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
         case 'generate_api_key': await audit(env,settings.api_key?'mcp_key_rotated':'mcp_key_issued',{actor:auth.user.username,request});settings.api_key=crypto.randomUUID().replace(/-/g,'')+crypto.randomUUID().replace(/-/g,'');if(!await saveSettings(env,settings))throw new Error(t('err_save_failed'));newApiKey=String(settings.api_key);message=t('msg_mcp_key_generated');break;
         case 'build_ssg': await buildStatic(env,request);break;
         case 'logout': await revokeDevice(env,auth.device,auth.device.id);return redirect(url.pathname,clearDeviceCookie());
-        case 'content_import_package': case 'content_import_wordpress': {
-          const raw=val(form,'import_payload');
-          if(new TextEncoder().encode(raw).length>1_100_000)throw new Error('The import payload exceeds 1 MB.');
-          const result=action==='content_import_package'?await importContentPackage(env,JSON.parse(raw)):await importWordPressContent(env,JSON.parse(raw));
-          return json({success:true,...result});
-        }
         case 'save_page': {
           const id=pageId(val(form,'id').trim()||`page_${Date.now()}`),oldId=val(form,'old_id');
           if(oldId) pageId(oldId);
@@ -387,11 +373,7 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
 
           await renameMediaReferences(env,val(form,'file'),val(form,'new_name'),auth.user.username,undefined,val(form,'confirmed')!=='0');break;
         }
-        // Exports: the browser reads the files from the public site (cloud-export.js); these say which.
-        case 'export_media_list': {
-          const rows=(await env.DB.prepare('SELECT key,source FROM media ORDER BY key').all<{key:string;source:string|null}>()).results;
-          return json({success:true,files:rows.map(row=>({name:'media/'+row.key,from:row.source||'/media/'+encodeURIComponent(row.key)}))});
-        }
+        // The public site export: the browser reads the files from the public site (cloud-export.js); this says which.
         case 'export_site_list': {
           const state=await env.DB.prepare("SELECT value FROM settings WHERE key='static_publication'").first<{value:string}>();
           const published=state?JSON.parse(state.value) as {paths?:string[];job?:string}:{};
@@ -400,10 +382,6 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
           const routing=job?JSON.parse(job.state).routing as {headers?:string;redirects?:string}|undefined:undefined;
           const files=(published.paths||[]).filter(path=>!['/_headers','/_redirects'].includes(path)).sort().map(path=>({name:path.slice(1),from:path.split('/').map(encodeURIComponent).join('/')}));
           return json({success:true,files,extra:routing?{_headers:routing.headers||'',_redirects:routing.redirects||''}:{}});
-        }
-        case 'download_backup_data': {
-          const zip=await buildDataBackupZip(env);
-          return new Response(zip.buffer as ArrayBuffer,{headers:{'Content-Type':'application/zip','Content-Disposition':'attachment; filename="mikanbox_cloud_data.zip"','Cache-Control':'no-store'}});
         }
         default: throw new Error('未対応の操作です。 / Unsupported action.');
       }
@@ -450,7 +428,7 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
   const databaseProbe=await env.DB.prepare('SELECT 1').run();
   const d1Bytes=typeof databaseProbe.meta.size_after==='number'?databaseProbe.meta.size_after:null;
   const target=cloudTarget(env),displaySettings={...settings,_audit:await recentAudit(env),_mcp_last_used:await mcpLastUsed(env,String(settings.api_key||'')),d1_bytes:d1Bytes,cloud_connection_ready:cloudReady,cloud_account_id:target.account,cloud_worker_name:target.worker};
-  const siteHtml=view==='import'?renderImportView({t,csrf,lang,stats:{pages:pages.length,components:components.length,users:users.length,media:files.length,mediaBytes:files.reduce((sum,file)=>sum+file.size,0)},cloudReady}):renderSiteView({t,trackingLegacy:(()=>{const id=String(settings.tracking_component||''),data=components.find(c=>c.id===id)?.data;return{id,html:trackingLegacyHtml(data),exists:!!data&&!data.is_ai_doc&&!data.is_wrapper};})(),settings:displaySettings,csrf,helpFile,users,username:auth.user.username,accountsHtml:renderAccountsSection({t,lang,csrf,users,me:auth.device,devices:await listDevices(env),codes:await listCodes(env),expiryDays:expiryFrom(settings)}),lang,updateRepository:String(settings.cloud_update_repository||env.CLOUD_UPDATE_REPOSITORY||''),release:await latestCloudRelease(env,url.searchParams.has('refresh_updates'))});
+  const siteHtml=view==='import'?renderImportView({t,csrf,lang,cloudReady}):renderSiteView({t,trackingLegacy:(()=>{const id=String(settings.tracking_component||''),data=components.find(c=>c.id===id)?.data;return{id,html:trackingLegacyHtml(data),exists:!!data&&!data.is_ai_doc&&!data.is_wrapper};})(),settings:displaySettings,csrf,helpFile,users,username:auth.user.username,accountsHtml:renderAccountsSection({t,lang,csrf,users,me:auth.device,devices:await listDevices(env),codes:await listCodes(env),expiryDays:expiryFrom(settings)}),lang,updateRepository:String(settings.cloud_update_repository||env.CLOUD_UPDATE_REPOSITORY||''),release:await latestCloudRelease(env,url.searchParams.has('refresh_updates'))});
   const unseen=await unseenDevices(env,auth.device);
   if(unseen.length)message=(message?message+' ':'')+(lang==='ja'?'新しい端末が登録されました: ':'New device registered: ')+unseen.map(d=>`${d.name} (${d.username})`).join(', ')+(lang==='ja'?'。心当たりがなければ「端末とユーザー」で止めてください。':'. If you do not recognise it, stop it under Devices and users.');
   return html(renderAdminShell({lang,t,view,editId,hasNew,helpFile,message,csrf,settings:{...settings,_public_url:publicWorkerMissing(env)?'':env.PUBLIC_SITE_URL||''},pagesHtml,pageEditorHtml,siteHtml,designHtml,designEditorHtml,mediaHtml,

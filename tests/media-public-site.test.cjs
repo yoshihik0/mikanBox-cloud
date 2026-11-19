@@ -90,7 +90,7 @@ test('exports list the files to read from the public site',async()=>{
  const {env,auth,cf}=await site();
  try{
   await uploadThroughAdmin(env,auth,'x.png',png(2,2));
-  const media=await post(env,auth,{save_action:'export_media_list'});assert.deepEqual(media.data.files,[{name:'media/x.png',from:'/media/x.png'}]);
+  const media=await post(env,auth,{save_action:'transfer_export'});assert.deepEqual(media.data.media.map(m=>[m.key,m.from]),[['x.png','/media/x.png']]);
   const whole=await post(env,auth,{save_action:'export_site_list'});
   assert.ok(whole.data.files.some(f=>f.name==='index.html')&&whole.data.files.some(f=>f.name==='media/x.png'));
   assert.ok(typeof whole.data.extra._redirects==='string');

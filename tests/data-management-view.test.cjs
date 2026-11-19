@@ -1,16 +1,19 @@
 const {test}=require('node:test');const assert=require('node:assert/strict');
 const {renderImportView,renderSiteView}=require('../.test-build/src/admin/views.js');
 const t=key=>key;
-test('Cloud data tool: full backup, its restore, D1 SQL export, D1 time restore, then the public site; CSV conversion sits in the site screen as in PHP',()=>{
+test('Cloud data tool: Save and Read as in PHP, then D1 to a past time and the public site; CSV conversion sits in the site screen',()=>{
  const html=renderImportView({t,csrf:'token',lang:'ja',cloudReady:true});
- const order=['cloud-json-backup','cloud-json-restore','cloud-d1-backup','cloud-d1-restore','site-export'].map(id=>html.indexOf(`id="${id}"`));
+ const order=['transfer-export','transfer-import','cloud-d1-restore','site-export'].map(id=>html.indexOf(`id="${id}"`));
  assert.ok(order.every((at,i)=>at>0&&(i===0||order[i-1]<at)),String(order));
- assert.match(html,/1つのZIPファイルに保存します/);assert.match(html,/name="include_revisions" value="1"/);assert.doesNotMatch(html,/name="include_revisions" value="1" checked/);
- assert.match(html,/accept="application\/zip,\.zip"/);assert.match(html,/バックアップに無い画像は消えます/);
+ for(const value of ['both','data','media','database'])assert.match(html,new RegExp(`<option value="${value}">transfer_contents_${value}</option>`));
+ assert.match(html,/name="include_revisions" value="1"> transfer_include_revisions/);
+ assert.match(html,/<form data-transfer="import"/);assert.match(html,/type="file" name="files" multiple/);
+ assert.match(html,/name="mode" value="add" checked/);assert.match(html,/name="mode" value="overwrite"/);assert.match(html,/name="mode" value="replace"/);
  assert.match(html,/公開サイトは変わらないので、復元にはサイトをビルドしてください/);
- assert.match(html,/現状の公開サイトを、そのままZIPでダウンロードします/);assert.match(html,/wrangler d1 execute/);assert.doesNotMatch(html,/450 MB|HTMLファイルの構造|static-zip/);
- for(const id of ['site-export','cloud-d1-backup','cloud-d1-restore','cloud-json-backup','cloud-json-restore'])assert.match(html,new RegExp(`id="${id}" class="data-tool-card"`));
- assert.match(html,/material-symbols-outlined icon">database/);assert.match(html,/material-symbols-outlined icon">archive/);
+ assert.match(html,/site_export_hint/);assert.match(html,/name="relative" value="1"> site_export_relative/);
+ assert.doesNotMatch(html,/cloud-json-backup|restore_backup_json|content_import|zip-import|wp-import|begin_d1_export/);
+ assert.doesNotMatch(renderImportView({t,csrf:'token',lang:'ja',cloudReady:false}),/option value="database"/,'without the token, no database choice');
+ for(const id of ['transfer-export','transfer-import','cloud-d1-restore','site-export'])assert.match(html,new RegExp(`id="${id}" class="data-tool-card"`));
  const site=renderSiteView({t,csrf:'token',lang:'ja',settings:{},helpFile:'#',users:[],username:'admin'});
  assert.doesNotMatch(html,/id="csv-import"/);assert.match(site,/id="csv-import"/);assert.ok(site.indexOf('id="mcp-key"')<site.indexOf('id="csv-import"')&&site.indexOf('id="csv-import"')<site.indexOf('id="backup"'));
  assert.doesNotMatch(site,/begin_d1_export|get_ai_context|公開ヘルプ用/);

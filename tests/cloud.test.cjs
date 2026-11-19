@@ -533,7 +533,7 @@ test('a device on probation cannot take access away from other users',async()=>{
   const cookie=(await claim(env,code)).headers.get('Set-Cookie').split(';')[0];
   const fresh={cookie,csrf_token:(await require('../.test-build/src/devices.js').deviceSession(new Request('https://cloud.test/admin',{headers:{Cookie:cookie}}),env)).csrf};
   await login(env,'other','Other');
-  for(const data of [{save_action:'delete_user',username:'other'},{save_action:'update_user',old_username:'other',username:'gone',display_name:'Gone'},{save_action:'restore_d1_time',restore_at:'2026-01-01T00:00'},{save_action:'restore_backup_json',manifest:'{}',restore_users:'1'}])
+  for(const data of [{save_action:'delete_user',username:'other'},{save_action:'update_user',old_username:'other',username:'gone',display_name:'Gone'},{save_action:'restore_d1_time',restore_at:'2026-01-01T00:00'}])
     assert.match((await post(env,fresh,data)).data.message,/3 days|3日間/,data.save_action);
   assert.ok(env.sqlite.prepare("SELECT 1 FROM users WHERE username='other'").get());
   assert.equal((await post(env,auth,{save_action:'delete_user',username:'other'})).data.success,true);
@@ -561,12 +561,12 @@ test('save notification is dismissible and does not persist in navigation state'
   assert.equal(replaced,'https://cloud.test/admin?view=site&cat=news#site');
 });
 
-test('package import screen explains directory layout and page IDs in both languages', async()=>{
+test('the data tool reads its texts from the shared translations in both languages', async()=>{
   const env=environment(),auth=await login(env);
-  for (const [lang,label] of [['ja','ZIP内のファイルの置き方'],['en','How to arrange files in the ZIP']]) {
+  for (const [lang,label] of [['ja','同じIDのものを上書きする'],['en','Overwrite items with the same ID']]) {
     await saveSettings(env,{system_lang:lang});
     const body=await(await call(env,'/admin?view=import',undefined,auth.cookie)).text();
-    assert.ok(body.includes(label));assert.match(body,/posts\/\s+coffee\/\s+index\.json\s+→ coffee\/index/);
+    assert.ok(body.includes(label),lang);
   }
 });
 

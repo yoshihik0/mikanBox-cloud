@@ -213,7 +213,7 @@ test('MCP: format fields, validation, legacy db status and updated_at kept when 
 test('content imports keep the format fields and read the former DB status',async()=>{
   const value=env();const auth=await login(value);
   const payload={pages:[{id:'cat',data:{title:'Cat',status:'public_dynamic',output_format:'json',expand_tags:false,content_md:'[]'}},{id:'olddb',data:{title:'Old',status:'db',content_md:''}},{id:'art',data:{title:'Art',status:'draft',output_format:'html_md',md_footer_comps:['_md_footer'],content_md:'x'}}]};
-  const r=await post(value,auth,{save_action:'content_import_package',import_payload:JSON.stringify(payload)});assert.equal(r.data.success,true,r.data.message);
+  const r=await post(value,auth,{save_action:'transfer_import_data',mode:'add',part:JSON.stringify(payload)});assert.equal(r.data.success,true,r.data.message);
   assert.equal((await loadPage(value,'cat')).expand_tags,false);assert.equal((await loadPage(value,'olddb')).output_format,'db');
   assert.equal(value.sqlite.prepare("SELECT status FROM posts WHERE id='olddb'").get().status,'public_static');
   assert.deepEqual((await loadPage(value,'art')).md_footer_comps,['_md_footer']);

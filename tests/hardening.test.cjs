@@ -1,10 +1,10 @@
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const {environment}=require('./fixtures.cjs');
-const {savePage,saveComponent,saveSettings,loadSettings,buildDataBackupZip}=require('../.test-build/src/storage.js');
+const {savePage,saveComponent,saveSettings,loadSettings}=require('../.test-build/src/storage.js');
 const {generatePodcastXml}=require('../.test-build/src/feeds.js');
 const {MikanBoxRenderer}=require('../.test-build/src/renderer.js');
-const {exportBackupManifest,validateExportSnapshot}=require('../.test-build/src/backup-restore.js');
+const {transferExport,transferImportData}=require('../.test-build/src/data-transfer.js');
 const request=new Request('https://cloud.test/admin');
 const decode=new TextDecoder();
 function unzip(bytes) {
@@ -46,13 +46,11 @@ test('an AI document is never published as a wrapper or a card template (B-C3)',
   assert.doesNotMatch(cards,/AI-DOC-PRIVATE-BODY/);
 });
 
-test('backups never carry the MCP API key, and a restore keeps the current key (B-C5)',async()=>{
-  const env=environment();await saveSettings(env,{site_name:'Site',api_key:'DUMMY-LIVE-MCP-KEY-0123456789'});
-  const zip=unzip(await buildDataBackupZip(env));
-  const settings=JSON.parse(decode.decode(zip.get('data/settings.json')));
-  assert.equal(settings.api_key,'');assert.equal(settings.site_name,'Site');
-  const manifest=await exportBackupManifest(env);
-  assert.equal(manifest.settings.api_key,'');assert.doesNotMatch(JSON.stringify(manifest),/LIVE-MCP-KEY/);
-  await validateExportSnapshot(env,manifest);
-  assert.equal((await loadSettings(env)).api_key,'DUMMY-LIVE-MCP-KEY-0123456789','the live key is unchanged');
+test('saved files never carry the MCP API key, and reading one keeps the current key (B-C5)',async()=>{
+  const env=environment();await saveSettings(env,{site_name:'Site',api_key:'DUMMY-LIVE-MCP-KEY-0123456789',site_id:'site-keep'});
+  const saved=await transferExport(env,true);
+  assert.equal(saved.settings.site_name,'Site');assert.doesNotMatch(JSON.stringify(saved),/LIVE-MCP-KEY|site-keep/);
+  await transferImportData(env,'replace',{settings:{site_name:'Other',api_key:'evil',site_id:'evil'}},'admin');
+  const now=await loadSettings(env);
+  assert.equal(now.site_name,'Other');assert.equal(now.api_key,'DUMMY-LIVE-MCP-KEY-0123456789','the live key is unchanged');assert.equal(now.site_id,'site-keep');
 });

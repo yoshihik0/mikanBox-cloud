@@ -8,7 +8,7 @@ const {savePage}=require('../.test-build/src/storage.js');
 // prompt) anywhere in the admin; results go to the toast and confirmations are asked in the screen
 // (admin-ui.js); actions run in place. A full reload is allowed only where the screen's premise changes.
 const files=[...fs.readdirSync('src/admin').map(f=>'src/admin/'+f),'src/visual.ts',
-  ...['cloud-admin','cloud-backup','cloud-editor','cloud-import','cloud-media','cloud-publish','preview-editor','admin-ui','visual','visual-live','ai-question'].map(f=>`public/mikanbox/${f}.js`)];
+  ...['cloud-admin','cloud-transfer','data-transfer','cloud-export','cloud-editor','cloud-media','cloud-publish','preview-editor','admin-ui','visual','visual-live','ai-question'].map(f=>`public/mikanbox/${f}.js`)];
 const DIALOG=/(?<![\w.$])(?:alert|confirm|prompt)\s*\(/;
 
 test('no alert, confirm or prompt in any admin script or template (a reappearing one fails here)',()=>{
@@ -29,10 +29,10 @@ test('rendered admin screens carry no inline dialog handlers',async()=>{
 test('full page reloads are limited to the audited exceptions',()=>{
   // file → number of reload/navigation sites, each with its reason:
   //  cloud-admin.js   1  language change (every label changes)
-  //  cloud-backup.js  2  restoring a backup replaces the whole site, accounts included
-  //  cloud-publish.js 0  (D1 restore reloads via the backup flow; the SQL download is a file download form)
-  const allowed={'public/mikanbox/cloud-admin.js':1,'public/mikanbox/cloud-backup.js':2,'public/mikanbox/cloud-publish.js':1};
-  for(const file of files.filter(f=>f.startsWith('public/mikanbox/cloud-'))) {
+  //  cloud-publish.js 1  restoring D1 to a past time (the whole database changes)
+  //  reading a file in the data tool (data-transfer.js) reloads nothing; the result goes to the toast
+  const allowed={'public/mikanbox/cloud-admin.js':1,'public/mikanbox/cloud-publish.js':1};
+  for(const file of files.filter(f=>f.startsWith('public/mikanbox/cloud-')||f.endsWith('/data-transfer.js'))) {
     const count=(fs.readFileSync(file,'utf8').match(/location\.reload\(|location\.href\s*=/g)||[]).length;
     assert.equal(count,allowed[file]||0,`${file}: ${count} reload sites`);
   }

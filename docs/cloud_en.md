@@ -1,6 +1,6 @@
 <style>.manual-version{font-size:.5em;font-weight:400;white-space:nowrap}</style>
 
-# 🍊mikanBox Cloudflare Manual <small class="manual-version">v0.13.2</small>
+# 🍊mikanBox Cloudflare Manual <small class="manual-version">v0.14.0</small>
 
 This manual covers installation and the Cloudflare edition’s differences. For shared operations, see the [operation manual](https://yoshihiko.com/mikanbox/help_en.html).
 
@@ -184,7 +184,7 @@ Pages, history and settings are kept in the D1 database; media files (images, an
 
 - Site → Storage usage shows the D1 database size; a notice appears when it passes 450 MB.
 - Media may hold files of up to 10 MB each and 10,000 files (Cloudflare's free plan allows 20,000 files of up to 25 MiB each on the public site). The media screen warns when the file count passes 90% of the limit.
-- The public site is the only place the media is kept. Save it regularly with "Download media" or "Full backup".
+- The public site is the only place the media is kept. Save it regularly with "Save" (JSON and media) in the Data Migration & Import Tool.
 
 References: [D1 limits](https://developers.cloudflare.com/d1/platform/limits/), [Workers limits](https://developers.cloudflare.com/workers/platform/limits/).
 
@@ -192,28 +192,20 @@ References: [D1 limits](https://developers.cloudflare.com/d1/platform/limits/), 
 
 Site → Recent operations shows the latest 50 of: MCP enabled/stopped and key issued, page public-state changes, devices registered/stopped and codes issued, failed sign-ins, deleted users and data restores (the same items and display as PHP). The oldest are removed beyond 200; IP addresses are partly hidden.
 
-### Exports and backups
+### Save and Read
 
-**Site → Data management**
+"Save", "Read" and "Export the public site" are the same screen and work as in the PHP editions ([Data Migration & Import Tool](https://yoshihiko.com/mikanbox/help_en.html#data-migration)); a ZIP saved here can be read into a PHP site too. What differs in Cloud:
 
-- **Download data (JSON)**: the text of the settings, pages and components as a ZIP (page history and users are not included). Importing it with "Content package (ZIP) import" into a new site brings the content back.
-- **Download media**: the published media files together as a ZIP.
+- **Save**: the browser reads each media file from the public site and puts it in the ZIP. If a public file differs from its record, saving stops: build the site and save again. "Database" saves the whole D1 database (pages, settings, accounts and the media information) as one SQL file, without the media files themselves; load it into a Cloudflare database with `wrangler d1 execute`. It can be chosen once a token with D1 edit permission is set in the Cloudflare publication settings.
+- **Read**: media that are read are sent to the public site at once (the whole site is built). If that fails, read the same file again with "Overwrite items with the same ID". When only pages are read, build the site to update the public pages, as in PHP.
+- **Export the public site**: the browser reads the published files from the public site.
+- A large site takes time; keep the screen open until it finishes.
 
-**Data migration and import**
+### Restore D1 to a past time
 
-They are listed in the order they are usually used.
+Returns the database to a time within Cloudflare's retention period (the last 7 days on the free plan). The public site is not changed: to restore it, build the site.
 
-- **Full backup**: the pages, settings, components, users and images in one ZIP file. It also holds what is not public, such as drafts and notes: keep it somewhere safe and do not share it. The MCP API key is not included. Page history is included only when "Include page history" is ticked (restoring a backup saved without it leaves history empty). The ZIP's `data/` folder also holds the settings, pages and components as readable JSON.
-- **Restore a backup file**: choose a full-backup ZIP. The file is checked as a whole first; a damaged file stops without changing anything. Then the current pages, settings and images are replaced by the backup; the images are put on the public site again, and images not in the backup disappear. If it stops partway, restore again with the same file. The site ID, MCP API key and Cloudflare connection stay. "Also restore users" restores user IDs and display names too; devices of users missing from the backup stop.
-- **Export the D1 database as SQL**: the whole database (pages, settings, accounts, media information) as one SQL file; the image files themselves are not included. To restore it, load it into a Cloudflare database with `wrangler d1 execute`.
-- **Restore D1 to a past time**: returns the database to a time within Cloudflare's retention period (the last 7 days on the free plan). The public site is not changed: to restore it, build the site.
-- **Export the public site**: downloads the public site as it is now, as a ZIP.
-
-The browser reads each file from the public site and builds the ZIP or backup itself, so the size of a site sets no limit (a large site takes time; keep the screen open until it finishes).
-
-### Interrupted updates and restores
-
-If only the final restoration response is lost, the screen checks once more by itself and never restores twice. If the screen says the data is restored but publication failed, restore again with the same file.
+### Interrupted updates
 
 Program updates run the build, pending database migrations, and management Worker deployment in that order. A failed build leaves the database unchanged.
 
@@ -400,3 +392,11 @@ Differences from the PHP editions and unused parts tidied up, on the way to a su
 - **Page history is optional.** It is left out unless you tick it.
 - The data tool now lists: full backup, restore a backup file, export D1 as SQL, restore D1 to a past time, export the public site.
 - Export and backup results appear in the toast at the bottom right.
+
+### Changes in 0.14.0
+
+- **The Data Migration & Import Tool now matches the PHP editions.** "Save" downloads the chosen contents (JSON and media / JSON only / Media only / Database). "Read" recognises what the chosen files hold and reads the JSON and media (ZIPs, WordPress XML, media files). When the same item exists, choose "Do not overwrite", "Overwrite items with the same ID" or "Replace everything". The saved ZIP has the same layout in all three editions.
+- "Download data (JSON)", "Download media", "Full backup", "Restore a backup file", "Content package (ZIP) import" and "WordPress migration" are gathered into these two. A full backup ZIP saved with 0.13.2 can be read with "Read".
+- Users are neither saved nor read (users and devices are managed under Devices and users).
+- **Export the public site** has "Use relative paths".
+- Reading a file no longer reloads the screen.

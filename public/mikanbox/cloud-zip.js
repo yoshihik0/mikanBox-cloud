@@ -1,6 +1,6 @@
-// A ZIP file built in the browser (stored entries, no compression): media and site exports, made from
-// files the browser reads from the public site. The archive is a Blob of parts, so its size has no
-// fixed limit beyond the browser's memory.
+// ZIP files in the browser, in all three editions: MikanZip writes one (stored entries, no compression),
+// MikanZip.open reads one lazily, mikanDownload saves a Blob. Canonical in shared/zip.js (shared/sync.sh
+// copies it to the PHP editions' lib/ and to the Cloud edition as public/mikanbox/cloud-zip.js).
 (() => {
   'use strict';
   const table = new Uint32Array(256).map((_, n) => { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; return c >>> 0; });

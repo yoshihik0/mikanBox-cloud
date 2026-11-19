@@ -51,5 +51,5 @@ SQLite版の期限なし共有トークンは、期限・明示的な失効・�
 - 新しいファイル・変更したファイルは「公開してから記録」：`media_prepare` → ブラウザが `cloudPublish(…, {newMedia, bytes})` → 記録（`addMedia`／`replaceMedia`／`renameMediaReferences`）。記録時に、最後の公開がそのパスに同じ `hash` を持つかを確かめる（`publishedHash`）。
 - Cloudflareが送り直しを求めたファイルは、ブラウザが公開サイトから読む（`source` は名前変更後、次のビルドまで元のパス）。公開サイトは全パスに `Access-Control-Allow-Origin: *`（`_headers` の `/*` に1回だけ。2回当たると値が連結されて壊れる）。
 - MCPの `upload_media` はサーバーで公開する（`publishMediaFromServer`）。ほかのファイルの送り直しが要るときは、管理画面でビルドするよう案内する。ビジュアル編集のアップロードは `cloud-visual-media.js` がブラウザ側で同じ流れにする。
-- 書き出し（メディア・公開サイト）とJSONバックアップは、ブラウザが公開サイトから読んで組み立てる。復元は、テキストを差し替えたあと、バックアップファイルを元に全体を公開し直す。
+- データ移行（`src/data-transfer.ts`、共通の `data-transfer.js`、`cloud-transfer.js`）：書き出しは、管理側がデータを返し、ブラウザが画像を公開サイトから読んでZIPにする（PHP版と同じ形）。読み込みは、データを約1 MBずつ、画像を1つずつ送り、最後に finish。画像は公開の前に記録し、そのあと読み込んだファイルを `source` にして全体を公開する（送れなかったら、同じファイルを上書きで読み込み直す）。ページだけのときは公開しない（PHP版と同じく、ビルドで反映）。
 
