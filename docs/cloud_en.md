@@ -1,6 +1,6 @@
 <style>.manual-version{font-size:.5em;font-weight:400;white-space:nowrap}</style>
 
-# 🍊mikanBox Cloudflare Manual <small class="manual-version">v0.13.1</small>
+# 🍊mikanBox Cloudflare Manual <small class="manual-version">v0.13.2</small>
 
 This manual covers installation and the Cloudflare edition’s differences. For shared operations, see the [operation manual](https://yoshihiko.com/mikanbox/help_en.html).
 
@@ -184,7 +184,7 @@ Pages, history and settings are kept in the D1 database; media files (images, an
 
 - Site → Storage usage shows the D1 database size; a notice appears when it passes 450 MB.
 - Media may hold files of up to 10 MB each and 10,000 files (Cloudflare's free plan allows 20,000 files of up to 25 MiB each on the public site). The media screen warns when the file count passes 90% of the limit.
-- The public site is the only place the media is kept. Save it regularly with "Download media" or "JSON backup".
+- The public site is the only place the media is kept. Save it regularly with "Download media" or "Full backup".
 
 References: [D1 limits](https://developers.cloudflare.com/d1/platform/limits/), [Workers limits](https://developers.cloudflare.com/workers/platform/limits/).
 
@@ -201,11 +201,13 @@ Site → Recent operations shows the latest 50 of: MCP enabled/stopped and key i
 
 **Data migration and import**
 
+They are listed in the order they are usually used.
+
+- **Full backup**: the pages, settings, components, users and images in one ZIP file. It also holds what is not public, such as drafts and notes: keep it somewhere safe and do not share it. The MCP API key is not included. Page history is included only when "Include page history" is ticked (restoring a backup saved without it leaves history empty). The ZIP's `data/` folder also holds the settings, pages and components as readable JSON.
+- **Restore a backup file**: choose a full-backup ZIP. The file is checked as a whole first; a damaged file stops without changing anything. Then the current pages, settings and images are replaced by the backup; the images are put on the public site again, and images not in the backup disappear. If it stops partway, restore again with the same file. The site ID, MCP API key and Cloudflare connection stay. "Also restore users" restores user IDs and display names too; devices of users missing from the backup stop.
+- **Export the D1 database as SQL**: the whole database (pages, settings, accounts, media information) as one SQL file; the image files themselves are not included. To restore it, load it into a Cloudflare database with `wrangler d1 execute`.
+- **Restore D1 to a past time**: returns the database to a time within Cloudflare's retention period (the last 7 days on the free plan). The public site is not changed: to restore it, build the site.
 - **Export the public site**: downloads the public site as it is now, as a ZIP.
-- **Export the D1 database as SQL**: the whole database (pages, settings, accounts, media information) as one SQL file. To restore it, load it into a Cloudflare database with `wrangler d1 execute`. The media files themselves are not included.
-- **JSON backup**: everything of the site, images included, as one JSON file. It is not encrypted and contains private content; the MCP API key is not included.
-- **Restore a JSON backup**: the file is checked as a whole first; a damaged file stops without changing anything. Then the current site (images included) is replaced by the backup and the public site is updated. If it stops partway, restore again with the same file. The site ID, MCP API key and Cloudflare connection stay. "Also restore users" restores user IDs and display names too; devices of users missing from the backup stop.
-- **Restore D1 to a past time**: returns the database to a time within Cloudflare's retention period (the last 7 days on the free plan). The public site is not changed; build the site afterwards.
 
 The browser reads each file from the public site and builds the ZIP or backup itself, so the size of a site sets no limit (a large site takes time; keep the screen open until it finishes).
 
@@ -392,3 +394,9 @@ Differences from the PHP editions and unused parts tidied up, on the way to a su
 - The "Media storage" line on the media screen and the media total under Site → Storage usage were removed (as in PHP), since the total size has no limit. A warning appears only when the file count passes 90% of the limit.
 - The JS/CSS note in the upload options now reads "JS and CSS run on public pages. Upload only files you trust." (in all three editions).
 
+### Changes in 0.13.2
+
+- **The full backup is now one ZIP.** It replaces the JSON backup (which held the images as text inside one JSON file): the data and the image files go into one ZIP as they are, and restoring means choosing that one ZIP. JSON backups from 0.13.1 and earlier cannot be restored; after updating, save a new full backup.
+- **Page history is optional.** It is left out unless you tick it.
+- The data tool now lists: full backup, restore a backup file, export D1 as SQL, restore D1 to a past time, export the public site.
+- Export and backup results appear in the toast at the bottom right.

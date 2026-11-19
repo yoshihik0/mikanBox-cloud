@@ -171,7 +171,7 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
         case 'publication_finish': return json({success:true,...await finishPublication(env,val(form,'publication_lease'),auth.user.username)});
         case 'publication_cancel': await cancelPublication(env,val(form,'publication_lease'),auth.user.username);return json({success:true});
         case 'download_backup_json': {
-          return json({success:true,manifest:await exportBackupManifest(env)});
+          return json({success:true,manifest:await exportBackupManifest(env,{revisions:val(form,'include_revisions')==='1'})});
         }
         case 'backup_export_validate': await validateExportSnapshot(env,JSON.parse(val(form,'manifest')));return json({success:true});
         case 'restore_backup_json': {

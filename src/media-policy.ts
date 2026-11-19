@@ -3,8 +3,6 @@ export const MEDIA_FILE_LIMIT=10_000_000;
 export const MEDIA_COUNT_LIMIT=10_000;
 /** The admin screen warns from here on (90% of the free D1 database). */
 export const D1_WARNING_BYTES=450_000_000;
-/** Backups carry each file in parts of this size (one JSON line each). */
-export const MEDIA_CHUNK_SIZE=500_000;
 export function validMediaName(name:string) {
   return name.length>0&&name.length<=180&&/^[A-Za-z0-9_-][A-Za-z0-9_.-]*$/.test(name)&&!name.includes('..')&&!/\.(?:php[0-9]*|phtml|phar|cgi|pl|py|sh|shtml|asp|aspx|jsp)(?:\.|$)/i.test(name);
 }

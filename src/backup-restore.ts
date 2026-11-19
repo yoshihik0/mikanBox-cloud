@@ -1,35 +1,37 @@
 import type {Env,Settings} from './types';
 import {validId} from './validation';
-import {validMediaName,isCodeMedia,CODE_MEDIA_TYPES,MEDIA_CHUNK_SIZE,MEDIA_FILE_LIMIT,MEDIA_COUNT_LIMIT} from './media-policy';
+import {validMediaName,isCodeMedia,CODE_MEDIA_TYPES,MEDIA_FILE_LIMIT,MEDIA_COUNT_LIMIT} from './media-policy';
 
 type Row=Record<string,unknown>;
-export interface BackupMedia {key:string;content_type:string;size:number;uploaded:string;etag:string|null;chunk_count:number;source?:string|null;}
-export interface CloudBackupManifest {format:'mikanbox-cloud-json';version:1|2;created_at:string;settings:Settings;pages:Row[];components:Row[];users:Row[];revisions:Row[];static_pages:Row[];media:BackupMedia[];}
-export interface BackupMediaPart {key:string;index:number;content_base64:string;sha256:string;}
+export interface BackupMedia {key:string;content_type:string;size:number;uploaded:string;etag:string|null;source?:string|null;}
+/** The backup ZIP's data/backup.json. revisions_included=false: saved without history (restoring it leaves history empty). */
+export interface CloudBackupManifest {format:'mikanbox-cloud-json';version:3;created_at:string;revisions_included?:boolean;settings:Settings;pages:Row[];components:Row[];users:Row[];revisions:Row[];static_pages:Row[];media:BackupMedia[];}
 const MAX_DOCUMENT=20_000_000, SESSION_AGE=24*60*60*1000;
 function fail(message:string):never {throw new Error(message);}
 function jsonBytes(value:unknown):number{return new TextEncoder().encode(JSON.stringify(value)).length;}
-function encode(value:Uint8Array):string {let s='';for(let i=0;i<value.length;i+=32768)s+=String.fromCharCode(...value.subarray(i,i+32768));return btoa(s);}
 async function rows(env:Env,sql:string):Promise<Row[]>{return (await env.DB.prepare(sql).all<Row>()).results;}
 /** The MCP API key never leaves in a backup (0.10.3); a restore keeps the installation's current key. */
 function withoutApiKey(settings:Record<string,unknown>):Record<string,unknown>{const copy={...settings};if('api_key' in copy)copy.api_key='';return copy;}
 /** What is downloaded: the snapshot without the MCP API key. */
-export async function exportBackupManifest(env:Env):Promise<CloudBackupManifest>{const manifest=await snapshotManifest(env);return {...manifest,settings:withoutApiKey(manifest.settings as Record<string,unknown>)} as CloudBackupManifest;}
+export async function exportBackupManifest(env:Env,options:{revisions?:boolean}={}):Promise<CloudBackupManifest>{
+ const manifest=await snapshotManifest(env),revisions=options.revisions!==false;
+ return {...manifest,version:3,revisions_included:revisions,revisions:revisions?manifest.revisions:[],settings:withoutApiKey(manifest.settings as Record<string,unknown>)} as CloudBackupManifest;
+}
 /** The complete snapshot, used internally to detect concurrent changes during a restore. */
 async function snapshotManifest(env:Env):Promise<CloudBackupManifest>{
  const [settings,pages,components,users,revisions,static_pages,media]=await Promise.all([
  rows(env,"SELECT value FROM settings WHERE key='settings'"),rows(env,'SELECT * FROM posts ORDER BY id'),rows(env,'SELECT * FROM components ORDER BY id'),rows(env,'SELECT * FROM users ORDER BY username'),rows(env,'SELECT * FROM post_revisions ORDER BY id'),rows(env,'SELECT id,html,built_at,path,md FROM static_pages ORDER BY id'),rows(env,'SELECT key,content_type,size,uploaded,etag,source FROM media ORDER BY key')]);
- const result:CloudBackupManifest={format:'mikanbox-cloud-json',version:2,created_at:new Date().toISOString(),settings:settings[0]?JSON.parse(String(settings[0].value)):{},pages,components,users,revisions,static_pages,media:media.map(r=>({...r,chunk_count:Math.ceil(Number(r.size)/MEDIA_CHUNK_SIZE)} as unknown as BackupMedia))};
+ const result:CloudBackupManifest={format:'mikanbox-cloud-json',version:3,created_at:new Date().toISOString(),settings:settings[0]?JSON.parse(String(settings[0].value)):{},pages,components,users,revisions,static_pages,media:media as unknown as BackupMedia[]};
  if(jsonBytes(result)>MAX_DOCUMENT)fail('Backup metadata exceeds 20 MB; split content before export.');return result;
 }
 /** Call after the browser has read every media file from the public site. A changed source invalidates the export. */
 export async function validateExportSnapshot(env:Env,manifest:CloudBackupManifest):Promise<void>{
- validate(manifest);const current=await exportBackupManifest(env);
+ validate(manifest);const current=await exportBackupManifest(env,{revisions:manifest.revisions_included!==false});
  for(const key of ['settings','pages','components','users','revisions','static_pages','media'] as const)
  if(JSON.stringify(current[key])!==JSON.stringify(manifest[key]))fail('Content changed during backup export; restart export.');
 }
 function validate(document:CloudBackupManifest){
- if(!document||document.format!=='mikanbox-cloud-json'||![1,2].includes(document.version)||jsonBytes(document)>MAX_DOCUMENT)fail('Unsupported or oversized backup.');
+ if(!document||document.format!=='mikanbox-cloud-json'||document.version!==3||jsonBytes(document)>MAX_DOCUMENT)fail('Unsupported or oversized backup.');
  if(!document.settings||typeof document.settings!=='object'||Array.isArray(document.settings)||jsonBytes(document.settings)>800_000)fail('Invalid backup settings.');
  for(const list of [document.pages,document.components,document.users,document.revisions,document.static_pages,document.media])if(!Array.isArray(list))fail('Incomplete backup.');
  const unique=(list:Row[],key:string)=>{const s=new Set();for(const r of list){if(!r||typeof r!=='object'||s.has(r[key]))fail('Duplicate or invalid backup record.');s.add(r[key]);if(jsonBytes(r)>900_000)fail('Backup record exceeds D1 value limit.');}};
@@ -39,7 +41,7 @@ function validate(document:CloudBackupManifest){
  for(const u of document.users)if(typeof u.username!=='string'||!u.username||typeof u.display_name!=='string')fail('Invalid account data.');
  for(const r of document.revisions){if(!Number.isSafeInteger(r.id)||Number(r.id)<1||typeof r.post_id!=='string'||!validId(r.post_id)||typeof r.data!=='string'||typeof r.editor_id!=='string'||typeof r.created_at!=='string')fail('Invalid revision.');try{JSON.parse(r.data);}catch{fail('Invalid revision JSON.');}}
  for(const p of document.static_pages)if(typeof p.id!=='string'||!validId(p.id)||typeof p.html!=='string'||typeof p.built_at!=='string'||(p.path!==undefined&&p.path!==null&&typeof p.path!=='string')||(p.md!==undefined&&p.md!==null&&typeof p.md!=='string'))fail('Invalid static snapshot.');
- for(const m of document.media){if(!validMediaName(m.key)||(isCodeMedia(m.key)&&CODE_MEDIA_TYPES[m.key.split('.').pop()!.toLowerCase()]!==m.content_type)||!Number.isInteger(m.size)||m.size<1||m.size>MEDIA_FILE_LIMIT||m.chunk_count!==Math.ceil(m.size/MEDIA_CHUNK_SIZE)||!['image/png','image/jpeg','image/gif','image/webp','image/svg+xml',...Object.values(CODE_MEDIA_TYPES)].includes(m.content_type)||typeof m.uploaded!=='string'||typeof m.etag!=='string'||!/^[a-f0-9]{64}$/.test(m.etag))fail('Invalid image metadata.');}
+ for(const m of document.media){if(!validMediaName(m.key)||(isCodeMedia(m.key)&&CODE_MEDIA_TYPES[m.key.split('.').pop()!.toLowerCase()]!==m.content_type)||!Number.isInteger(m.size)||m.size<1||m.size>MEDIA_FILE_LIMIT||!['image/png','image/jpeg','image/gif','image/webp','image/svg+xml',...Object.values(CODE_MEDIA_TYPES)].includes(m.content_type)||typeof m.uploaded!=='string'||typeof m.etag!=='string'||!/^[a-f0-9]{64}$/.test(m.etag))fail('Invalid image metadata.');}
  if(document.media.length>MEDIA_COUNT_LIMIT)fail('Backup exceeds the file limit.');
 }
 function records(d:CloudBackupManifest):Array<{kind:string;id:string;value:string}>{

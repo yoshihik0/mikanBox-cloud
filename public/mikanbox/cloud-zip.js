@@ -27,6 +27,46 @@
       return new Blob([...parts, ...central, end.buffer], { type: 'application/zip' });
     };
   };
+  /**
+   * Reads a ZIP file lazily: only its directory is read at first, each entry when asked for, so a large
+   * backup is never held whole. Stored and deflated entries are accepted; sizes and CRCs are checked.
+   */
+  window.MikanZip.open = async file => {
+    const tail = new Uint8Array(await file.slice(Math.max(0, file.size - 65557)).arrayBuffer()), base = Math.max(0, file.size - 65557);
+    const tv = new DataView(tail.buffer);
+    let eocd = -1;
+    for (let i = tail.length - 22; i >= 0; i--) if (tv.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
+    if (eocd < 0) throw new Error('not-zip');
+    const count = tv.getUint16(eocd + 10, true), size = tv.getUint32(eocd + 12, true), offset = tv.getUint32(eocd + 16, true);
+    const dir = new Uint8Array(await file.slice(offset, offset + size).arrayBuffer()), dv = new DataView(dir.buffer), decoder = new TextDecoder();
+    const entries = new Map();
+    for (let i = 0, at = 0; i < count; i++) {
+      if (dv.getUint32(at, true) !== 0x02014b50) throw new Error('damaged');
+      const method = dv.getUint16(at + 10, true), crc = dv.getUint32(at + 16, true), packed = dv.getUint32(at + 20, true), length = dv.getUint32(at + 24, true);
+      const nameLength = dv.getUint16(at + 28, true), extra = dv.getUint16(at + 30, true), comment = dv.getUint16(at + 32, true), local = dv.getUint32(at + 42, true);
+      const name = decoder.decode(dir.subarray(at + 46, at + 46 + nameLength)).replaceAll('\\', '/');
+      at += 46 + nameLength + extra + comment;
+      if (name.endsWith('/') || name.split('/').includes('..') || name.startsWith('/')) continue;
+      entries.set(name, { method, crc, packed, length, local });
+    }
+    void base;
+    return {
+      names: () => [...entries.keys()],
+      has: name => entries.has(name),
+      read: async name => {
+        const entry = entries.get(name); if (!entry) return null;
+        const head = new DataView(await file.slice(entry.local, entry.local + 30).arrayBuffer());
+        if (head.getUint32(0, true) !== 0x04034b50) throw new Error('damaged');
+        const start = entry.local + 30 + head.getUint16(26, true) + head.getUint16(28, true), packed = file.slice(start, start + entry.packed);
+        let bytes;
+        if (entry.method === 0) bytes = new Uint8Array(await packed.arrayBuffer());
+        else if (entry.method === 8) bytes = new Uint8Array(await new Response(packed.stream().pipeThrough(new DecompressionStream('deflate-raw'))).arrayBuffer());
+        else throw new Error('unsupported');
+        if (bytes.length !== entry.length || crc32(bytes) !== entry.crc) throw new Error('damaged');
+        return bytes;
+      },
+    };
+  };
   window.mikanDownload = (blob, name) => {
     const url = URL.createObjectURL(blob), link = document.createElement('a');
     link.href = url; link.download = name; document.body.append(link); link.click(); link.remove();

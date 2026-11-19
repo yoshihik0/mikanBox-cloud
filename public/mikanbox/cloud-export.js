@@ -34,9 +34,11 @@
       for (const [name, text] of Object.entries(list.extra || {})) zip.add(name, new TextEncoder().encode(text));
       const date = new Date().toISOString().slice(0, 10);
       window.mikanDownload(zip.blob(), kind === 'media' ? `mikanbox-media-${date}.zip` : `mikanbox-site-${date}.zip`);
-      say(ja ? '保存しました。' : 'Downloaded.');
+      // The progress beside the button goes away; the result goes to the toast, as for other operations.
+      say('');
+      window.MikanUI?.toast(kind === 'media' ? (ja ? 'メディアをダウンロードしました。' : 'Media downloaded.') : (ja ? '公開サイトをダウンロードしました。' : 'Public site downloaded.'));
     } catch (error) {
-      say(error.message); window.showToast?.(error.message, true);
+      say(''); window.MikanUI ? window.MikanUI.toast(error.message, true) : window.showToast?.(error.message, true);
     } finally { buttons.forEach(button => { button.disabled = false; }); }
   }, true);
 })();
