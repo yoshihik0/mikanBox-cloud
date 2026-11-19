@@ -3,6 +3,7 @@
 // ==========================================
 // PHP版のMikanBoxRendererクラスをasync/awaitベースに変換
 
+import { mediaDimensions } from './media-store';
 import type { Env, PageData, ComponentData, Settings } from './types';
 import { MikanBoxMarkdown } from './markdown';
 import { imageSize } from './image-size';
@@ -10,7 +11,7 @@ import { scopeCss } from './cssScope';
 import { createTranslator } from './i18n';
 import { trackingSnippets } from './tracking';
 import {
-  loadPage, loadComponent, getSortedPageIds, isPublicStatus, listPages, getMediaHeader,
+  loadPage, loadComponent, getSortedPageIds, isPublicStatus, listPages,
 } from './storage';
 import { validMediaName } from './media-policy';
 import {
@@ -396,7 +397,7 @@ export class MikanBoxRenderer {
     for (const name of new Set(markers.map(m => m[2]))) {
       if (this.imageCache.has(name) || this.imageCache.size >= 30) continue;
       let size = null;
-      try { const header = await getMediaHeader(this.env, name); size = header ? imageSize(header) : null; } catch { size = null; }
+      try { size = await mediaDimensions(this.env, name); } catch { size = null; }
       this.imageCache.set(name, size);
     }
     const attributes = new Map<string, string>();

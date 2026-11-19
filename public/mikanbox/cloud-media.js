@@ -106,10 +106,13 @@
       }
       if (!filename) throw new Error('Choose an image to resize.');
       if (!source) {
-        const response = await fetch(`/admin?media_preview=${encodeURIComponent(filename)}`, { credentials: 'same-origin' });
+        // The original is on the public site. Its SHA-256 is the version the server compares (etag).
+        const base = String(window.PUBLIC_SITE_URL || '').replace(/\/$/, '');
+        const response = await fetch(`${base}/media/${encodeURIComponent(filename)}`, { mode: 'cors', cache: 'no-store', credentials: 'omit' });
         if (!response.ok) throw new Error('Could not load the original image.');
-        formData.set('source_etag',response.headers.get('ETag')||'');
         source = await response.blob();
+        const digest = await crypto.subtle.digest('SHA-256', await source.arrayBuffer());
+        formData.set('source_etag', [...new Uint8Array(digest)].map(b => b.toString(16).padStart(2, '0')).join(''));
       }
       const processed = await processImage(source, filename, { width, height, webp });
       if (!processed.changed) {

@@ -1,6 +1,6 @@
 const test=require('node:test'),assert=require('node:assert/strict');
-const {environment,call,login}=require('./fixtures.cjs');
-const {savePage,saveComponent,uploadMedia}=require('../.test-build/src/storage.js');
+const {environment,call,login,putMedia}=require('./fixtures.cjs');
+const {savePage,saveComponent}=require('../.test-build/src/storage.js');
 const {buildStatic}=require('../.test-build/src/ssg.js');
 const {publicationManifest,readPublicationEntry}=require('../.test-build/src/static-publication.js');
 const {beginPublication,hashPublicationFiles,preparePublication,uploadPublicationFile,finishPublication}=require('../.test-build/src/publication-service.js');
@@ -11,7 +11,7 @@ const page=(status,content_md='Body')=>({title:'T',status,content_md});
 
 test('the admin Worker serves no site content without a session',async()=>{
  const env=split(environment());await savePage(env,'index',page('public_static'));await savePage(env,'about',page('public_dynamic'));await savePage(env,'data',page('db'));
- await saveComponent(env,'card',{html:'',js:'cardJS()'});await uploadMedia(env,'draft.png',new Uint8Array([137,80,78,71,13,10,26,10]).buffer,'image/png');
+ await saveComponent(env,'card',{html:'',js:'cardJS()'});await putMedia(env,'draft.png',new Uint8Array([137,80,78,71,13,10,26,10]));
  for(const url of ['/','/about','/index.php?page=about','/preview/about','/media/draft.png','/component-js/card.js','/api/data','/sitemap.xml','/rss.xml']) {
   const response=await call(env,url);assert.equal(response.status,404,url);assert.equal(response.headers.get('X-Robots-Tag'),'noindex, nofollow');
   assert.doesNotMatch(await response.text(),/cardJS|PNG|<h1|urlset/,url);
@@ -39,9 +39,10 @@ test('the public manifest holds feeds and DB JSON but none of the admin scripts'
  for(const path of paths)assert.doesNotMatch(path,/cloud-admin|cloud-publish|admin\.css/);
  assert.match(decode.decode((await readPublicationEntry(env,admin,'/_redirects')).body),/^\/api\/data \/api\/data\.json 200$/m);
  {const headers=decode.decode((await readPublicationEntry(env,admin,'/_headers')).body);
-  // mikanBox DB allows cross-origin reads at /api/ID.json (the *.json rule) and its /api/ID alias, each from one rule.
-  assert.match(headers,/\n\/\*\.json\n  Content-Type: application\/json; charset=utf-8\n  Access-Control-Allow-Origin: \*\n/);
-  assert.match(headers,/\n\/api\/data\n  Content-Type: application\/json; charset=utf-8\n  Access-Control-Allow-Origin: \*\n/);
+  // mikanBox DB allows cross-origin reads at /api/ID.json and its /api/ID alias: one rule for the whole site allows them.
+  assert.match(headers,/\n\/\*\.json\n  Content-Type: application\/json; charset=utf-8\n/);
+  assert.match(headers,/\n\/api\/data\n  Content-Type: application\/json; charset=utf-8\n/);
+  assert.equal((headers.match(/Access-Control-Allow-Origin: \*/g)||[]).length,1);
   assert.doesNotMatch(headers,/\/api\/\*/);}
  assert.equal(await readPublicationEntry(env,admin,'/api/index.json'),null);
 });
@@ -93,55 +94,37 @@ test('the page list knows which pages the public site shows as current',async()=
  status=await publicationStatus(env,'https://admin.cloud.test',await list());assert.equal(status.pages.later.state,'stale');assert.equal(status.pages.index.state,'live');assert.equal(status.stale,1);
 });
 
-test('sandboxed preview loads referenced unpublished images through scoped expiring URLs',async()=>{
- const env=split(environment()),auth=await login(env),bytes=new Uint8Array([137,80,78,71,13,10,26,10]);
- await uploadMedia(env,'draft.png',bytes.buffer,'image/png');
- await savePage(env,'preview-image',{...page('draft','![draft](draft.png)\n\n<img src="images/draft.png"><img src="https://other.example/media/draft.png">'),css:'.hero{background:url(images/draft.png)}'});
+test('the sandboxed preview shows media from the public site; the admin Worker serves no media itself',async()=>{
+ const env=split(environment()),auth=await login(env);
+ await putMedia(env,'draft.png',new Uint8Array([137,80,78,71,13,10,26,10]));
+ await savePage(env,'preview-image',{...page('draft','![draft](draft.png)\n\n<img src="https://other.example/media/draft.png">')});
  const response=await call(env,'/preview/preview-image',null,auth.cookie);assert.equal(response.status,200);assert.match(response.headers.get('Content-Security-Policy'),/^sandbox allow-scripts/);assert.equal(response.headers.get('Referrer-Policy'),'no-referrer');
- const html=await response.text(),matches=[...html.matchAll(/https:\/\/cloud\.test\/preview-media\/draft\.png\?expires=\d+&sig=[A-Za-z0-9_-]+/g)];assert.ok(matches.length>=2,html);assert.match(html,/https:\/\/other\.example\/media\/draft\.png/);
- const signed=matches[0][0].replace('https://cloud.test','');const image=await call(env,signed);assert.equal(image.status,200);assert.equal(image.headers.get('Cache-Control'),'private, no-store');assert.deepEqual(new Uint8Array(await image.arrayBuffer()),bytes);
- assert.equal((await call(env,signed.replace('draft.png','other.png'))).status,404);
- assert.equal((await call(env,signed.replace(/sig=./,'sig=X'))).status,404);
- assert.equal((await call(env,signed.replace(/expires=\d+/,'expires=1000000000'))).status,404);
+ const html=await response.text();assert.match(html,/https:\/\/www\.example\.test\/media\/draft\.png/);assert.match(html,/https:\/\/other\.example\/media\/draft\.png/);assert.doesNotMatch(html,/preview-media/);
  assert.equal((await call(env,'/preview-media/draft.png')).status,404);
  assert.equal((await call(env,'/media/draft.png')).status,404);
 });
 
-test('automatic image publication preserves the existing public manifest and routing',async()=>{
- const env=split(environment());env.CLOUDFLARE_API_TOKEN='test-token';await savePage(env,'index',page('public_static'));
- const original=global.fetch,manifests=[],metadata=[];let active='initial',version=0;
- global.fetch=async(url,init={})=>{
-  if(url.endsWith('/scripts/cloud-public/deployments')&&init.method!=='POST')return Response.json({success:true,result:{deployments:[{versions:[{version_id:active,percentage:100}]}]}});
-  if(url.endsWith('/scripts/cloud-public/assets-upload-session')){const manifest=JSON.parse(init.body).manifest;manifests.push(manifest);return Response.json({success:true,result:{jwt:'ready',buckets:[]}});}
-  if(url.endsWith('/scripts/cloud-public/versions')){metadata.push(JSON.parse(await init.body.get('metadata').text()));return Response.json({success:true,result:{id:'version-'+(++version)}});}
-  if(url.endsWith('/scripts/cloud-public/deployments')&&init.method==='POST'){active=JSON.parse(init.body).versions[0].version_id;return Response.json({success:true,result:{}});}
-  throw new Error('Unexpected API path: '+url);
- };
- const hash=async bytes=>Buffer.from(await crypto.subtle.digest('SHA-256',bytes)).toString('hex').slice(0,32);
+test('publishing one new file keeps the public manifest, its routing and the last publication time',async()=>{
+ const {mockCloudflare,browserPublish}=require('./fixtures.cjs');
+ const env=split(environment()),auth=await login(env);await savePage(env,'index',page('public_static'));const cf=mockCloudflare(env);
  try{
-  const initial=await beginPublication(env,admin,'admin',true),files=[];
-  for(const item of initial.entries){const file=await readPublicationEntry(env,admin,item.path);files.push({path:item.path,hash:await hash(file.body),size:file.body.length,contentType:file.contentType});}
-  await hashPublicationFiles(env,initial.job,'admin',files);await preparePublication(env,initial.job,'admin');await finishPublication(env,initial.job,'admin');
+  await browserPublish(env,auth,{rebuild:true});const first={...env.lastVersionMetadata};
   const before=JSON.parse(env.sqlite.prepare("SELECT value FROM settings WHERE key='static_publication'").get().value);
-  await uploadMedia(env,'unrelated.png',new Uint8Array([1,2,3]).buffer,'image/png');
-  await uploadMedia(env,'new.png',new Uint8Array([1,2,3,4]).buffer,'image/png');
   await savePage(env,'new-page',page('public_static'));
-  const next=await beginPublication(env,admin,'admin',false,[],'new.png');
-  assert.equal(next.entries.filter(x=>x.hash===null).length,1);assert.ok(!next.entries.some(x=>x.path==='/media/unrelated.png'));assert.ok(!next.entries.some(x=>x.path==='/new-page.html'));
-  const file=await readPublicationEntry(env,admin,'/media/new.png');await hashPublicationFiles(env,next.job,'admin',[{path:'/media/new.png',hash:await hash(file.body),size:file.body.length,contentType:file.contentType}]);
-  await preparePublication(env,next.job,'admin');await finishPublication(env,next.job,'admin');
+  const bytes=new Uint8Array([137,80,78,71,13,10,26,10,9]),hash=require('node:crypto').createHash('sha256').update(bytes).digest('hex').slice(0,32);
+  await browserPublish(env,auth,{mediaOnly:'new.png',newMedia:{name:'new.png',hash,size:bytes.length,content_type:'image/png'},bytes});
   const after=JSON.parse(env.sqlite.prepare("SELECT value FROM settings WHERE key='static_publication'").get().value);
-  assert.equal(after.published_at,before.published_at);assert.deepEqual(metadata[1].assets.config._redirects,metadata[0].assets.config._redirects);assert.deepEqual(metadata[1].assets.config._headers,metadata[0].assets.config._headers);
-  assert.deepEqual(Object.keys(manifests[1]).sort(),[...Object.keys(manifests[0]),'/media/new.png'].sort());
-  active='unrelated-version';await assert.rejects(beginPublication(env,admin,'admin',false,[],'new.png'),/Build the site once/);
- }finally{global.fetch=original;}
+  assert.equal(after.published_at,before.published_at);assert.deepEqual(env.lastVersionMetadata.assets.config._redirects,first.assets.config._redirects);
+  assert.deepEqual([...after.paths].sort(),[...before.paths,'/media/new.png'].sort(),'the new page waits for the next build');
+  assert.ok(cf.site.has('/media/new.png')&&!cf.site.has('/new-page.html'));
+ }finally{cf.restore();}
 });
 
 test('editor preview renders submitted changes without saving or publishing them',async()=>{
  const env=split(environment()),auth=await login(env);await savePage(env,'editing',page('public_static','Saved content'));
- await uploadMedia(env,'preview.png',new Uint8Array([137,80,78,71,13,10,26,10]).buffer,'image/png');
+ await putMedia(env,'preview.png',new Uint8Array([137,80,78,71,13,10,26,10]));
  const form={save_action:'preview_page',csrf_token:auth.csrf_token,id:'editing',old_id:'editing',title:'Unsaved title',status:'draft',content_md:'Unsaved text ![draft](preview.png)',css:'.test {color:red}',js:'window.previewOnly=1'};
- const response=await call(env,'/admin?editor_preview=1',form,auth.cookie);assert.equal(response.status,200);const body=await response.text();assert.match(body,/Unsaved text/);assert.match(body,/Unsaved title/);assert.match(body,/color:red/);assert.match(body,/previewOnly=1/);assert.match(body,/\/preview-media\/preview\.png\?/);assert.match(response.headers.get('Content-Security-Policy'),/^sandbox /);assert.equal(response.headers.get('Cache-Control'),'no-store');
+ const response=await call(env,'/admin?editor_preview=1',form,auth.cookie);assert.equal(response.status,200);const body=await response.text();assert.match(body,/Unsaved text/);assert.match(body,/Unsaved title/);assert.match(body,/color:red/);assert.match(body,/previewOnly=1/);assert.match(body,/https:\/\/www\.example\.test\/media\/preview\.png/);assert.match(response.headers.get('Content-Security-Policy'),/^sandbox /);assert.equal(response.headers.get('Cache-Control'),'no-store');
  const saved=await require('../.test-build/src/storage.js').loadPage(env,'editing');assert.equal(saved.content_md,'Saved content');assert.equal(saved.status,'public_static');
  const listPreview=await call(env,'/preview/editing',null,auth.cookie);assert.match(await listPreview.text(),/Saved content/);
  const bad=await call(env,'/admin?editor_preview=1',{...form,csrf_token:'wrong'},auth.cookie);assert.equal(bad.status,403);

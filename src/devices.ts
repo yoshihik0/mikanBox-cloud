@@ -1,3 +1,4 @@
+import {audit} from './audit';
 import type {Env,Settings} from './types';
 import {loadSettings,saveSettings} from './storage';
 // Device authentication: no passwords. A browser holds a random session token in an
@@ -26,6 +27,7 @@ export async function createDevice(env:Env,username:string,name:string,request:R
  const token=randomToken(),now=Date.now(),id=crypto.randomUUID();
  await env.DB.prepare('INSERT INTO device_sessions(id,username,token_hash,name,created_at,last_used_at,expires_at,seen_until,user_agent,via) VALUES(?,?,?,?,?,?,?,?,?,?)')
   .bind(id,username,await sha256(token),deviceName(name),now,now,now+await expiryDays(env)*DAY,now,(request.headers.get('User-Agent')||'').slice(0,200),via).run();
+ await audit(env,'device_registered',{actor:username,target:id,request});
  return {id,cookie:deviceCookie(token)};
 }
 const deviceName=(name:string)=>name.trim().slice(0,60)||'—';
@@ -49,6 +51,7 @@ export async function issueCode(env:Env,creator:Device,invite=false){
  const now=Date.now();
  await env.DB.prepare('INSERT INTO device_codes(code_hash,username,display_name,created_by,created_at,expires_at) VALUES(?,?,?,?,?,?)')
   .bind(await sha256(code),invite?'':creator.username,'',creator.id,now,now+CODE_HOURS*3600_000).run();
+ await audit(env,invite?'invite_issued':'code_issued',{actor:creator.username});
  return code.slice(0,5)+'-'+code.slice(5);
 }
 async function findCode(env:Env,code:string){
@@ -89,7 +92,8 @@ export async function listDevices(env:Env){return (await env.DB.prepare('SELECT 
 export function onProbation(device:Device){return device.via!=='setup'&&Date.now()-device.created_at<PROBATION_DAYS*DAY;}
 export async function revokeDevice(env:Env,actor:Device,id:string){
  if(id!==actor.id&&onProbation(actor))throw new Error(`追加から${PROBATION_DAYS}日間は、ほかの端末を止められません。 / A device added within ${PROBATION_DAYS} days cannot stop other devices.`);
- await env.DB.batch([env.DB.prepare('UPDATE device_sessions SET revoked_at=? WHERE id=? AND revoked_at IS NULL').bind(Date.now(),id),env.DB.prepare('DELETE FROM device_codes WHERE created_by=? AND used_at IS NULL').bind(id)]);
+ const [stopped]=await env.DB.batch([env.DB.prepare('UPDATE device_sessions SET revoked_at=? WHERE id=? AND revoked_at IS NULL').bind(Date.now(),id),env.DB.prepare('DELETE FROM device_codes WHERE created_by=? AND used_at IS NULL').bind(id)]);
+ if(stopped.meta.changes)await audit(env,'device_revoked',{actor:actor.username,target:id});
 }
 /** Devices registered since this one last looked, then mark them seen. */
 export async function unseenDevices(env:Env,device:Device){

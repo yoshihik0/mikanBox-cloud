@@ -1,8 +1,10 @@
+import {inspectMedia,getMedia,addMedia} from './media-store';
+import {publishMediaFromServer} from './publication-service';
 import {assertNotPublished,checkPublicationLock} from './publication-state';
 import type { Env, PageData, ComponentData, Settings } from './types';
 import { MikanBoxRenderer } from './renderer';
 import {CLOUD_VERSION,negotiatedProtocol} from './version';
-import { loadSettings, listPages, loadComponent, listComponents, saveComponent, deleteComponent, uploadMedia } from './storage';
+import { loadSettings, listPages, loadComponent, listComponents, saveComponent, deleteComponent } from './storage';
 import { MEDIA_FILE_LIMIT, validMediaName, mediaType, isCodeMedia } from './media-policy';
 import { pageId, componentId, pageStatus } from './validation';
 import { verifyCsrf } from './auth';
@@ -46,7 +48,7 @@ const tools=[
   tool('list_ai_docs','List AI instruction documents.'),
   tool('get_ai_doc','Read an AI instruction document. The .md suffix is optional.',{id:string},['id']),
   tool('update_ai_doc','Create or update an AI instruction document.',{id:string,html:string,css:string},['id','html']),
-  tool('upload_media','Upload media (JPEG, PNG, GIF, WebP, SVG, UTF-8 JS or CSS; up to 10MB). Existing names are never overwritten.',{filename:string,content_base64:string,category:string},['filename','content_base64']),
+  tool('upload_media','Upload media (JPEG, PNG, GIF, WebP, SVG, UTF-8 JS or CSS; up to 10MB). The file is published to the public site at once. Existing names are never overwritten.',{filename:string,content_base64:string,category:string},['filename','content_base64']),
   tool('build_ssg','Rebuild all public_static snapshots.')
 ];
 function object(value:unknown):Record<string,unknown> {
@@ -228,8 +230,13 @@ export async function handleMcp(request:Request,env:Env):Promise<Response> {
         if(!encoded||encoded.length>4*Math.ceil(MEDIA_FILE_LIMIT/3))throw new Error('Invalid or oversized Base64 image.');
         const bytes=decodeImage(encoded),contentType=mediaType(bytes,key.split('.').pop()!.toLowerCase());
         if(!contentType||!bytes.length||bytes.length>MEDIA_FILE_LIMIT)throw new Error('Invalid or oversized image.');
-        if(!await uploadMedia(env,key,bytes.buffer,contentType))throw new Error('Upload failed: name already exists or storage limit reached.');
-        data={success:true,filename:key,url:new URL('/media/'+encodeURIComponent(key),request.url).href};break;
+        if(!contentType)throw new Error('Invalid image.');
+        // The file goes to the public site first, then it is recorded (media live only on the public site).
+        if(await getMedia(env,key))throw new Error('Upload failed: name already exists.');
+        const inspected=await inspectMedia(key,bytes);
+        await publishMediaFromServer(env,request,{name:key,hash:inspected.hash,size:inspected.size,content_type:inspected.content_type},encoded);
+        await addMedia(env,key,inspected);
+        data={success:true,filename:key,url:(env.PUBLIC_SITE_URL||new URL(request.url).origin).replace(/\/$/,'')+'/media/'+encodeURIComponent(key)};break;
       }
       case 'build_ssg':await buildStatic(env,request);data={built:true};break;
     }

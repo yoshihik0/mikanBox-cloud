@@ -1,19 +1,19 @@
+import {audit,recentAudit} from '../audit';
 import {mcpLastUsed} from '../mcp';
 import {importContentPackage,importWordPressContent} from '../content-import';
 import {latestCloudRelease,cloudUpdateUrl} from '../cloud-release';
-import {exportBackupManifest,exportBackupMediaPart,validateExportSnapshot,createBackupRestore,stageBackupMediaPart,commitBackupRestore,abortBackupRestore} from '../backup-restore';
+import {exportBackupManifest,validateExportSnapshot,createBackupRestore,commitBackupRestore,abortBackupRestore} from '../backup-restore';
 import {cloudConfigured,saveCloudToken,cloudTarget,beginD1Export,pollD1Export,prepareD1Download,openD1Download,d1Restore,cloudToken} from '../cloudflare-api';
 import {beginPublication,hashPublicationFiles,preparePublication,uploadPublicationFile,finishPublication,cancelPublication} from '../publication-service';
-import {replaceMediaImage} from '../media-transform';
+import {inspectMedia,getMedia,addMedia,replaceMedia,deleteMedia} from '../media-store';
 import {trackingIdValid,trackingLegacyHtml,trackingSnippets} from '../tracking';
 import type { Env, PageData, ComponentData } from '../types';
-import { loadSettings, saveSettings, loadPage, getSortedPageIds, loadComponent, saveComponent, deleteComponent, listComponentIds, listPages, listComponents, listMediaFiles, uploadMedia, deleteMedia, renameMedia, mediaUsage, getMediaObject, buildDataBackupZip, buildMediaBackupZip } from '../storage';
+import { loadSettings, saveSettings, loadPage, getSortedPageIds, loadComponent, saveComponent, deleteComponent, listComponentIds, listPages, listComponents, listMediaFiles, mediaUsage, buildDataBackupZip } from '../storage';
 import { verifyCsrf } from '../auth';
 import { authenticatedUser, getUser, listUsers, addInitialUser, rateLimit } from '../accounts';
 import { onProbation, PROBATION_DAYS, createDevice, claimCode, codeKind, issueCode, cancelCode, revokeDevice, setExpiryDays, setupTokenUsable, consumeSetupToken, clearDeviceCookie, listDevices, listCodes, unseenDevices, expiryFrom } from '../devices';
 import { renderAccountsSection } from './accounts-view';
 import { MikanBoxRenderer } from '../renderer';
-import { previewMediaUrls } from '../preview-media';
 import { pageFormatFields, withFormatFields, validatePageSave, isDataFormat, isApiFormat, formatExtension, pageOutputFormat, adminPreviewUrl } from '../output-formats';
 import { sortPagesForAdmin, pageSortParam } from '../storage';
 import { PREVIEW_SANDBOX, publicWorkerMissing } from '../site-split';
@@ -25,7 +25,6 @@ import { installDefaults } from '../defaults';
 import {mediaReferenceCount,mediaHasLockedReferences,renameMediaReferences,removeCategory} from '../content-operations';
 import {assertNotPublished,checkPublicationLock,isPublished} from '../publication-state';
 import {publicationManifest,readPublicationEntry} from '../static-publication';
-import {buildStaticExportZip} from '../static-export';
 import { MEDIA_FILE_LIMIT,imageType,validMediaName,mediaType,isCodeMedia } from '../media-policy';
 import { getSystemLanguage, createTranslator } from '../i18n';
 import { stashPreview, loadStashedForm } from '../preview-stash';
@@ -81,7 +80,7 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
       let device:{cookie:string}|null=null;
       if (action==='setup') {
         // SETUP_TOKEN registers the first device, and later serves as recovery.
-        if (!await setupTokenUsable(env,val(form,'setup_token'))) {await rateLimit(env,key,true);throw new Error('初期設定トークンを確認してください。使用済みのトークンは使えません。 / Check the setup token. A used token does not work again.');}
+        if (!await setupTokenUsable(env,val(form,'setup_token'))) {await rateLimit(env,key,true);await audit(env,'login_failed',{request});throw new Error('初期設定トークンを確認してください。使用済みのトークンは使えません。 / Check the setup token. A used token does not work again.');}
         const username=val(form,'username').trim();
         if (initial) {
           await addInitialUser(env,username,val(form,'display_name'));
@@ -92,15 +91,16 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
           await installDefaults(env,lang);
         } else if (!await getUser(env,username)) throw new Error('ユーザー名を確認してください。 / Check the username.');
         await consumeSetupToken(env,!initial);
+        if(!initial)await audit(env,'recovery',{actor:username,request});
         device=await createDevice(env,username,deviceName,request,'setup');
       } else if (action==='claim' && !initial) {
         const code=val(form,'code'),kind=await codeKind(env,code);
-        if (!kind) {await rateLimit(env,key,true);throw new Error('コードを確認してください。期限切れや使用済みのコードは使えません。 / Check the code. Expired or used codes do not work.');}
+        if (!kind) {await rateLimit(env,key,true);await audit(env,'login_failed',{request});throw new Error('コードを確認してください。期限切れや使用済みのコードは使えません。 / Check the code. Expired or used codes do not work.');}
         // A valid invite: the invited person now chooses their own user ID and display name.
         if (kind==='invite' && !form.has('username')) return loginResponse('',200,{code,device_name:deviceName});
         if (kind==='invite') inviteStep={code,device_name:deviceName,username:val(form,'username'),display_name:val(form,'display_name')};
         device=await claimCode(env,code,deviceName,request,kind==='invite'?{username:val(form,'username'),display_name:val(form,'display_name')}:undefined);
-        if (!device) {await rateLimit(env,key,true);throw new Error('コードを確認してください。期限切れや使用済みのコードは使えません。 / Check the code. Expired or used codes do not work.');}
+        if (!device) {await rateLimit(env,key,true);await audit(env,'login_failed',{request});throw new Error('コードを確認してください。期限切れや使用済みのコードは使えません。 / Check the code. Expired or used codes do not work.');}
       } else throw new Error('Invalid login action.');
       await env.DB.prepare('DELETE FROM login_attempts WHERE id=?').bind(key).run();
       return redirect(url.pathname,device.cookie);
@@ -111,8 +111,9 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
   const csrf=auth.session.csrf;
   if(request.method==='GET'&&url.searchParams.has('media_preview')) {
     const key=url.searchParams.get('media_preview')||'';if(!validMediaName(key))return new Response('Not Found',{status:404});
-    const object=await getMediaObject(env,key);if(!object)return new Response('Not Found',{status:404});
-    return new Response(object.body,{headers:{'Content-Type':isCodeMedia(key)?'text/plain; charset=utf-8':object.httpMetadata?.contentType||'application/octet-stream','X-Content-Type-Options':'nosniff','Cache-Control':'no-store','ETag':object.httpEtag||'', 'Content-Security-Policy':"sandbox; default-src 'none'; style-src 'unsafe-inline'"}});
+    // The file itself is on the public site.
+    if(!await getMedia(env,key)||!env.PUBLIC_SITE_URL)return new Response('Not Found',{status:404});
+    return Response.redirect(env.PUBLIC_SITE_URL.replace(/\/$/,'')+'/media/'+encodeURIComponent(key),302);
   }
   // The preview of a saved page whose output is text (Markdown only, data formats, mikanBox DB):
   // always UTF-8 plain text, so a static .md/.txt served without a charset never looks garbled.
@@ -129,7 +130,7 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
       page=await loadPage(env,id);if(!page)return new Response('Not Found',{status:404,headers:{'Cache-Control':'no-store'}});
     }
     const renderer=new MikanBoxRenderer(env,settings,request),preview=await renderer.renderPreview(id,page!);
-    const body=preview.type.startsWith('text/html')?await previewMediaUrls(preview.body,env,request,renderer.getSiteUrl()):preview.body;
+    const body=preview.type.startsWith('text/html')?preview.body:preview.body;
     return new Response(body,{status:preview.status,headers:{'Content-Type':preview.type,'Cache-Control':'no-store','Referrer-Policy':'no-referrer','X-Content-Type-Options':'nosniff','Content-Security-Policy':PREVIEW_SANDBOX}});
   }
   if(request.method==='GET'&&url.searchParams.has('publication_manifest'))return json(await publicationManifest(env));
@@ -151,7 +152,7 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
         const data=await editorPageWithFormat(env,form,current);
         const renderer=new MikanBoxRenderer(env,settings,request);
         const rendered=await renderer.render(id,true,data);
-        const content=await previewMediaUrls(rendered.html,env,request,renderer.getSiteUrl());
+        const content=rendered.html;
         return new Response(content,{status:rendered.status,headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','Referrer-Policy':'no-referrer','Content-Security-Policy':PREVIEW_SANDBOX}});
       } catch(error) {return html(error instanceof Error?error.message:'Preview failed.',400);}
     }
@@ -163,7 +164,7 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
       if(lockout&&onProbation(auth.device))throw new Error(`追加から${PROBATION_DAYS}日間の端末では、この操作はできません。 / A device added within ${PROBATION_DAYS} days cannot do this.`);
       switch(action) {
         case 'preview_stash': return json({success:true,token:await stashPreview(env,auth.user.username,form)});
-        case 'publication_begin': return json({success:true,...await beginPublication(env,request,auth.user.username,val(form,'rebuild')==='1',JSON.parse(val(form,'excluded')||'[]'),val(form,'media_only'))});
+        case 'publication_begin': return json({success:true,...await beginPublication(env,request,auth.user.username,val(form,'rebuild')==='1',JSON.parse(val(form,'excluded')||'[]'),val(form,'media_only'),val(form,'new_media')?JSON.parse(val(form,'new_media')):null)});
         case 'publication_hashes': await hashPublicationFiles(env,val(form,'publication_lease'),auth.user.username,JSON.parse(val(form,'items')));return json({success:true});
         case 'publication_prepare': return json({success:true,...await preparePublication(env,val(form,'publication_lease'),auth.user.username)});
         case 'publication_upload': {const file=form.get('asset_data');if(!(file instanceof File))throw new Error('Missing upload.');return json({success:true,...await uploadPublicationFile(env,val(form,'publication_lease'),auth.user.username,val(form,'hash'),file)});}
@@ -172,18 +173,17 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
         case 'download_backup_json': {
           return json({success:true,manifest:await exportBackupManifest(env)});
         }
-        case 'backup_media_part': return json({success:true,part:await exportBackupMediaPart(env,val(form,'file'),Number(val(form,'index')),JSON.parse(val(form,'expected')))});
         case 'backup_export_validate': await validateExportSnapshot(env,JSON.parse(val(form,'manifest')));return json({success:true});
         case 'restore_backup_json': {
           const stage=await createBackupRestore(env,JSON.parse(val(form,'manifest')),{restoreUsers:val(form,'restore_users')==='1'});
           await env.DB.prepare('UPDATE backup_sessions SET owner=? WHERE id=?').bind(auth.user.username,stage).run();
           return json({success:true,stage});
         }
-        case 'backup_restore_part': case 'backup_restore_commit': case 'backup_restore_abort': {
+        case 'backup_restore_commit': case 'backup_restore_abort': {
           const stage=val(form,'stage'),owned=await env.DB.prepare('SELECT id FROM backup_sessions WHERE id=? AND owner=?').bind(stage,auth.user.username).first();if(!owned){const completed=action==='backup_restore_commit'&&await env.DB.prepare('SELECT result FROM backup_restore_results WHERE id=? AND owner=?').bind(stage,auth.user.username).first<{result:string}>();if(completed)return json({success:true,...JSON.parse(completed.result)});throw new Error('Restore session not found.');}
-          if(action==='backup_restore_part'){await stageBackupMediaPart(env,stage,JSON.parse(val(form,'part')));return json({success:true});}
           if(action==='backup_restore_abort'){await abortBackupRestore(env,stage);return json({success:true});}
-          return json({success:true,...await commitBackupRestore(env,stage)});
+          const restored=await commitBackupRestore(env,stage);await audit(env,'data_restored',{actor:auth.user.username,target:'json-backup',request});
+          return json({success:true,...restored});
         }
         case 'save_cloud_connection': {
           const target=cloudTarget(env);if(val(form,'cloud_account_id')!==target.account||val(form,'cloud_worker_name')!==target.worker)throw new Error('Cloudflare target must match this installation.');
@@ -196,7 +196,7 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
           if(!upstream.ok||!upstream.body)throw new Error('D1 export download failed.');
           return new Response(upstream.body,{headers:{'Content-Type':'application/sql','Content-Disposition':'attachment; filename="mikanbox-d1.sql"','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}});
         }
-        case 'restore_d1_time': {return json({success:true,restore:await d1Restore(env,val(form,'restore_at'))});}
+        case 'restore_d1_time': {const restore=await d1Restore(env,val(form,'restore_at'));await audit(env,'data_restored',{actor:auth.user.username,target:'d1-time-travel',request});return json({success:true,restore});}
         case 'begin_publication': {
           const lease=crypto.randomUUID(),value=JSON.stringify({lease,expires:Date.now()+30*60*1000});
           const saved=await env.DB.prepare("INSERT INTO settings(key,value) VALUES('publication_lock',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value WHERE json_extract(settings.value,'$.expires')<?").bind(value,Date.now()).run();
@@ -210,8 +210,8 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
           if(form.has('stage')){const old=await env.DB.prepare("SELECT value FROM settings WHERE key='static_publication'").first<{value:string}>();paths=[...new Set([...paths,...(old?JSON.parse(old.value).paths||[]:[])])];}
           await env.DB.prepare("INSERT INTO settings(key,value) VALUES('static_publication',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").bind(JSON.stringify({paths,published_at:new Date().toISOString()})).run();return json({success:true});
         }
-        case 'set_mcp_enabled': settings.mcp_disabled=val(form,'mcp_enabled')!=='1';if(!await saveSettings(env,settings))throw new Error(t('err_save_failed'));break;
-        case 'generate_api_key': settings.api_key=crypto.randomUUID().replace(/-/g,'')+crypto.randomUUID().replace(/-/g,'');if(!await saveSettings(env,settings))throw new Error(t('err_save_failed'));newApiKey=String(settings.api_key);message=t('msg_mcp_key_generated');break;
+        case 'set_mcp_enabled': settings.mcp_disabled=val(form,'mcp_enabled')!=='1';if(!await saveSettings(env,settings))throw new Error(t('err_save_failed'));await audit(env,settings.mcp_disabled?'mcp_disabled':'mcp_enabled',{actor:auth.user.username,request});break;
+        case 'generate_api_key': await audit(env,settings.api_key?'mcp_key_rotated':'mcp_key_issued',{actor:auth.user.username,request});settings.api_key=crypto.randomUUID().replace(/-/g,'')+crypto.randomUUID().replace(/-/g,'');if(!await saveSettings(env,settings))throw new Error(t('err_save_failed'));newApiKey=String(settings.api_key);message=t('msg_mcp_key_generated');break;
         case 'build_ssg': await buildStatic(env,request);break;
         case 'logout': await revokeDevice(env,auth.device,auth.device.id);return redirect(url.pathname,clearDeviceCookie());
         case 'content_import_package': case 'content_import_wordpress': {
@@ -312,7 +312,7 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
         case 'delete_user': {
           const name=val(form,'username');if(name===auth.user.username) throw new Error('自分自身は削除できません。 / Cannot delete your current account.');
           // Stop the user's devices too, so recreating the same username never revives them.
-          await env.DB.batch([env.DB.prepare('DELETE FROM device_codes WHERE username=? OR created_by IN (SELECT id FROM device_sessions WHERE username=?)').bind(name,name),env.DB.prepare('DELETE FROM users WHERE username=?').bind(name),env.DB.prepare('UPDATE device_sessions SET revoked_at=? WHERE username=? AND revoked_at IS NULL').bind(Date.now(),name)]);break;
+          await env.DB.batch([env.DB.prepare('DELETE FROM device_codes WHERE username=? OR created_by IN (SELECT id FROM device_sessions WHERE username=?)').bind(name,name),env.DB.prepare('DELETE FROM users WHERE username=?').bind(name),env.DB.prepare('UPDATE device_sessions SET revoked_at=? WHERE username=? AND revoked_at IS NULL').bind(Date.now(),name)]);await audit(env,'user_deleted',{actor:auth.user.username,target:name,request});break;
         }
         case 'acquire_lock': {
           const id=pageId(val(form,'id'));
@@ -333,42 +333,52 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
           if(action==='add_category') cats.add(cat);else cats.delete(cat);settings.category_candidates=[...cats].sort().join(', ');
           if(!await saveSettings(env,settings)) throw new Error(t('err_save_failed'));break;
         }
+        // A new or changed media file goes to the public site first: media_prepare checks it and says what it
+        // will be published as; after the browser publishes it, the commit below records it (only when the
+        // last publication carries exactly this content at that path).
+        case 'media_prepare': {
+          const file=form.get('image');if(!(file instanceof File))throw new Error(lang==='ja'?'ファイルを選んでください。':'Choose a file.');
+          const old=val(form,'file');let name=val(form,'new_filename')||old;
+          if(!old){
+            name=file.name.replace(/[^A-Za-z0-9_.-]/g,'_').replace(/\.[^.]+$/,ext=>ext.toLowerCase());const category=(val(form,'cat')||url.searchParams.get('cat')||'').replace(/[^A-Za-z0-9_-]/g,'_');
+            if(!isCodeMedia(name)&&category&&!/^[A-Za-z0-9]+_/.test(name))name=category+'_'+name;
+          } else if(!await getMedia(env,old))throw new Error('Image not found.');
+          const inspected=await inspectMedia(name,new Uint8Array(await file.arrayBuffer()));
+          if(name!==old){
+            if(await getMedia(env,name))throw new Error(lang==='ja'?'同名のファイルがあります。名前を変えてください。':'A file with this name exists. Choose another name.');
+            if(await isPublished(env,'/media/'+name))throw new Error(lang==='ja'?'このファイル名は公開中です。別の名前を使うか、サイトをビルドしてからお試しください。':'This filename is still published. Choose another name or build the site first.');
+          }
+          return json({success:true,media:{name,hash:inspected.hash,size:inspected.size,content_type:inspected.content_type}});
+        }
         case 'edit_media': case 'resize_media': case 'convert_media_webp': {
           const file=form.get('image'),old=val(form,'source_file')||val(form,'file');
           const target=val(form,'new_filename')||old;if(!validMediaName(old)||!validMediaName(target))throw new Error('Check the filename.');
-
-          if(target!==old&&await isPublished(env,'/media/'+target))throw new Error(lang==='ja'?'変更先の名前は公開中です。サイトをビルドしてから再度お試しください。':'The target name is still published. Build the site before reusing it.');
-          if(!(file instanceof File)){if(action!=='edit_media'||target===old)throw new Error('No changes to save.');await renameMediaReferences(env,old,target,auth.user.username);break;}
-          const bytes=new Uint8Array(await file.arrayBuffer());
-          if(action==='convert_media_webp'&&(!/\.(?:jpe?g|png)$/i.test(old)||!target.endsWith('.webp')||imageType(bytes,'webp')!=='image/webp')) throw new Error('Invalid WebP conversion.');
+          if(!(file instanceof File)){
+            if(action!=='edit_media'||target===old)throw new Error('No changes to save.');
+            if(await isPublished(env,'/media/'+target))throw new Error(lang==='ja'?'変更先の名前は公開中です。サイトをビルドしてから再度お試しください。':'The target name is still published. Build the site before reusing it.');
+            await renameMediaReferences(env,old,target,auth.user.username);break;
+          }
+          const inspected=await inspectMedia(target,new Uint8Array(await file.arrayBuffer()));
+          if(action==='convert_media_webp'&&(!/\.(?:jpe?g|png)$/i.test(old)||!target.endsWith('.webp')||inspected.content_type!=='image/webp')) throw new Error('Invalid WebP conversion.');
           if(target!==old){
-            const updated=await renameMediaReferences(env,old,target,auth.user.username,{bytes,expectedEtag:val(form,'source_etag')});
+            const updated=await renameMediaReferences(env,old,target,auth.user.username,{...inspected,expectedEtag:val(form,'source_etag')});
             // As in PHP: say what the image became and how many links were updated.
             if(action==='convert_media_webp')message=t('msg_media_webp_converted',target)+t('msg_media_links_updated',updated.pages+updated.components);
           }
-          else await replaceMediaImage(env,old,bytes,val(form,'source_etag'));break;
+          else await replaceMedia(env,old,inspected,val(form,'source_etag'));break;
         }
         case 'upload_media': {
-          const file=form.get('image');
-          if(!(file instanceof File)||!file.size||file.size>MEDIA_FILE_LIMIT)throw new Error(lang==='ja'?'1ファイル10 MB以下のファイルを選んでください。':'Choose a file up to 10 MB.');
-          let name=file.name.replace(/[^A-Za-z0-9_.-]/g,'_').replace(/\.[^.]+$/,ext=>ext.toLowerCase());const category=(val(form,'cat')||url.searchParams.get('cat')||'').replace(/[^A-Za-z0-9_-]/g,'_');
-          if(!isCodeMedia(name)&&category&&!/^[A-Za-z0-9]+_/.test(name))name=category+'_'+name;
-          const ext=name.split('.').pop()?.toLowerCase()||'';
-          if(!validMediaName(name))throw new Error(lang==='ja'?'ファイル名を確認してください。':'Check the filename.');
-          if(await isPublished(env,'/media/'+name))throw new Error(lang==='ja'?'このファイル名は公開中です。別の名前を使うか、サイトをビルドしてからお試しください。':'This filename is still published. Choose another name or build the site first.');
-          const bytes=await file.arrayBuffer();
-          const type=mediaType(new Uint8Array(bytes),ext);
-          if(!type)throw new Error(lang==='ja'?'JPEG・PNG・GIF・WebP・SVG、またはUTF-8のJS・CSSを選んでください。':'Choose a JPEG, PNG, GIF, WebP, SVG, or UTF-8 JS/CSS file.');
-          if(await getMediaObject(env,name))throw new Error(lang==='ja'?'同名のファイルがあります。名前を変えてください。':'A file with this name exists. Choose another name.');
-          if(!await uploadMedia(env,name,bytes,type))throw new Error(lang==='ja'?'保存できませんでした。空き容量と同名ファイルを確認してください。':'Save failed. Check available storage and duplicate filenames.');uploadedName=name;break;
+          const file=form.get('image'),name=val(form,'media_name');
+          if(!(file instanceof File))throw new Error(lang==='ja'?'ファイルを選んでください。':'Choose a file.');
+          await addMedia(env,name,await inspectMedia(name,new Uint8Array(await file.arrayBuffer())));uploadedName=name;break;
         }
         case 'delete_media': {const name=val(form,'file');if(!/^[A-Za-z0-9_.-]+$/.test(name)||name.includes('..')) throw new Error('Invalid media name.');await assertNotPublished(env,['/media/'+name]);if(!await deleteMedia(env,name)) throw new Error(t('err_save_failed'));break;}
         case 'media_reference_status': {
-          const name=val(form,'file');if(!validMediaName(name)||!await getMediaObject(env,name))throw new Error('Image not found.');
+          const name=val(form,'file');if(!validMediaName(name)||!await getMedia(env,name))throw new Error('Image not found.');
           const count=await mediaReferenceCount(env,name);
           const target=val(form,'target');
           if(target && !validMediaName(target))throw new Error('Invalid target filename.');
-          return json({success:true,count,published:await isPublished(env,'/media/'+name),locked:await mediaHasLockedReferences(env,name),target_exists:!!target&&target!==name&&(!!await getMediaObject(env,target)||await isPublished(env,'/media/'+target)),message:t('media_rename_in_use_confirm',count)});
+          return json({success:true,count,published:await isPublished(env,'/media/'+name),locked:await mediaHasLockedReferences(env,name),target_exists:!!target&&target!==name&&(!!await getMedia(env,target)||await isPublished(env,'/media/'+target)),message:t('media_rename_in_use_confirm',count)});
         }
         case 'rename_media': {
           if(await isPublished(env,'/media/'+val(form,'new_name')))throw new Error(lang==='ja'?'変更先の名前は公開中です。サイトをビルドしてから再度お試しください。':'The target name is still published. Build the site before reusing it.');
@@ -377,14 +387,23 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
 
           await renameMediaReferences(env,val(form,'file'),val(form,'new_name'),auth.user.username,undefined,val(form,'confirmed')!=='0');break;
         }
-        case 'download_backup_data': case 'download_backup_media': {
-          const zip=action==='download_backup_data'?await buildDataBackupZip(env):await buildMediaBackupZip(env);
-          return new Response(zip.buffer as ArrayBuffer,{headers:{'Content-Type':'application/zip','Content-Disposition':`attachment; filename="mikanbox_cloud_${action==='download_backup_data'?'data':'media'}.zip"`,'Cache-Control':'no-store'}});
+        // Exports: the browser reads the files from the public site (cloud-export.js); these say which.
+        case 'export_media_list': {
+          const rows=(await env.DB.prepare('SELECT key,source FROM media ORDER BY key').all<{key:string;source:string|null}>()).results;
+          return json({success:true,files:rows.map(row=>({name:'media/'+row.key,from:row.source||'/media/'+encodeURIComponent(row.key)}))});
         }
-        case 'download_static_zip': {
-          const structure=val(form,'structure');if(!['flat','directory'].includes(structure))throw new Error('Invalid export structure.');
-          const zip=await buildStaticExportZip(env,request,{structure:structure as 'flat'|'directory',siteUrl:env.PUBLIC_SITE_URL||undefined});
-          return new Response(zip.buffer as ArrayBuffer,{headers:{'Content-Type':'application/zip','Content-Disposition':'attachment; filename="mikanbox_static.zip"','Cache-Control':'no-store'}});
+        case 'export_site_list': {
+          const state=await env.DB.prepare("SELECT value FROM settings WHERE key='static_publication'").first<{value:string}>();
+          const published=state?JSON.parse(state.value) as {paths?:string[];job?:string}:{};
+          if(!published.job)throw new Error(lang==='ja'?'まだ公開していません。サイトをビルドしてください。':'Nothing is published yet. Build the site first.');
+          const job=await env.DB.prepare('SELECT state FROM publication_jobs WHERE id=?').bind(published.job).first<{state:string}>();
+          const routing=job?JSON.parse(job.state).routing as {headers?:string;redirects?:string}|undefined:undefined;
+          const files=(published.paths||[]).filter(path=>!['/_headers','/_redirects'].includes(path)).sort().map(path=>({name:path.slice(1),from:path.split('/').map(encodeURIComponent).join('/')}));
+          return json({success:true,files,extra:routing?{_headers:routing.headers||'',_redirects:routing.redirects||''}:{}});
+        }
+        case 'download_backup_data': {
+          const zip=await buildDataBackupZip(env);
+          return new Response(zip.buffer as ArrayBuffer,{headers:{'Content-Type':'application/zip','Content-Disposition':'attachment; filename="mikanbox_cloud_data.zip"','Cache-Control':'no-store'}});
         }
         default: throw new Error('未対応の操作です。 / Unsupported action.');
       }
@@ -430,7 +449,7 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
   if(url.searchParams.has('ajax_comps'))return html(designHtml);
   const databaseProbe=await env.DB.prepare('SELECT 1').run();
   const d1Bytes=typeof databaseProbe.meta.size_after==='number'?databaseProbe.meta.size_after:null;
-  const target=cloudTarget(env),displaySettings={...settings,_mcp_last_used:await mcpLastUsed(env,String(settings.api_key||'')),d1_bytes:d1Bytes,media_bytes:(await mediaUsage(env)).bytes,cloud_connection_ready:cloudReady,cloud_account_id:target.account,cloud_worker_name:target.worker};
+  const target=cloudTarget(env),displaySettings={...settings,_audit:await recentAudit(env),_mcp_last_used:await mcpLastUsed(env,String(settings.api_key||'')),d1_bytes:d1Bytes,media_bytes:(await mediaUsage(env)).bytes,cloud_connection_ready:cloudReady,cloud_account_id:target.account,cloud_worker_name:target.worker};
   const siteHtml=view==='import'?renderImportView({t,csrf,lang,stats:{pages:pages.length,components:components.length,users:users.length,media:files.length,mediaBytes:files.reduce((sum,file)=>sum+file.size,0)},cloudReady}):renderSiteView({t,trackingLegacy:(()=>{const id=String(settings.tracking_component||''),data=components.find(c=>c.id===id)?.data;return{id,html:trackingLegacyHtml(data),exists:!!data&&!data.is_ai_doc&&!data.is_wrapper};})(),settings:displaySettings,csrf,helpFile,users,username:auth.user.username,accountsHtml:renderAccountsSection({t,lang,csrf,users,me:auth.device,devices:await listDevices(env),codes:await listCodes(env),expiryDays:expiryFrom(settings)}),lang,updateRepository:String(settings.cloud_update_repository||env.CLOUD_UPDATE_REPOSITORY||''),release:await latestCloudRelease(env,url.searchParams.has('refresh_updates'))});
   const unseen=await unseenDevices(env,auth.device);
   if(unseen.length)message=(message?message+' ':'')+(lang==='ja'?'新しい端末が登録されました: ':'New device registered: ')+unseen.map(d=>`${d.name} (${d.username})`).join(', ')+(lang==='ja'?'。心当たりがなければ「端末とユーザー」で止めてください。':'. If you do not recognise it, stop it under Devices and users.');

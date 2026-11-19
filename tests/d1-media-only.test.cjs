@@ -2,8 +2,6 @@ const {test}=require('node:test'),assert=require('node:assert/strict');
 const fs=require('node:fs'),path=require('node:path');
 const {DatabaseSync}=require('node:sqlite');
 const {environment,login,call}=require('./fixtures.cjs');
-const {uploadMedia,mediaUsage}=require('../.test-build/src/storage.js');
-const {MEDIA_TOTAL_LIMIT,MEDIA_WARNING_BYTES}=require('../.test-build/src/media-policy.js');
 const dir=path.join(__dirname,'../migrations'),LAST='0019_d1_media_only.sql';
 function before(){
  const sqlite=new DatabaseSync(':memory:');sqlite.exec('PRAGMA foreign_keys=ON');
@@ -45,21 +43,15 @@ test('a site that keeps media in R2 is not updated: the migration stops and chan
  }
 });
 
-test('uploads stop at the media limit, and the media screen warns before it',async()=>{
- const env=environment(),auth=await login(env);
- assert.equal(MEDIA_TOTAL_LIMIT,400_000_000);
- assert.equal(await uploadMedia(env,'one.png',png.buffer,'image/png'),true);
+test('the media screen shows the size of the media and warns near the file limit',async()=>{
+ const {putMedia}=require('./fixtures.cjs'),{MEDIA_COUNT_LIMIT}=require('../.test-build/src/media-policy.js');
+ const env=environment(),auth=await login(env);await putMedia(env,'one.png',png);
  let body=await(await call(env,'/admin?view=media',undefined,auth.cookie)).text();
- assert.match(body,/id="media-usage"[^<]*0\.0 \/ 400 MB · 1 \/ 10,000/);assert.doesNotMatch(body,/id="media-usage-warning"/);assert.doesNotMatch(body,/R2/);
- env.sqlite.prepare('UPDATE media_usage SET bytes=? WHERE id=1').run(MEDIA_WARNING_BYTES);
+ assert.match(body,/id="media-usage"[^<]*0\.0 MB · 1 \/ 10,000/);assert.doesNotMatch(body,/id="media-usage-warning"|400 MB/);
+ env.sqlite.prepare('UPDATE media_usage SET files=? WHERE id=1').run(MEDIA_COUNT_LIMIT*0.9);
  body=await(await call(env,'/admin?view=media',undefined,auth.cookie)).text();assert.match(body,/id="media-usage-warning"/);
- env.sqlite.prepare('UPDATE media_usage SET bytes=? WHERE id=1').run(MEDIA_TOTAL_LIMIT-png.length+1);
- assert.equal(await uploadMedia(env,'two.png',png.buffer,'image/png'),false);
- env.sqlite.prepare('UPDATE media_usage SET bytes=? WHERE id=1').run(MEDIA_TOTAL_LIMIT-png.length);
- assert.equal(await uploadMedia(env,'two.png',png.buffer,'image/png'),true);
- assert.equal((await mediaUsage(env)).bytes,MEDIA_TOTAL_LIMIT);
  const site=await(await call(env,'/admin?view=site',undefined,auth.cookie)).text();
- assert.match(site,/id="image-storage"/);assert.doesNotMatch(site,/R2|data-media-migration|cleanup_media/);
+ assert.match(site,/id="image-storage"/);assert.match(site,/公開サイトに保存|kept on the public site/);assert.doesNotMatch(site,/R2|data-media-migration|cleanup_media/);
 });
 
 test('page history keeps the newest 10 entries of each page, and the update trims older ones',async()=>{

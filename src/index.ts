@@ -1,5 +1,5 @@
 import type { Env } from './types';
-import { loadSettings, loadPage, getMediaObject, isPublicStatus } from './storage';
+import { loadSettings, loadPage, isPublicStatus } from './storage';
 import { MikanBoxRenderer } from './renderer';
 import { generateSitemapXml, generateRssXml, generatePodcastXml } from './feeds';
 import { handleAdmin } from './admin/index';
@@ -10,7 +10,6 @@ import { handleMcp } from './mcp';
 import { handlePublicHelp } from './public-help';
 import { PREVIEW_SANDBOX } from './site-split';
 import { httpsRedirect } from './https-redirect';
-import { previewMediaUrls, verifyPreviewMedia } from './preview-media';
 import { pageOutputFormat, formatHasHtml, formatHasMarkdown, isDataFormat, isApiFormat, contentTypeForExtension } from './output-formats';
 
 const notFoundText=()=>new Response('Not Found',{status:404,headers:{'Content-Type':'text/plain; charset=utf-8','Cache-Control':'no-store'}});
@@ -28,30 +27,13 @@ async function route(request: Request, env: Env): Promise<Response> {
     const target=new URL(request.url);if(pathname==='/admin.css') target.pathname='/mikanbox/admin.css';
     return env.ASSETS.fetch(new Request(target,request));
   }
-  if (pathname.startsWith('/preview-media/')) {
-    const name = pathname.slice('/preview-media/'.length);
-    if (!await verifyPreviewMedia(env.JWT_SECRET,name,url.searchParams.get('expires')||'',url.searchParams.get('sig')||'')) return new Response('Not Found',{status:404,headers:{'Cache-Control':'no-store'}});
-    const object = await getMediaObject(env,name);
-    if (!object) return new Response('Not Found',{status:404,headers:{'Cache-Control':'no-store'}});
-    const headers:Record<string,string> = {'Content-Type':object.httpMetadata?.contentType||'application/octet-stream','Content-Length':String(object.size),'Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer'};
-    if(name.toLowerCase().endsWith('.svg')) headers['Content-Security-Policy']="sandbox; default-src 'none'; style-src 'unsafe-inline'";
-    return new Response(object.body,{headers});
-  }
   // The public site lives on its own Worker. Here, nothing of the site is served
   // without a session, and signed-in users are sent to the preview of the same path.
   if(!await authenticatedUser(request,env))return new Response('Not Found',{status:404,headers:{'Cache-Control':'no-store'}});
   const direct=['/media/','/preview/','/api/'].some(prefix=>pathname.startsWith(prefix))||['/sitemap.xml','/rss.xml','/podcast.xml'].includes(pathname);
   if(!direct)return Response.redirect(new URL('/preview'+pathname+url.search,url).href,302);
-  if(pathname.startsWith('/media/')) {
-
-    let key:string;try{key=decodeURIComponent(pathname.slice(7));}catch{return new Response('Not Found',{status:404});}
-    if(!/^[A-Za-z0-9_.-]+$/.test(key)||key.includes('..')) return new Response('Not Found',{status:404});
-    const object=await getMediaObject(env,key);if(!object)return new Response('Not Found',{status:404});
-    const headers:Record<string,string>={'Content-Type':object.httpMetadata?.contentType||'application/octet-stream','ETag':object.httpEtag,'Content-Length':String(object.size),'Cache-Control':'public, max-age=0, must-revalidate','X-Content-Type-Options':'nosniff'};
-    if(key.toLowerCase().endsWith('.svg'))headers['Content-Security-Policy']="sandbox; default-src 'none'; style-src 'unsafe-inline'";
-    if(request.headers.get('If-None-Match')===object.httpEtag)return new Response(null,{status:304,headers});
-    return new Response(object.body,{headers});
-  }
+  // Media files live on the public site; signed-in users opening /media/… here are sent there.
+  if(pathname.startsWith('/media/'))return env.PUBLIC_SITE_URL?Response.redirect(env.PUBLIC_SITE_URL.replace(/\/$/,'')+pathname,302):new Response('Not Found',{status:404});
   const settings=await loadSettings(env),renderer=new MikanBoxRenderer(env,settings,request);
   const preview=pathname.startsWith('/preview/');
   const pagePath=preview?pathname.slice(8):pathname;
@@ -91,7 +73,7 @@ async function route(request: Request, env: Env): Promise<Response> {
   }
   // HTML URLs of pages without HTML answer with the site's 404 page.
   const result=await renderer.render(data&&!formatHasHtml(format)?'\u0000missing':id,!!auth);
-  const html = preview && result.status === 200 ? await previewMediaUrls(result.html,env,request,renderer.getSiteUrl()) : result.html;
+  const html = result.html;
   return new Response(html,{status:result.status,headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','Referrer-Policy':'no-referrer','Content-Security-Policy':PREVIEW_SANDBOX}});
 }
 export default {

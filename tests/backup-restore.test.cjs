@@ -1,37 +1,43 @@
 const {test}=require('node:test');const assert=require('node:assert/strict');
-const {environment,login}=require('./fixtures.cjs');
-const {savePage,saveComponent,saveSettings,loadSettings,uploadMedia,getMediaObject}=require('../.test-build/src/storage.js');
-const {exportBackupManifest,exportBackupMediaPart,createBackupRestore,stageBackupMediaPart,commitBackupRestore,abortBackupRestore}=require('../.test-build/src/backup-restore.js');
+const {environment,login,putMedia}=require('./fixtures.cjs');
+const {savePage,saveComponent,saveSettings,loadSettings}=require('../.test-build/src/storage.js');
+const {exportBackupManifest,createBackupRestore,commitBackupRestore,abortBackupRestore,validateExportSnapshot}=require('../.test-build/src/backup-restore.js');
+const {getMedia}=require('../.test-build/src/media-store.js');
 const image=Uint8Array.from(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+X2ioAAAAASUVORK5CYII=','base64'));
-async function source(){const env=environment();await login(env);await saveSettings(env,{site_id:'source',api_key:'source-secret',site_name:'Source'});await savePage(env,'private',{title:'Private',status:'draft',content_md:'all data'});await savePage(env,'public',{title:'Public',status:'public_static',content_md:'hello'});await saveComponent(env,'header',{html:'header'});await uploadMedia(env,'pixel.png',image.buffer,'image/png');env.sqlite.exec("INSERT INTO static_pages(id,html,built_at) VALUES('public','<p>Hello</p>','today'); INSERT INTO post_revisions(post_id,data,created_at,editor_id) VALUES('private','{\"title\":\"Old\"}','today','admin')");return env;}
-test('portable backup restores private content, revisions and original images atomically while preserving runtime credentials',async()=>{
- const src=await source(),manifest=await exportBackupManifest(src),part=await exportBackupMediaPart(src,'pixel.png',0),target=environment();await login(target,'current');await saveSettings(target,{site_id:'target',api_key:'target-secret'});target.sqlite.exec("INSERT INTO settings VALUES('cloud_connection','encrypted-runtime-secret')");await savePage(target,'old',{title:'Old',status:'draft'});
- const id=await createBackupRestore(target,manifest);await stageBackupMediaPart(target,id,part);const result=await commitBackupRestore(target,id);assert.deepEqual(result,{pages:manifest.pages.length,components:manifest.components.length,images:1,accountsRestored:false});
- assert.equal(target.sqlite.prepare('SELECT COUNT(*) n FROM posts').get().n,manifest.pages.length);assert.equal(target.sqlite.prepare('SELECT COUNT(*) n FROM post_revisions').get().n,1);assert.equal(target.sqlite.prepare('SELECT username FROM users').get().username,'current');const settings=await loadSettings(target);assert.equal(settings.site_name,'Source');assert.equal(settings.site_id,'target');assert.equal(settings.api_key,'target-secret');assert.equal(target.sqlite.prepare("SELECT value FROM settings WHERE key='cloud_connection'").get().value,'encrypted-runtime-secret');assert.deepEqual(new Uint8Array(await(await getMediaObject(target,'pixel.png')).arrayBuffer()),image);assert.equal(target.sqlite.prepare('SELECT COUNT(*) n FROM backup_sessions').get().n,0);
+async function source(){const env=environment();await login(env);await saveSettings(env,{site_id:'source',api_key:'source-secret',site_name:'Source'});await savePage(env,'private',{title:'Private',status:'draft',content_md:'all data'});await savePage(env,'public',{title:'Public',status:'public_static',content_md:'hello'});await saveComponent(env,'header',{html:'header'});await putMedia(env,'pixel.png',image);env.sqlite.exec("INSERT INTO static_pages(id,html,built_at) VALUES('public','<p>Hello</p>','today'); INSERT INTO post_revisions(post_id,data,created_at,editor_id) VALUES('private','{\"title\":\"Old\"}','today','admin')");return env;}
+test('portable backup restores private content, revisions and the media information while preserving runtime credentials',async()=>{
+ const src=await source(),manifest=await exportBackupManifest(src),target=environment();await login(target,'current');await saveSettings(target,{site_id:'target',api_key:'target-secret'});target.sqlite.exec("INSERT INTO settings VALUES('cloud_connection','encrypted-runtime-secret')");
+ assert.equal(manifest.settings.api_key,'','the MCP key never leaves in a backup');assert.match(manifest.media[0].etag,/^[0-9a-f]{64}$/);
+ const id=await createBackupRestore(target,manifest),result=await commitBackupRestore(target,id);
+ assert.deepEqual(result,{pages:manifest.pages.length,components:manifest.components.length,images:1,accountsRestored:false});
+ assert.equal(target.sqlite.prepare('SELECT COUNT(*) n FROM posts').get().n,manifest.pages.length);assert.equal(target.sqlite.prepare('SELECT COUNT(*) n FROM post_revisions').get().n,1);
+ assert.equal(target.sqlite.prepare('SELECT username FROM users').get().username,'current');
+ const settings=await loadSettings(target);assert.equal(settings.site_id,'target');assert.equal(settings.api_key,'target-secret');assert.equal(target.sqlite.prepare("SELECT value FROM settings WHERE key='cloud_connection'").get().value,'encrypted-runtime-secret');
+ // The file itself goes back to the public site with the publication the browser runs from the backup file.
+ const row=await getMedia(target,'pixel.png');assert.equal(row.etag,manifest.media[0].etag);assert.equal(row.hash,row.etag.slice(0,32));
 });
-test('missing or corrupt media part cannot replace existing data',async()=>{
- const src=await source(),target=environment();await savePage(target,'keep',{title:'Keep',status:'draft'});const manifest=await exportBackupManifest(src),id=await createBackupRestore(target,manifest);await assert.rejects(commitBackupRestore(target,id),/not applied/);assert.ok(target.sqlite.prepare("SELECT id FROM posts WHERE id='keep'").get());const part=await exportBackupMediaPart(src,'pixel.png',0);await assert.rejects(stageBackupMediaPart(target,id,{...part,sha256:'wrong'}),/checksum/);assert.equal(target.sqlite.prepare('SELECT COUNT(*) n FROM backup_chunks').get().n,0);await abortBackupRestore(target,id);assert.equal(target.sqlite.prepare('SELECT COUNT(*) n FROM backup_records').get().n,0);
-});
-test('concurrent changes abort restoration without losing edits or images',async()=>{
- const src=await source(),manifest=await exportBackupManifest(src),target=environment(),id=await createBackupRestore(target,manifest);await stageBackupMediaPart(target,id,await exportBackupMediaPart(src,'pixel.png',0));await savePage(target,'new',{title:'Concurrent',status:'draft'});await assert.rejects(commitBackupRestore(target,id),/not applied/);assert.equal(target.sqlite.prepare('SELECT COUNT(*) n FROM posts').get().n,1);assert.equal(target.sqlite.prepare('SELECT COUNT(*) n FROM media').get().n,0);
+test('concurrent changes abort restoration without losing edits',async()=>{
+ const src=await source(),manifest=await exportBackupManifest(src),target=environment(),id=await createBackupRestore(target,manifest);
+ await savePage(target,'new',{title:'Concurrent',status:'draft'});await assert.rejects(commitBackupRestore(target,id),/not applied/);
+ assert.ok(target.sqlite.prepare("SELECT id FROM posts WHERE id='new'").get());assert.equal(await getMedia(target,'pixel.png'),null);
 });
 test('explicit account restoration changes authentication generation and replaces users',async()=>{
- const src=await source(),manifest=await exportBackupManifest(src);manifest.media=[];const target=environment();await login(target,'current');const id=await createBackupRestore(target,manifest,{restoreUsers:true});const result=await commitBackupRestore(target,id);assert.equal(result.accountsRestored,true);const user=target.sqlite.prepare('SELECT * FROM users').get();assert.equal(user.username,'admin');assert.notEqual(user.auth_version,manifest.users[0].auth_version);
+ const src=await source(),manifest=await exportBackupManifest(src);manifest.media=[];const target=environment();await login(target,'current');const id=await createBackupRestore(target,manifest,{restoreUsers:true});const result=await commitBackupRestore(target,id);
+ assert.equal(result.accountsRestored,true);assert.deepEqual(target.sqlite.prepare('SELECT username FROM users').all().map(r=>r.username),manifest.users.map(u=>u.username));
 });
-test('invalid schema, duplicate IDs, unsafe media and quota overflow are rejected before staging',async()=>{
- const src=await source(),manifest=await exportBackupManifest(src),target=environment();await assert.rejects(createBackupRestore(target,{...manifest,format:'wrong'}));await assert.rejects(createBackupRestore(target,{...manifest,pages:[...manifest.pages,manifest.pages[0]]}));await assert.rejects(createBackupRestore(target,{...manifest,media:[{...manifest.media[0],key:'../private'}]}));assert.equal(target.sqlite.prepare('SELECT COUNT(*) n FROM backup_sessions').get().n,0);
+test('invalid schema, duplicate IDs and unsafe media are rejected before staging',async()=>{
+ const src=await source(),manifest=await exportBackupManifest(src),target=environment();
+ await assert.rejects(createBackupRestore(target,{...manifest,format:'wrong'}));await assert.rejects(createBackupRestore(target,{...manifest,pages:[...manifest.pages,manifest.pages[0]]}));
+ await assert.rejects(createBackupRestore(target,{...manifest,media:[{...manifest.media[0],key:'../x.png'}]}));await assert.rejects(createBackupRestore(target,{...manifest,media:[{...manifest.media[0],etag:'not-a-hash'}]}));
+ assert.equal(target.sqlite.prepare('SELECT COUNT(*) n FROM backup_sessions').get().n,0);
 });
-test('multi-part images resume idempotently and never commit incomplete bytes',async()=>{
- const src=environment(),body=new Uint8Array(1_000_025);body.set(image);await uploadMedia(src,'large.png',body.buffer,'image/png');const target=environment(),manifest=await exportBackupManifest(src),id=await createBackupRestore(target,manifest);
- const first=await exportBackupMediaPart(src,'large.png',0);await stageBackupMediaPart(target,id,first);await stageBackupMediaPart(target,id,first);assert.equal(target.sqlite.prepare('SELECT COUNT(*) n FROM backup_chunks').get().n,1);await assert.rejects(commitBackupRestore(target,id));
- for(let i=1;i<3;i++)await stageBackupMediaPart(target,id,await exportBackupMediaPart(src,'large.png',i));await commitBackupRestore(target,id);assert.deepEqual(new Uint8Array(await(await getMediaObject(target,'large.png')).arrayBuffer()),body);
+test('expired staging is removed on next restore',async()=>{
+ const target=environment(),empty=await exportBackupManifest(target),first=await createBackupRestore(target,empty);target.sqlite.prepare('UPDATE backup_sessions SET created_at=0 WHERE id=?').run(first);
+ await assert.rejects(commitBackupRestore(target,first),/expired/);await createBackupRestore(target,empty);assert.equal(target.sqlite.prepare('SELECT COUNT(*) n FROM backup_sessions WHERE id=?').get(first).n,0);
 });
-test('expired staging is removed on next restore and large atomic replacement fails before deleting data',async()=>{
- const target=environment(),empty=await exportBackupManifest(target),first=await createBackupRestore(target,empty);target.sqlite.prepare('UPDATE backup_sessions SET created_at=0 WHERE id=?').run(first);await assert.rejects(commitBackupRestore(target,first),/expired/);await createBackupRestore(target,empty);assert.equal(target.sqlite.prepare('SELECT COUNT(*) n FROM backup_sessions').get().n,1);
- target.sqlite.exec("INSERT INTO media(key,content_type,size,uploaded,data,chunk_count) VALUES('existing.png','image/png',400000000,'today','',800)");const incoming={...empty,media:Array.from({length:10},(_,i)=>({key:'m'+i+'.png',content_type:'image/png',size:10000000,uploaded:'today',etag:null,chunk_count:20}))};await assert.rejects(createBackupRestore(target,incoming),/staging space/);assert.equal(target.sqlite.prepare('SELECT COUNT(*) n FROM media').get().n,1);
-});
-test('backup export rejects mixed media versions and late source changes',async()=>{
- const {validateExportSnapshot}=require('../.test-build/src/backup-restore.js');const src=await source(),manifest=await exportBackupManifest(src);await validateExportSnapshot(src,manifest);const m=manifest.media[0];await exportBackupMediaPart(src,m.key,0,m);src.sqlite.prepare('UPDATE media SET etag=? WHERE key=?').run('changed',m.key);await assert.rejects(exportBackupMediaPart(src,m.key,0,m),/changed/);await assert.rejects(validateExportSnapshot(src,manifest),/changed/);
+test('backup export rejects late source changes',async()=>{
+ const src=await source(),manifest=await exportBackupManifest(src);await validateExportSnapshot(src,manifest);
+ src.sqlite.prepare('UPDATE media SET etag=? WHERE key=?').run('c'.repeat(64),manifest.media[0].key);await assert.rejects(validateExportSnapshot(src,manifest),/changed/);
 });
 test('explicit account restore restores user names and rejects concurrent account edits',async()=>{
  const src=await source();src.sqlite.prepare("UPDATE users SET display_name='From backup'").run();const manifest=await exportBackupManifest(src);manifest.media=[];const target=environment();await login(target,'current');let id=await createBackupRestore(target,manifest,{restoreUsers:true});target.sqlite.prepare("UPDATE users SET display_name='Changed'").run();await assert.rejects(commitBackupRestore(target,id),/not applied/);await abortBackupRestore(target,id);id=await createBackupRestore(target,manifest,{restoreUsers:true});await commitBackupRestore(target,id);

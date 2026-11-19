@@ -54,3 +54,19 @@ test('the leftover R2, password and site-URL data are gone after the update',()=
  for(const [table,column] of [['media','object_key'],['backup_sessions','target_store'],['users','password_hash'],['users','security_question']])
   assert.doesNotMatch(env.sqlite.prepare("SELECT sql FROM sqlite_master WHERE name=?").get(table).sql,new RegExp(column));
 });
+
+test('recent operations: MCP, keys, page status, devices and failed sign-ins are recorded and shown, keeping the newest 200',async()=>{
+ const env=environment(),auth=await login(env);
+ await post(env,auth,{save_action:'generate_api_key'});await post(env,auth,{save_action:'generate_api_key'});
+ await post(env,auth,{save_action:'set_mcp_enabled'});await post(env,auth,{save_action:'set_mcp_enabled',mcp_enabled:'1'});
+ await savePage(env,'p',{title:'P',status:'draft'});const current=await loadPage(env,'p');
+ await post(env,auth,{save_action:'save_page',old_id:'p',id:'p',title:'P',status:'public_static',content_md:'',expected_revision:current.revision_tag||''});
+ await post(env,auth,{save_action:'device_code_create'});
+ const events=env.sqlite.prepare('SELECT event,actor,target,from_value,to_value FROM audit_events ORDER BY id').all().map(r=>r.event);
+ for(const event of ['device_registered','mcp_key_issued','mcp_key_rotated','mcp_disabled','mcp_enabled','page_status','code_issued'])assert.ok(events.includes(event),event);
+ const status=env.sqlite.prepare("SELECT * FROM audit_events WHERE event='page_status'").get();assert.equal(status.target,'p');assert.equal(status.from_value,'draft');assert.equal(status.to_value,'public_static');assert.equal(status.actor,'admin');
+ const site=await(await call(env,'/admin?view=site',undefined,auth.cookie)).text();
+ assert.match(site,/最近の操作記録|Recent operations/);assert.match(site,/p \(draft → public_static\)/);
+ for(let i=0;i<210;i++)env.sqlite.prepare("INSERT INTO audit_events(at,event) VALUES('2026-01-01T00:00:00Z','login_failed')").run();
+ assert.equal(env.sqlite.prepare('SELECT COUNT(*) n FROM audit_events').get().n,200);
+});

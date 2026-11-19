@@ -1,7 +1,6 @@
 const test=require('node:test'),assert=require('node:assert/strict');
 const {environment,login,call}=require('./fixtures.cjs');
-const {savePage,loadPage,uploadMedia,getMediaObject}=require('../.test-build/src/storage.js');
-const {replaceMediaImage}=require('../.test-build/src/media-transform.js');
+const {savePage,loadPage}=require('../.test-build/src/storage.js');
 const {renameMediaReferences}=require('../.test-build/src/content-operations.js');
 const {saveCloudToken,cloudToken,beginD1Export,pollD1Export,prepareD1Download}=require('../.test-build/src/cloudflare-api.js');
 const {beginPublication,hashPublicationFiles,preparePublication,uploadPublicationFile,finishPublication}=require('../.test-build/src/publication-service.js');
@@ -62,12 +61,17 @@ test('split publication token is checked against the public Worker',async()=>{
  const env=target(environment()),original=global.fetch;env.CLOUDFLARE_PUBLIC_WORKER_NAME='public-site';let url='';
  try{global.fetch=async target=>{url=target;return Response.json({success:true,result:{deployments:[]}});};await saveCloudToken(env,'private-test-credential-123456');assert.match(url,/\/scripts\/public-site\/deployments$/);}finally{global.fetch=original;}
 });
-test('image replacement and WebP conversion preserve bytes, references and history atomically',async()=>{
+test('WebP conversion records the published file and rewrites references with history, atomically',async()=>{
+ const {putMedia}=require('./fixtures.cjs'),{inspectMedia,getMedia}=require('../.test-build/src/media-store.js');
  const env=environment(),png=new Uint8Array([137,80,78,71,13,10,26,10]),webp=new TextEncoder().encode('RIFFxxxxWEBPdata');
- await uploadMedia(env,'photo.png',png.buffer,'image/png');await savePage(env,'page',{title:'Image',status:'public_static',content_md:'![image](/media/photo.png)'});
- const before=await getMediaObject(env,'photo.png');await assert.rejects(replaceMediaImage(env,'photo.png',png,'"stale"'),/changed/);
- await renameMediaReferences(env,'photo.png','photo.webp','admin',{bytes:webp,expectedEtag:before.httpEtag});
- assert.equal(await getMediaObject(env,'photo.png'),null);assert.deepEqual(new Uint8Array(await(await getMediaObject(env,'photo.webp')).arrayBuffer()),webp);
+ const before=await putMedia(env,'photo.png',png);await savePage(env,'page',{title:'Image',status:'public_static',content_md:'![image](/media/photo.png)'});
+ const converted=await inspectMedia('photo.webp',webp);
+ await assert.rejects(renameMediaReferences(env,'photo.png','photo.webp','admin',{...converted,expectedEtag:before.etag}),/public site|公開サイト/,'not recorded before it is published');
+ env.sqlite.exec(`INSERT INTO settings(key,value) VALUES('static_publication','{"job":"j1","paths":[]}')`);env.sqlite.exec(`INSERT INTO publication_jobs(id,state) VALUES('j1','{}')`);
+ env.sqlite.prepare('INSERT INTO publication_entries(job_id,path,hash,size) VALUES(?,?,?,?)').run('j1','/media/photo.webp',converted.hash,webp.length);
+ await assert.rejects(renameMediaReferences(env,'photo.png','photo.webp','admin',{...converted,expectedEtag:'stale'}),/changed/);
+ await renameMediaReferences(env,'photo.png','photo.webp','admin',{...converted,expectedEtag:before.etag});
+ assert.equal(await getMedia(env,'photo.png'),null);assert.equal((await getMedia(env,'photo.webp')).hash,converted.hash);
  assert.match((await loadPage(env,'page')).content_md,/photo.webp/);assert.match(env.sqlite.prepare('SELECT data FROM post_revisions').get().data,/photo.png/);
 });
 test('publication recovers an accepted deployment after a lost response',async()=>{

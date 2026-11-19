@@ -1,6 +1,6 @@
 const {test}=require('node:test');const assert=require('node:assert/strict');
-const {environment,login,post,call}=require('./fixtures.cjs');
-const {savePage,uploadMedia}=require('../.test-build/src/storage.js');
+const {environment,login,post,call,putMedia}=require('./fixtures.cjs');
+const {savePage}=require('../.test-build/src/storage.js');
 const {saveWithRevision}=require('../.test-build/src/revisions.js');
 const {assertNotPublished}=require('../.test-build/src/publication-state.js');
 test('publication endpoints require authentication and a lease prevents simultaneous edits',async()=>{
@@ -15,16 +15,16 @@ test('publication endpoints require authentication and a lease prevents simultan
  await saveWithRevision(env,'page','page',{title:'Private',status:'draft'},'test','r');
  assert.equal(env.sqlite.prepare("SELECT status FROM posts WHERE id='page'").get().status,'draft');
 });
-test('originals stay readable for signed-in editors after static publication, and never without a session',async()=>{
+test('signed-in editors opening a media file are sent to the public site; nothing is served without a session',async()=>{
  const env=environment(),auth=await login(env),bytes=new Uint8Array([137,80,78,71,13,10,26,10]);
- await uploadMedia(env,'one.png',bytes.buffer,'image/png');
+ await putMedia(env,'one.png',bytes);
  assert.equal((await call(env,'/media/one.png')).status,404);
- const publicImage=await call(env,'/media/one.png',null,auth.cookie);assert.equal(publicImage.status,200);assert.deepEqual(new Uint8Array(await publicImage.arrayBuffer()),bytes);
- const preview=await call(env,'/admin?media_preview=one.png',null,auth.cookie);assert.equal(preview.status,200);assert.deepEqual(new Uint8Array(await preview.arrayBuffer()),bytes);
+ const direct=await call(env,'/media/one.png',null,auth.cookie);assert.equal(direct.status,302);assert.equal(direct.headers.get('Location'),'https://www.cloud.test/media/one.png');
+ const preview=await call(env,'/admin?media_preview=one.png',null,auth.cookie);assert.equal(preview.status,302);
 });
 test('a published image must be withdrawn before deletion; rename retains the published path',async()=>{
  const env=environment(),auth=await login(env),bytes=new Uint8Array([137,80,78,71,13,10,26,10]);
- await uploadMedia(env,'kept.png',bytes.buffer,'image/png');
+ await putMedia(env,'kept.png',bytes);
  
  const begin=await post(env,auth,{save_action:'begin_publication'});
  await post(env,auth,{save_action:'record_publication',paths:'["/media/kept.png"]',publication_lease:begin.data.lease});

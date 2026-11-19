@@ -1,7 +1,7 @@
 const test=require('node:test');
 const assert=require('node:assert/strict');
 const {environment}=require('./fixtures.cjs');
-const {saveSettings,savePage,loadPage,saveComponent,loadComponent,getMediaObject}=require('../.test-build/src/storage.js');
+const {saveSettings,savePage,loadPage,saveComponent,loadComponent}=require('../.test-build/src/storage.js');
 const {handleMcp}=require('../.test-build/src/mcp.js');
 async function client(settings={}) {
   const env=environment();await saveSettings(env,{api_key:'test-mcp-key',site_id:'site-test',...settings});
@@ -65,15 +65,10 @@ test('MCP settings exclude credentials',async()=>{
   for(const key of ['api_key','mcp_api_key','password_hash','jwt_secret','setup_token'])assert.equal(settings[key],undefined);
   assert.equal(settings.memo,'Private');
 });
-test('MCP uploads genuine image bytes through D1 and rejects duplicate names and malformed media',async()=>{
+test('MCP rejects malformed or unsafe media before publishing anything',async()=>{
   const {env,tool}=await client();
   const image=Buffer.from([137,80,78,71,13,10,26,10,0,0,0,0]);
   const args={filename:'mcp.png',content_base64:image.toString('base64'),category:'news'};
-  const uploaded=await tool('upload_media',args);assert.equal(uploaded.error,false);assert.equal(uploaded.data.filename,'news_mcp.png');
-  assert.deepEqual(Buffer.from(await(await getMediaObject(env,'news_mcp.png')).arrayBuffer()),image);
-  assert.equal((await tool('upload_media',args)).error,true);
-  const large=Buffer.alloc(10_000_000,123);image.copy(large);
-  assert.equal((await tool('upload_media',{filename:'blocks.png',content_base64:large.toString('base64')})).error,false);
-  assert.deepEqual(Buffer.from(await(await getMediaObject(env,'blocks.png')).arrayBuffer()),large);
   for(const incoming of [{...args,filename:'../x.png'},{...args,content_base64:'bad!'},{...args,filename:'x.jpg'},{...args,category:'../bad'},{filename:'audio.mp3',content_base64:'AAAA'}])assert.equal((await tool('upload_media',incoming)).error,true);
+  assert.equal(env.sqlite.prepare('SELECT COUNT(*) n FROM media').get().n,0);
 });

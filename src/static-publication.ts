@@ -1,5 +1,5 @@
 import type { Env } from './types';
-import { getMediaObject, listMediaFiles, loadSettings } from './storage';
+import { loadSettings } from './storage';
 import { validId } from './validation';
 import { validMediaName, CODE_MEDIA_TYPES } from './media-policy';
 import { MikanBoxRenderer } from './renderer';
@@ -11,7 +11,8 @@ export const PUBLICATION_FILE_LIMIT=20_000;
 export const PUBLICATION_FILE_BYTES=25*1024*1024;
 export const PUBLICATION_MAP_BYTES=32*1024*1024;
 export interface PublicationFile {path:string;body:Uint8Array;contentType:string}
-export interface PublicationItem {path:string;kind:'page'|'media'|'asset'|'headers'|'redirects'|'feed'|'api';id:string;size:number|null;hash?:string|null}
+/** source: where the browser fetches a media file from when Cloudflare asks for it again (a path on the public site). */
+export interface PublicationItem {path:string;kind:'page'|'media'|'asset'|'headers'|'redirects'|'feed'|'api';id:string;size:number|null;hash?:string|null;source?:string}
 /** Same digest the browser computes in cloud-publish.js: the first 32 hex digits of SHA-256. */
 export async function publicationHash(bytes:Uint8Array):Promise<string> {
   return [...new Uint8Array(await crypto.subtle.digest('SHA-256',bytes))].map(b=>b.toString(16).padStart(2,'0')).join('').slice(0,32);
@@ -24,9 +25,11 @@ const assetTypes=new Map<string,string>(PUBLICATION_PUBLIC_ASSETS.map(path=>[pat
 const imageTypes:Record<string,string>={jpg:'image/jpeg',jpeg:'image/jpeg',png:'image/png',gif:'image/gif',webp:'image/webp',svg:'image/svg+xml',...CODE_MEDIA_TYPES};
 const blockedRoots=new Set(['preview','admin','api','mcp','public-mcp','public-help','media','mikanbox','component-js','sitemap.xml','rss.xml','podcast.xml']);
 const encode=new TextEncoder();
+// Everything on the public site may be read by the admin screen (another origin) to export the site and its media.
 const STATIC_HEADERS=`/*
   X-Mikanbox-Delivery: static
   X-Content-Type-Options: nosniff
+  Access-Control-Allow-Origin: *
 
 /media/*
   Content-Security-Policy: sandbox; default-src 'none'; style-src 'unsafe-inline'
@@ -53,7 +56,8 @@ function checked(file:PublicationFile):PublicationFile {
 }
 
 const FEEDS:Record<string,typeof generateSitemapXml>={'/sitemap.xml':generateSitemapXml,'/rss.xml':generateRssXml,'/podcast.xml':generatePodcastXml};
-// mikanBox DB answers cross-origin requests through the CORS rules headersFor() adds.
+// Cross-origin reads (mikanBox DB, the admin export) are allowed once, for every path, in STATIC_HEADERS:
+// rules that matched twice would join the header values and break it.
 // Cloudflare's static delivery types a file by its extension, and in production the type
 // comes without "charset=utf-8" (checked on a deployed site, 2026-11-09), so UTF-8 text is
 // garbled. _headers therefore sets the Content-Type of every text extension a page can publish
@@ -68,12 +72,11 @@ const FEEDS:Record<string,typeof generateSitemapXml>={'/sitemap.xml':generateSit
 const HEADER_RULE_LIMIT=100;
 const WILDCARD_TYPES=['html','md','txt','csv','js','css','json'] as const;
 const FEED_TYPES:Record<string,string>={'/sitemap.xml':'application/xml; charset=utf-8','/rss.xml':'application/rss+xml; charset=utf-8','/podcast.xml':'application/rss+xml; charset=utf-8'};
-const CORS='  Access-Control-Allow-Origin: *\n';
-const headerRule=(path:string,type:string,cors=!type.startsWith('text/html'))=>`${path}\n  Content-Type: ${type}\n${cors?CORS:''}`;
+const headerRule=(path:string,type:string)=>`${path}\n  Content-Type: ${type}\n`;
 async function headersFor(env:Env):Promise<string> {
  const base=STATIC_HEADERS;
  const rules=WILDCARD_TYPES.map(ext=>headerRule('/*.'+ext,outputType('/x.'+ext)));
- for(const [path,type] of Object.entries(FEED_TYPES))rules.push(headerRule(path,type,false));
+ for(const [path,type] of Object.entries(FEED_TYPES))rules.push(headerRule(path,type));
  const {files,aliases}=await publishedRoutes(env);
  // Aliases first: a page whose alias gets no rule is garbled at its usual URL.
  for(const [source,target] of aliases)if(!/\.html$/.test(target))rules.push(headerRule(source,outputType(target)));
@@ -124,9 +127,9 @@ export async function publicationManifest(env:Env):Promise<PublicationManifest> 
     // HTML + Markdown: the Markdown version sits beside the HTML at /id.md (no extra alias).
     if(row.md_size!==null&&safeOutput(row.id,'/'+row.id+'.md'))entries.push({path:'/'+row.id+'.md',kind:'page',id:row.id,size:row.md_size,hash:row.md_hash});
   }
-  // Every stored file is published, not only the ones static pages reference:
-  // dynamic pages read /media/* from the same static assets.
-  for(const file of await listMediaFiles(env))if(safeImage(file.key))entries.push({path:'/media/'+file.key,kind:'media',id:file.key,size:file.size});
+  // Media files live on the public site; D1 knows each one's content hash, so they are never read here.
+  const media=(await env.DB.prepare('SELECT key,size,hash,source FROM media ORDER BY key').all<{key:string;size:number;hash:string;source:string|null}>()).results;
+  for(const file of media)if(safeImage(file.key)&&file.hash)entries.push({path:'/media/'+file.key,kind:'media',id:file.key,size:file.size,hash:file.hash,source:file.source||'/media/'+file.key});
   for(const path of PUBLICATION_PUBLIC_ASSETS)entries.push({path,kind:'asset',id:path,size:null});
   for(const path of Object.keys(FEEDS))entries.push({path,kind:'feed',id:path,size:null});
   entries.push({path:'/_headers',kind:'headers',id:'_headers',size:encode.encode(await headersFor(env)).byteLength});
@@ -153,12 +156,6 @@ export async function readPublicationEntry(env:Env,request:Request,path:string):
     if(!response.ok)throw new Error('Missing bundled public asset: '+path);
     if(Number(response.headers.get('Content-Length')||0)>PUBLICATION_FILE_BYTES)throw new Error('Publication file exceeds 25 MiB: '+path);
     return checked({path,body:new Uint8Array(await response.arrayBuffer()),contentType:assetType});
-  }
-  if(path.startsWith('/media/')) {
-    const key=path.slice(7);if(!safeImage(key))return null;
-    const object=await getMediaObject(env,key);if(!object)return null;
-    if(object.size>PUBLICATION_FILE_BYTES)throw new Error('Publication file exceeds 25 MiB: '+path);
-    return checked({path,body:new Uint8Array(await object.arrayBuffer()),contentType:imageTypes[key.split('.').pop()!.toLowerCase()]});
   }
   // Built pages: the file each one publishes, and the Markdown version of HTML + Markdown pages.
   const page=path.match(/^\/(?:api\/)?(.+)\.(html|md|json|xml|csv|txt|js|css)$/);

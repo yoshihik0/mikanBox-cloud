@@ -170,16 +170,17 @@ test('images: list newest first, upload checks the content',async()=>{
   const {api,env,call}=await setup();
   const up=await api('upload',undefined,{body:PNG});
   assert.equal(up.status,200);assert.match(up.json.name,/^img-\d{8}-\d{6}-[0-9a-f]{4}\.png$/);
+  // The API only checks and names the file: cloud-visual-media.js publishes it and records it.
+  assert.equal(up.json.media.name,up.json.name);assert.equal(up.json.media.content_type,'image/png');assert.match(up.json.media.hash,/^[0-9a-f]{32}$/);
   const list=await (await call('/admin/visual?api=media')).json();
-  assert.equal(list.base,'/media/');assert.deepEqual(list.items.map(i=>i.name),[up.json.name]);
-  const served=await call(list.base+up.json.name);assert.equal(served.status,200);assert.equal(served.headers.get('Content-Type'),'image/png');
+  assert.equal(list.base,'/media/');assert.deepEqual(list.items,[]);
   assert.equal((await api('upload',undefined,{body:new TextEncoder().encode('<svg xmlns="http://www.w3.org/2000/svg"></svg>')})).status,400,'svg is not accepted here');
   assert.equal((await api('upload',undefined,{body:new TextEncoder().encode('not an image')})).status,400);
   assert.equal((await api('upload',undefined,{body:new Uint8Array(0)})).status,400);
   const huge=PNG.slice();huge.set([0xff,0xff,0xff,0xff],16);huge.set([0xff,0xff,0xff,0xff],20);
   assert.equal((await api('upload',undefined,{body:huge})).status,400,'too many pixels');
   assert.equal((await api('upload',undefined,{body:new Uint8Array(10_000_001)})).status,400,'over 10 MB');
-  assert.equal(env.sqlite.prepare('SELECT COUNT(*) n FROM media').get().n,1);
+  assert.equal(env.sqlite.prepare('SELECT COUNT(*) n FROM media').get().n,0);
 });
 
 test('deleting or renaming a page takes its visual history along',async()=>{

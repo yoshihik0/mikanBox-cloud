@@ -21,7 +21,7 @@ This repository is the **Cloudflare edition** (🍊mikanBox Cloud), which runs o
 | :--- | :--- | :--- | :--- |
 | Best for | Sites with few pages (up to about 100) | Sites that keep growing in page count | Sites you want to manage and publish on Cloudflare |
 | Runs on | A PHP-enabled server, or your own computer | A PHP-enabled server, or your own computer | Cloudflare Workers |
-| Storage | JSON files | SQLite (single DB file) | D1 |
+| Storage | JSON files | SQLite (single DB file) | D1 (images on the public site) |
 | Requirements | PHP 8.0+ | PHP 8.0+ with the SQLite3 extension | A Cloudflare account and Node.js |
 | Public site delivery | Dynamic, static, or mixed | Dynamic, static, or mixed | Static files only (no Worker or D1 runs when someone views a page) |
 | Login | Password | Registered devices (no password) | Registered devices (no password) |
@@ -51,7 +51,7 @@ This repository is the **Cloudflare edition** (🍊mikanBox Cloud), which runs o
 - **AI Agent Integration (MCP)** — AI understands your site structure and design direction, and reads and writes files directly
 - **DESIGN.md Management** — Manage your instructions to AI on the site and pass them along
 - **DB Less DB** — Embed data in pages and serve it through an API; works as a headless CMS
-- **No payment method needed** — Pages and images are stored in D1 and run within the free tier (images up to 400 MB in total)
+- **No payment method needed** — Pages in D1 and images on the public site, within the free tier
 - **Backup and export** — JSON backup and restore, and static HTML ZIP export
 
 ---
@@ -125,7 +125,7 @@ The build button below the page list generates the published pages as static HTM
 
 ### Images
 
-Images are stored in D1 (up to 400 MB in total and 10 MB per image). No payment method has to be registered with Cloudflare. The public URL is `/media/filename`.
+Images are kept on the public site and D1 keeps their information (10 MB per file, 10,000 files). No payment method has to be registered with Cloudflare. The public site is the only place images are kept, so save them regularly with "Download media" on the Site screen. The public URL is `/media/filename`.
 
 The upload options "Limit long edge to" and "Convert to WebP" store images smaller. Usage is shown on the media screen and under Site → Storage usage.
 

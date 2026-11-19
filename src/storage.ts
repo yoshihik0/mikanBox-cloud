@@ -5,7 +5,6 @@
 import type { Env, PageData, ComponentData, Settings } from './types';
 import { validId } from './validation';
 import { normalizeLegacyPage } from './output-formats';
-import { MEDIA_FILE_LIMIT,MEDIA_TOTAL_LIMIT,MEDIA_COUNT_LIMIT,MEDIA_CHUNK_SIZE,MEDIA_ZIP_LIMIT,validMediaName } from './media-policy';
 
 // Both published modes and the legacy public status are publicly visible.
 export function isPublicStatus(status: string): boolean {
@@ -181,48 +180,13 @@ export async function getSortedPageIds(env: Env): Promise<string[]> {
   return result.results.map(r => r.id);
 }
 
-// ---- Image storage: D1 only (chunked rows; the total stays within MEDIA_TOTAL_LIMIT) ----
+// ---- Media: the files live on the public site; D1 keeps their information (media-store.ts) ----
 export async function listMediaFiles(env:Env):Promise<Array<{key:string;size:number;uploaded:Date;customMetadata?:Record<string,string>}>> {
  const result=await env.DB.prepare('SELECT key,size,uploaded FROM media ORDER BY uploaded DESC').all<{key:string;size:number;uploaded:string}>();
  return result.results.map(r=>({key:r.key,size:r.size,uploaded:new Date(r.uploaded)}));
 }
 export async function mediaUsage(env:Env):Promise<{bytes:number;files:number}> {
  return await env.DB.prepare('SELECT bytes,files FROM media_usage WHERE id=1').first<{bytes:number;files:number}>()||{bytes:0,files:0};
-}
-export async function getMediaObject(env:Env,key:string):Promise<{body:ReadableStream<Uint8Array>;httpMetadata:{contentType:string};httpEtag:string;size:number;arrayBuffer():Promise<ArrayBuffer>}|null>{
- if(!validMediaName(key))return null;
- const row=await env.DB.prepare('SELECT content_type,size,etag,upload_id,chunk_count FROM media WHERE key=?').bind(key).first<{content_type:string;size:number;etag:string|null;upload_id:string|null;chunk_count:number}>();if(!row)return null;
- if(!row.upload_id){const legacy=await env.DB.prepare('SELECT data FROM media WHERE key=?').bind(key).first<{data:string}>();if(!legacy)return null;const bytes=Uint8Array.from(atob(legacy.data),c=>c.charCodeAt(0));return {body:new ReadableStream({start(c){c.enqueue(bytes);c.close();}}),size:bytes.length,httpMetadata:{contentType:row.content_type},httpEtag:'"'+row.etag+'"',arrayBuffer:async()=>bytes.buffer};}
- const stream=()=>{let index=0;return new ReadableStream<Uint8Array>({async pull(controller){if(index>=row.chunk_count){controller.close();return;}const part=await env.DB.prepare('SELECT data FROM media_chunks WHERE upload_id=? AND chunk_index=?').bind(row.upload_id,index++).first<{data:number[]|ArrayBuffer|Uint8Array}>();if(!part){controller.error(new Error('Media chunk missing.'));return;}controller.enqueue(part.data instanceof Uint8Array?part.data:new Uint8Array(part.data as ArrayBuffer));}},{highWaterMark:0});};
- return {body:stream(),size:row.size,httpMetadata:{contentType:row.content_type},httpEtag:'"'+row.etag+'"',arrayBuffer:()=>new Response(stream()).arrayBuffer()};
-}
-/** The first bytes of an image: enough to read its size without loading the whole file. */
-export async function getMediaHeader(env:Env,key:string):Promise<Uint8Array|null> {
- if(!validMediaName(key))return null;
- const row=await env.DB.prepare(`SELECT m.upload_id,c.data AS chunk,CASE WHEN m.upload_id IS NULL THEN m.data END AS legacy FROM media m LEFT JOIN media_chunks c ON c.upload_id=m.upload_id AND c.chunk_index=0 WHERE m.key=?`).bind(key).first<{upload_id:string|null;chunk:ArrayBuffer|Uint8Array|number[]|null;legacy:string|null}>();
- if(!row)return null;
- if(row.chunk)return row.chunk instanceof Uint8Array?row.chunk:new Uint8Array(row.chunk as ArrayBuffer);
- if(row.legacy)return Uint8Array.from(atob(row.legacy),c=>c.charCodeAt(0));
- return null;
-}
-export async function uploadMedia(env:Env,key:string,body:ArrayBuffer,contentType:string,metadata?:Record<string,string>):Promise<boolean>{
- if(!validMediaName(key)||!body.byteLength||body.byteLength>MEDIA_FILE_LIMIT)return false;
- const id=crypto.randomUUID(),count=Math.ceil(body.byteLength/MEDIA_CHUNK_SIZE);
- const etag=[...new Uint8Array(await crypto.subtle.digest('SHA-256',body))].map(v=>v.toString(16).padStart(2,'0')).join('');
- const statements=[env.DB.prepare(`INSERT INTO media(key,content_type,size,uploaded,data,upload_id,etag,chunk_count)
-  SELECT ?,?,?,?,'',?,?,? FROM media_usage WHERE id=1 AND bytes+?<=? AND files<? ON CONFLICT(key) DO NOTHING`).bind(key,contentType,body.byteLength,new Date().toISOString(),id,etag,count,body.byteLength,MEDIA_TOTAL_LIMIT,MEDIA_COUNT_LIMIT)];
- for(let i=0;i<count;i++)statements.push(env.DB.prepare('INSERT INTO media_chunks(upload_id,chunk_index,data) SELECT ?,?,? WHERE EXISTS(SELECT 1 FROM media WHERE upload_id=?)').bind(id,i,body.slice(i*MEDIA_CHUNK_SIZE,(i+1)*MEDIA_CHUNK_SIZE),id));
- try{const r=await env.DB.batch(statements);return !!r[0].meta.changes;}catch{return false;}
-}
-export async function deleteMedia(env:Env,key:string):Promise<boolean>{
- if(!validMediaName(key))return false;
- try{const result=await env.DB.batch([
- env.DB.prepare('DELETE FROM media_chunks WHERE upload_id IN(SELECT upload_id FROM media WHERE key=?)').bind(key),
- env.DB.prepare('DELETE FROM media WHERE key=?').bind(key)]);return !!result[1].meta.changes;}catch{return false;}
-}
-export async function renameMedia(env:Env,old:string,name:string):Promise<boolean>{
- if(!validMediaName(old)||!validMediaName(name)||old.split('.').pop()!==name.split('.').pop())return false;
- try{return !!(await env.DB.prepare('UPDATE media SET key=? WHERE key=?').bind(name,old).run()).meta.changes;}catch{return false;}
 }
 
 // ---- ZIP for backup ----
@@ -246,22 +210,6 @@ export async function buildDataBackupZip(env: Env): Promise<Uint8Array> {
   return createZip(files);
 }
 
-export async function buildMediaBackupZip(env: Env): Promise<Uint8Array> {
-  const files: Array<{ name: string; data: Uint8Array }> = [];
-  const mediaList = await listMediaFiles(env);
-  if(mediaList.reduce((total,file)=>total+file.size,0)>MEDIA_ZIP_LIMIT)throw new Error('画像ZIPは合計20 MBまでで、枚数にも制限があります。画像を個別に保存してください。 / Media ZIP is limited to 20 MB and a bounded number of files; download images individually.');
-  const metadata=(await env.DB.prepare('SELECT upload_id,chunk_count FROM media').all<{upload_id:string|null;chunk_count:number}>()).results;
-  const queries=metadata.reduce((total,row)=>total+(row.upload_id?1+row.chunk_count:2),2);
-  if(queries>45)throw new Error('画像ZIPは枚数にも制限があります。画像を個別に保存してください。 / Too many images for one ZIP request; download images individually.');
-  for (const item of mediaList) {
-    const obj = await getMediaObject(env, item.key);
-    if (obj) {
-      const buf = await obj.arrayBuffer();
-      files.push({ name: `media/${item.key}`, data: new Uint8Array(buf) });
-    }
-  }
-  return createZip(files);
-}
 
 // ---- Simple ZIP writer (no compression) ----
 

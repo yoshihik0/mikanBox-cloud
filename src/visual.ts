@@ -7,7 +7,8 @@
 // The screen code (visual.js / visual.css) and the visual_* strings are shared with the PHP editions.
 // ==========================================
 import type { Env, PageData, Settings } from './types';
-import { loadSettings, listMediaFiles, uploadMedia } from './storage';
+import { loadSettings, listMediaFiles } from './storage';
+import { getMedia, inspectMedia } from './media-store';
 import { authenticatedUser } from './accounts';
 import { verifyCsrf } from './auth';
 import { MikanBoxRenderer } from './renderer';
@@ -31,7 +32,7 @@ const esc = (s: string) => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt
 const jsonForScript = (v: unknown) => JSON.stringify(v).replace(/</g, '\\u003c').replace(/>/g, '\\u003e').replace(/&/g, '\\u0026').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
 const nonce = () => btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(16)))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 
-function headers(type: string, n?: string): Headers {
+function headers(type: string, n?: string, publicOrigin = ''): Headers {
   const h = new Headers({ 'Content-Type': type, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer', 'X-Frame-Options': 'SAMEORIGIN' });
   if (n) {
     // No script of the page runs here (inline, external, component JS or uploaded JS media): this document holds the
@@ -39,7 +40,7 @@ function headers(type: string, n?: string): Headers {
     // Only this screen's own nonce'd scripts run.
     h.set('Content-Security-Policy', `default-src 'self'; script-src 'nonce-${n}'; `
       + "style-src 'self' 'unsafe-inline' https:; font-src 'self' https: data:; img-src * data: blob:; media-src * data: blob:; "
-      + "connect-src 'self'; frame-src 'self' https:; object-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'self'");
+      + `connect-src 'self'${publicOrigin ? ' ' + publicOrigin : ''}; frame-src 'self' https:; object-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'self'`);
   }
   return h;
 }
@@ -249,7 +250,11 @@ export async function handleVisual(request: Request, env: Env): Promise<Response
           for (let attempt = 0; attempt < 3; attempt++) {
             const name = `img-${stamp}-${[...crypto.getRandomValues(new Uint8Array(2))].map(b => b.toString(16).padStart(2, '0')).join('')}.${ext}`;
             if (!validMediaName(name)) return out({ error: t('visual_err_filename') }, 400);
-            if (await uploadMedia(env, name, bytes!, type)) return out({ name });
+            // Media live on the public site: this only checks and names the file. cloud-visual-media.js on this
+            // page publishes it and records it (as the media screen does), then hands the name to the editor.
+            if (await getMedia(env, name)) continue;
+            const inspected = await inspectMedia(name, data);
+            return out({ name, media: { name, hash: inspected.hash, size: inspected.size, content_type: type } });
           }
           return out({ error: t('visual_err_save') }, 500);
         }
@@ -271,17 +276,21 @@ export async function handleVisual(request: Request, env: Env): Promise<Response
   if (!row) return dieHtml(t, t('visual_err_page_not_found_id', id), 404);
   if (!formatHasHtml(pageOutputFormat(row.data))) return dieHtml(t, t('visual_err_not_html'), 400);
   let html = await renderVisual(env, settings, request, id, row.data);
-  const n = nonce(), h = headers('text/html; charset=utf-8', n);
+  // The public site may be read too: an image upload sends files Cloudflare asks for again from there.
+  let publicOrigin = '';try { publicOrigin = env.PUBLIC_SITE_URL ? new URL(env.PUBLIC_SITE_URL).origin : ''; } catch {}
+  const n = nonce(), h = headers('text/html; charset=utf-8', n, publicOrigin);
   if (url.searchParams.has('fv-frame')) return new Response(html, { headers: h });   // for checking widths (no editing)
   const info = {
     api: SELF, list: `${ADMIN}?view=pages`, page: `${ADMIN}?view=pages&edit=${encodeURIComponent(id)}#page-editor`, pick: SELF,
     view: `${SELF}?id=`, site: '/', edit: `${ADMIN}?view=pages#`, editBase: `${ADMIN}?view=pages&edit=`,
   };
   const globals = `window.__VISUAL_PAGE=${jsonForScript(id)};window.__VISUAL_ADMIN=${jsonForScript(info)};window.__VISUAL_PAGES=${jsonForScript(await pageList(env))};`
+    + `window.CSRF_TOKEN=${jsonForScript(csrf)};window.PUBLIC_SITE_URL=${jsonForScript(env.PUBLIC_SITE_URL||'')};`
     + `window.__VISUAL_CSRF=${jsonForScript(csrf)};window.__VISUAL_DOC=${jsonForScript(isDoc(row.data))};window.__VISUAL_T=${jsonForScript(jsStrings(lang))};`;
   const v = encodeURIComponent(CLOUD_VERSION);
   const tags = '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,300,0,0&display=block">'
     + `<link rel="stylesheet" href="/mikanbox/visual.css?v=${v}">`
+    + `<script nonce="${n}" src="/mikanbox/cloud-publish.js?v=${v}"></script><script nonce="${n}" src="/mikanbox/cloud-visual-media.js?v=${v}"></script>`
     + `<script nonce="${n}" src="/mikanbox/visual-live.js?v=${v}"></script><script nonce="${n}" src="/mikanbox/visual.js?v=${v}"></script>`;
   // The values (the CSRF token among them) go in front of everything the page itself wrote: text
   // that follows page content could be swallowed by an unclosed attribute there and sent elsewhere

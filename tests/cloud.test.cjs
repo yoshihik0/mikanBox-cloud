@@ -1,7 +1,8 @@
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const vm=require('node:vm');
-const {environment,call,login,post,publicView}=require('./fixtures.cjs');
+const {environment,call,login,post,publicView,putMedia}=require('./fixtures.cjs');
+const {getMedia}=require('../.test-build/src/media-store.js');
 const {savePage,loadPage,saveComponent,loadComponent,saveSettings,loadSettings}=require('../.test-build/src/storage.js');
 const {MikanBoxRenderer}=require('../.test-build/src/renderer.js');
 const {createTranslator}=require('../.test-build/src/i18n.js');
@@ -371,12 +372,12 @@ test('a rename race leaves the page and all its history at the original ID',asyn
   assert.equal(env.sqlite.prepare("SELECT COUNT(*) n FROM post_revisions WHERE post_id='renamed'").get().n,2);
 });
 
-test('the media screen offers uploads and shows usage against the D1 limit',async()=>{
+test('the media screen offers uploads and shows the media size and file count',async()=>{
   const env=environment();env.SITE_ENVIRONMENT='staging';const auth=await login(env);
   assert.equal((await loadSettings(env)).site_environment,'staging');
   const body=await(await call(env,'/admin?view=media',undefined,auth.cookie)).text();
-  assert.match(body,/id="upload-form"/);assert.match(body,/id="drop-zone"/);assert.match(body,/400 MB/);
-  const result=await post(env,auth,{save_action:'upload_media'});assert.equal(result.data.success,false);assert.match(result.data.message,/10 MB/);
+  assert.match(body,/id="upload-form"/);assert.match(body,/id="drop-zone"/);assert.match(body,/0\.0 MB · 0 \/ 10,000/);assert.doesNotMatch(body,/400 MB/);
+  const result=await post(env,auth,{save_action:'media_prepare'});assert.equal(result.data.success,false);
 });
 
 test('fresh setup installs standard content and AI instruction IDs without overwriting edits',async()=>{
@@ -404,55 +405,33 @@ test('the search page is a Google site search form that forwards the standard se
   assert.match(body,/as_sitesearch:"www\.example\.test\/site"/);assert.doesNotMatch(body,/PRIVATE-CONTENT|PUBLIC|\{\{SEARCH_RESULTS/);
   assert.equal((await call(env,'/index.php?page=search&q=needle')).status,404);
 });
-test('D1 image upload validates content, authentication and duplicates, then serves exact bytes',async()=>{
-  const env=environment(),auth=await login(env);
+test('image upload checks authentication, content and duplicates; deletion withdraws it from the list',async()=>{
+  const {mockCloudflare,uploadThroughAdmin}=require('./fixtures.cjs');
+  const env=environment(),auth=await login(env),cf=mockCloudflare(env);
   const image=Uint8Array.from(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+X2ioAAAAASUVORK5CYII=','base64'));
-  const upload=async(name,bytes,credentials=auth)=>{
-    const form=new FormData();form.set('save_action','upload_media');form.set('csrf_token',credentials.csrf_token||'');form.set('ajax_request','1');form.set('image',new File([bytes],name,{type:'image/png'}));
-    const response=await require('../.test-build/src/index.js').default.fetch(new Request('https://cloud.test/admin',{method:'POST',headers:{Cookie:credentials.cookie||''},body:form}),env);
-    return {response,data:response.headers.get('content-type').includes('application/json')?await response.json():null};
-  };
-  assert.equal((await upload('actual.png',image,{...auth,csrf_token:'bad'})).response.status,403);
-  await upload('actual.png',image,{});assert.equal(env.sqlite.prepare('SELECT COUNT(*) n FROM media').get().n,0);
-  assert.equal((await upload('actual.png',new TextEncoder().encode('<html>not an image</html>'))).data.success,false);
-  assert.equal((await upload('actual.png',image)).data.success,true);
-  assert.equal((await upload('actual.png',image)).data.success,false);
-  assert.equal((await call(env,'/media/actual.png')).status,404,'the admin Worker serves no media without a session');
-  const response=await call(env,'/media/actual.png',undefined,auth.cookie);assert.equal(response.status,200);assert.equal(response.headers.get('content-type'),'image/png');assert.deepEqual(new Uint8Array(await response.arrayBuffer()),image);
-  const etag=response.headers.get('etag');
-  const worker=require('../.test-build/src/index.js').default;
-  const head=await worker.fetch(new Request('https://cloud.test/media/actual.png',{method:'HEAD',headers:{Cookie:auth.cookie}}),env);assert.equal(head.status,200);assert.equal((await head.arrayBuffer()).byteLength,0);
-  assert.equal((await worker.fetch(new Request('https://cloud.test/media/actual.png',{headers:{'If-None-Match':etag,Cookie:auth.cookie}}),env)).status,304);
-  assert.equal((await post(env,auth,{save_action:'delete_media',file:'actual.png'})).data.success,true);
-  assert.equal((await call(env,'/media/actual.png')).status,404);
-  assert.equal(env.sqlite.prepare('SELECT COUNT(*) n FROM media_chunks').get().n,0);
-  assert.equal(env.sqlite.prepare('SELECT bytes FROM media_usage').get().bytes,0);
-  const different=new Uint8Array(image);different[different.length-1]^=1;assert.equal((await upload('actual.png',different)).data.success,true);
-  assert.notEqual((await call(env,'/media/actual.png')).headers.get('etag'),etag);
+  try{
+    const prepare=async(credentials)=>{const form=new FormData();form.set('save_action','media_prepare');form.set('csrf_token',credentials.csrf_token||'');form.set('ajax_request','1');form.set('image',new File([image],'actual.png'));return require('../.test-build/src/index.js').default.fetch(new Request('https://cloud.test/admin',{method:'POST',headers:{Cookie:credentials.cookie||''},body:form}),env);};
+    assert.equal((await prepare({...auth,csrf_token:'bad'})).status,403);
+    assert.notEqual((await prepare({})).headers.get('content-type'),'application/json; charset=utf-8','no session: the sign-in page');
+    assert.equal((await uploadThroughAdmin(env,auth,'actual.png',new TextEncoder().encode('<html>not an image</html>'))).success,false);
+    assert.equal((await uploadThroughAdmin(env,auth,'actual.png',image)).success,true);
+    assert.equal((await uploadThroughAdmin(env,auth,'actual.png',image)).success,false);
+    assert.equal(env.sqlite.prepare('SELECT bytes FROM media_usage').get().bytes,image.length);
+    // A published image is withdrawn by a build before it can be deleted.
+    assert.equal((await post(env,auth,{save_action:'delete_media',file:'actual.png'})).data.success,false);
+    await require('./fixtures.cjs').browserPublish(env,auth,{rebuild:true,excluded:['/media/actual.png']});
+    assert.equal((await post(env,auth,{save_action:'delete_media',file:'actual.png'})).data.success,true);
+    assert.equal(env.sqlite.prepare('SELECT bytes FROM media_usage').get().bytes,0);
+  }finally{cf.restore();}
 });
-test('chunked D1 media handles large images, quota boundaries, atomic rollback and rename',async()=>{
-  const {uploadMedia,getMediaObject,deleteMedia,renameMedia,mediaUsage,buildMediaBackupZip}=require('../.test-build/src/storage.js');
-  const {MEDIA_FILE_LIMIT,MEDIA_COUNT_LIMIT,MEDIA_ZIP_LIMIT}=require('../.test-build/src/media-policy.js');
-  const env=environment(),large=new Uint8Array(MEDIA_FILE_LIMIT);large.set([137,80,78,71,13,10,26,10]);large[large.length-1]=42;
-  assert.equal(await uploadMedia(env,'large.png',large.buffer,'image/png'),true);
-  assert.equal(env.sqlite.prepare('SELECT COUNT(*) n FROM media_chunks').get().n,20);
-  assert.equal(env.sqlite.prepare('SELECT MAX(length(data)) n FROM media_chunks').get().n,500000);
-  const object=await getMediaObject(env,'large.png');assert.deepEqual(new Uint8Array(await object.arrayBuffer()),large);
-  assert.equal(await uploadMedia(env,'too-large.png',new ArrayBuffer(MEDIA_FILE_LIMIT+1),'image/png'),false);
-  assert.equal(await renameMedia(env,'large.png','renamed.png'),true);assert.equal(await getMediaObject(env,'large.png'),null);assert.equal((await getMediaObject(env,'renamed.png')).size,large.length);
-  const one=Uint8Array.of(1).buffer;
-  const MEDIA_TOTAL_LIMIT=400_000_000;
-  env.sqlite.prepare('UPDATE media_usage SET bytes=?').run(MEDIA_TOTAL_LIMIT);
-  assert.equal(await uploadMedia(env,'full.png',one,'image/png'),false);assert.equal(env.sqlite.prepare('SELECT COUNT(*) n FROM media').get().n,1);
-  env.sqlite.prepare('UPDATE media_usage SET bytes=?,files=1').run(MEDIA_TOTAL_LIMIT-1);
-  assert.equal(await uploadMedia(env,'last.png',one,'image/png'),true);assert.equal((await mediaUsage(env)).bytes,MEDIA_TOTAL_LIMIT);
-  env.sqlite.prepare('UPDATE media_usage SET bytes=0,files=?').run(MEDIA_COUNT_LIMIT);assert.equal(await uploadMedia(env,'count.png',one,'image/png'),false);
-  env.sqlite.prepare('UPDATE media_usage SET bytes=?,files=2').run(large.length+1);
-  assert.equal(await deleteMedia(env,'renamed.png'),true);assert.equal((await mediaUsage(env)).bytes,1);
-  const broken=environment();broken.sqlite.exec("CREATE TRIGGER reject_chunk BEFORE INSERT ON media_chunks BEGIN SELECT RAISE(ABORT,'test failure'); END");
-  assert.equal(await uploadMedia(broken,'fail.png',one,'image/png'),false);assert.equal((await mediaUsage(broken)).files,0);
-  assert.equal(broken.sqlite.prepare('SELECT COUNT(*) n FROM media').get().n,0);
-  env.sqlite.prepare('UPDATE media SET size=? WHERE key=?').run(MEDIA_ZIP_LIMIT+1,'last.png');await assert.rejects(buildMediaBackupZip(env),/20 MB/);
+test('media information: size limit, file count limit and recorded pixel size',async()=>{
+  const {inspectMedia,deleteMedia}=require('../.test-build/src/media-store.js');
+  const {MEDIA_FILE_LIMIT}=require('../.test-build/src/media-policy.js');
+  const large=new Uint8Array(MEDIA_FILE_LIMIT);large.set([137,80,78,71,13,10,26,10,0,0,0,13,73,72,68,82,0,0,1,0,0,0,0,128]);
+  const file=await inspectMedia('large.png',large);assert.equal(file.size,MEDIA_FILE_LIMIT);assert.equal(file.width,256);assert.equal(file.height,128);assert.equal(file.hash,file.etag.slice(0,32));
+  await assert.rejects(inspectMedia('too-large.png',new Uint8Array(MEDIA_FILE_LIMIT+1)),/10 MB/);
+  await assert.rejects(inspectMedia('../x.png',large),/filename/);
+  const env=environment();await putMedia(env,'a.png',large);assert.equal(await deleteMedia(env,'a.png'),true);assert.equal(await getMedia(env,'a.png'),null);
 });
 
 test('CSS uses first marker or real head closing tag with prefix fallback', async()=>{
@@ -591,11 +570,15 @@ test('package import screen explains directory layout and page IDs in both langu
   }
 });
 
-test('media upload publishes the stored image and offers retry on publication failure',async()=>{
+test('the media screen publishes a file before recording it, and records nothing when publishing fails',async()=>{
  const env=environment(),auth=await login(env),body=await(await call(env,'/admin',undefined,auth.cookie)).text();
  const start=body.indexOf("    const uploadPublicationStatus = document.getElementById('upload-publication-status');"),end=body.indexOf('    // Keep the viewport stable',start);assert.ok(start>=0&&end>start);
- const script=body.slice(start,end),calls=[],status={textContent:''},retry={hidden:true,style:{display:'none'},addEventListener(name,fn){this.click=fn;}},button={innerHTML:'Upload',disabled:false},fileInput={value:'file'};
- let fail=true;const context={document:{getElementById:id=>({'upload-publication-status':status,'upload-publication-retry':retry,'upload-btn':button}[id]||null)},window:{location:{href:'https://cloud.test/admin'},cloudPublish:async(...args)=>{calls.push(args);if(fail)throw new Error('Unavailable');}},fileInput,FormData,fetch:async()=>({json:async()=>({success:true,uploaded_name:'photo.png',message:'Saved'})}),refreshMediaGrid:async()=>{},showToast:()=>{}};
- vm.runInNewContext(script,context);await context.doMediaUpload(new FormData());assert.equal(calls.length,1);assert.equal(calls[0][0],false);assert.equal(calls[0][2],'photo.png');assert.equal(retry.hidden,false);assert.match(status.textContent,/Unavailable/);
- fail=false;await retry.click();await new Promise(resolve=>setImmediate(resolve));assert.equal(retry.hidden,true);assert.equal(calls.length,2);assert.match(status.textContent,/公開しました|published/i);
+ const script=body.slice(start,end),order=[],status={textContent:''},button={innerHTML:'Upload',disabled:false},fileInput={value:'file'};let fail=true;
+ const context={document:{getElementById:id=>({'upload-publication-status':status,'upload-btn':button}[id]||null)},window:{location:{href:'https://cloud.test/admin'},CSRF_TOKEN:'t',cloudPublishNewMedia:async()=>{order.push('publish');if(fail)throw new Error('Unavailable');return {name:'photo.png'};}},fileInput,FormData,File,
+  fetch:async(url,init)=>{order.push(init.body.get('save_action'));return new Response(JSON.stringify({success:true,message:'ok'}));},showToast:(message,error)=>order.push((error?'error:':'ok:')+message),refreshMediaGrid:async()=>order.push('refresh'),JSON};
+ context.window.cloudPrepareMediaForm=async data=>data;
+ vm.runInNewContext(script,context);
+ const data=new FormData();data.set('image',new File([new Uint8Array([1])],'photo.png'));
+ await context.doMediaUpload(data);assert.deepEqual(order,['publish','error:Unavailable']);
+ order.length=0;fail=false;await context.doMediaUpload(data);assert.deepEqual(order,['publish','upload_media','ok:ok','refresh']);
 });

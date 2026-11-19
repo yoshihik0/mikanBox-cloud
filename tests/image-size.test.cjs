@@ -1,7 +1,7 @@
 const {test}=require('node:test'),assert=require('node:assert/strict');
-const {environment}=require('./fixtures.cjs');
+const {environment,putMedia,mockCloudflare}=require('./fixtures.cjs');
 const {imageSize}=require('../.test-build/src/image-size.js');
-const {uploadMedia,savePage,saveComponent,loadSettings,listPages,listComponents}=require('../.test-build/src/storage.js');
+const {savePage,saveComponent,loadSettings,listPages,listComponents}=require('../.test-build/src/storage.js');
 const {MikanBoxRenderer}=require('../.test-build/src/renderer.js');
 
 const png=(w,h)=>{const b=new Uint8Array(40);b.set([137,80,78,71,13,10,26,10,0,0,0,13,73,72,68,82]);new DataView(b.buffer).setUint32(16,w);new DataView(b.buffer).setUint32(20,h);return b;};
@@ -17,10 +17,10 @@ test('image sizes are read from PNG, GIF and JPEG headers, and refused for other
 
 for(const [label,make] of [['D1',environment]])test(`${label}: static builds add width, height and loading hints to local images in PHP's order`,async()=>{
  const env=make();
- await uploadMedia(env,'big.png',png(800,600).buffer,'image/png');
- await uploadMedia(env,'second.png',png(640,360).buffer,'image/png');
- await uploadMedia(env,'icon.png',png(32,32).buffer,'image/png');
- await uploadMedia(env,'photo.jpg',jpeg(1200,800).buffer,'image/jpeg');
+ await putMedia(env,'big.png',png(800,600));
+ await putMedia(env,'second.png',png(640,360));
+ await putMedia(env,'icon.png',png(32,32));
+ await putMedia(env,'photo.jpg',jpeg(1200,800));
  await savePage(env,'p',{title:'p',content_md:'![a](big.png)\n\n![b](icon.png)\n\n![c](second.png)\n\n{{IMAGE:photo.jpg}}\n\n![gone](missing.png)\n\n![ext](https://example.com/x.png)\n\n<img src="media/big.png">',wrapper_comp:'',status:'public_static'});
  const settings=await loadSettings(env),snapshot={pages:await listPages(env),components:await listComponents(env)};
  const render=(snap,options)=>new MikanBoxRenderer(env,settings,new Request('https://x.test/p'),snap,options).render('p').then(r=>r.html);

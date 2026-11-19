@@ -29,11 +29,11 @@ for(const failure of ['build','migration','deploy','deploy-response'])test('manu
   fs.copyFileSync(path.join(root,'wrangler.production.example.json'),path.join(temp,'wrangler.production.example.json'));
   process.chdir(temp);process.env.CLOUDFLARE_API_TOKEN='synthetic-test-token';process.env.MIKANBOX_UPDATE_CONFIG=JSON.stringify({account_id:account,name:'my-admin',d1_databases:[{binding:'DB',database_id:id}]});process.env.MIKANBOX_UPDATE_REPOSITORY='test/site';
   await assert.rejects(updateCloud(dependencies),/Injected/);assert.equal(fs.existsSync('wrangler.update.json'),false);
-  assert.equal(db.prepare("SELECT data FROM posts WHERE id='keep'").get().data,'{"title":"Private original","status":"draft"}');assert.equal(db.prepare("SELECT data FROM media WHERE key='keep.png'").get().data,'AQID');
+  assert.equal(db.prepare("SELECT data FROM posts WHERE id='keep'").get().data,'{"title":"Private original","status":"draft"}');assert.equal(db.prepare("SELECT size FROM media WHERE key='keep.png'").get().size,3);
   if(failure==='build')assert.deepEqual(calls,['build']);if(failure==='migration'){assert.deepEqual(calls,['build','migration']);assert.ok(db.prepare('SELECT COUNT(*) n FROM audit_migrations').get().n>1);}
   if(failure==='deploy-response')assert.equal(deployed,true);
   await updateCloud(dependencies);assert.equal(deployed,true);assert.equal(fs.existsSync('wrangler.update.json'),false);
   assert.equal(db.prepare('SELECT COUNT(*) n FROM audit_migrations').get().n,fs.readdirSync(path.join(root,'migrations')).length);
-  assert.equal(db.prepare("SELECT data FROM posts WHERE id='keep'").get().data,'{"title":"Private original","status":"draft"}');assert.equal(db.prepare("SELECT data FROM media WHERE key='keep.png'").get().data,'AQID');
+  assert.equal(db.prepare("SELECT data FROM posts WHERE id='keep'").get().data,'{"title":"Private original","status":"draft"}');assert.equal(db.prepare("SELECT size FROM media WHERE key='keep.png'").get().size,3);
  }finally{process.chdir(cwd);for(const key of variables){if(previous[key]===undefined)delete process.env[key];else process.env[key]=previous[key];}db.close();fs.rmSync(temp,{recursive:true,force:true});}
 });

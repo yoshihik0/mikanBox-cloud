@@ -1,8 +1,8 @@
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
-const {environment}=require('./fixtures.cjs');
+const {environment,putMedia}=require('./fixtures.cjs');
 const storage=require('../.test-build/src/storage.js');
-const {savePage,saveComponent,saveSettings,uploadMedia}=storage;
+const {savePage,saveComponent,saveSettings}=storage;
 const {buildStatic}=require('../.test-build/src/ssg.js');
 const {publicationManifest,readPublicationEntry,publicationEntries,buildPublicationAssets,PUBLICATION_PUBLIC_ASSETS,PUBLICATION_FILE_BYTES}=require('../.test-build/src/static-publication.js');
 const request=new Request('https://cloud.test/admin'),decode=new TextDecoder();
@@ -18,7 +18,7 @@ test('publication manifest includes current built public pages and every stored 
   await snapshot(value,'index','<h1>Published</h1>');await snapshot(value,'draft','SECRET_DRAFT','draft');await snapshot(value,'pending','SECRET_PENDING','pending');
   await savePage(value,'unbuilt',{title:'Not built',status:'public_static'});
   await saveComponent(value,'card',{html:'',js:'publicJS()'});await saveComponent(value,'DESIGN.md',{html:'SECRET_DOC',is_ai_doc:true,js:'SECRET_JS()'});
-  const image=new Uint8Array([137,80,78,71,13,10,26,10]);await uploadMedia(value,'unused-private-context.png',image.buffer,'image/png');
+  const image=new Uint8Array([137,80,78,71,13,10,26,10]);await putMedia(value,'unused-private-context.png',image);
   const manifest=await publicationManifest(value),paths=manifest.entries.map(e=>e.path);
   assert.ok(paths.includes('/index.html'));assert.equal(paths.some(path=>path.startsWith('/component-js/')),false);
   assert.equal(await readPublicationEntry(value,request,'/component-js/card.js'),null);
@@ -26,7 +26,9 @@ test('publication manifest includes current built public pages and every stored 
   assert.ok(paths.includes('/media/unused-private-context.png'));
   for(const path of ['/draft.html','/pending.html','/unbuilt.html','/component-js/DESIGN.md.js','/data/settings.json'])assert.equal(paths.includes(path),false);
   assert.equal(manifest.count,paths.length);assert.ok(manifest.totalKnownBytes>image.length);assert.doesNotMatch(JSON.stringify(manifest),/SECRET|Published/);
-  assert.deepEqual((await readPublicationEntry(value,request,'/media/unused-private-context.png')).body,image);
+  // Media files are never read here: they are on the public site, known by the hash recorded for them.
+  const media=manifest.entries.find(e=>e.path==='/media/unused-private-context.png');assert.match(media.hash,/^[0-9a-f]{32}$/);assert.equal(media.source,'/media/unused-private-context.png');
+  assert.equal(await readPublicationEntry(value,request,'/media/unused-private-context.png'),null);
 });
 test('publication uses distinct exact HTML paths and preserves same-origin WebMCP, media and component URLs',async()=>{
   const value=env(),html='<img src="/media/a.png"><a href="/test/">Exact</a><script src="/mikanbox/ai-question.js" data-mcp-endpoint="/public-mcp"></script><div data-mikanbox-ai-question></div>';
@@ -83,13 +85,12 @@ test('static URL aliases preserve exact private/dynamic precedence and nested in
  assert.match(rules,/^\/ \/index.html 200$/m);assert.match(rules,/^\/test\/index \/test\/index.html 200$/m);
  assert.doesNotMatch(rules,/^\/test\/? /m);assert.match(rules,/^\/other \/other\/index.html 200$/m);
 });
-test('images are published as static files and are not routed to the Worker first',async()=>{
+test('images are published as static files known by their hash',async()=>{
   const value=env(),image=new Uint8Array([137,80,78,71,13,10,26,10]);
-  await uploadMedia(value,'photo.png',image.buffer,'image/png');
+  await putMedia(value,'photo.png',image);
   await savePage(value,'only-dynamic',{title:'Dynamic',status:'public_dynamic',content_md:'![x](/media/photo.png)'});
   const entry=(await publicationManifest(value)).entries.find(item=>item.path==='/media/photo.png');
-  assert.equal(entry.kind,'media');assert.equal(entry.size,image.length);
-  assert.deepEqual((await readPublicationEntry(value,request,'/media/photo.png')).body,image);
+  assert.equal(entry.kind,'media');assert.equal(entry.size,image.length);assert.match(entry.hash,/^[0-9a-f]{32}$/);
 });
 test('site generation withdraws deleted pages and pages that are no longer static',async()=>{
   const value=env();

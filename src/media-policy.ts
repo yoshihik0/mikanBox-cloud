@@ -1,12 +1,10 @@
 export const MEDIA_FILE_LIMIT=10_000_000;
-/** All media together, kept in D1 (the free plan allows 500 MB per database). */
-export const MEDIA_TOTAL_LIMIT=400_000_000;
+/** Files on the public site come from Cloudflare's static assets (20,000 files per version on the free plan, pages included). */
 export const MEDIA_COUNT_LIMIT=10_000;
-/** The admin screen warns from here on (80% of the media limit; 90% of the free D1 database). */
-export const MEDIA_WARNING_BYTES=MEDIA_TOTAL_LIMIT*0.8;
+/** The admin screen warns from here on (90% of the free D1 database). */
 export const D1_WARNING_BYTES=450_000_000;
+/** Backups carry each file in parts of this size (one JSON line each). */
 export const MEDIA_CHUNK_SIZE=500_000;
-export const MEDIA_ZIP_LIMIT=20_000_000;
 export function validMediaName(name:string) {
   return name.length>0&&name.length<=180&&/^[A-Za-z0-9_-][A-Za-z0-9_.-]*$/.test(name)&&!name.includes('..')&&!/\.(?:php[0-9]*|phtml|phar|cgi|pl|py|sh|shtml|asp|aspx|jsp)(?:\.|$)/i.test(name);
 }

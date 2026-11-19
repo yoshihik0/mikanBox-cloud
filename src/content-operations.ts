@@ -1,6 +1,6 @@
 import type {Env,PageData,ComponentData} from './types';
-import {validMediaName,imageType,MEDIA_FILE_LIMIT,MEDIA_TOTAL_LIMIT,MEDIA_CHUNK_SIZE} from './media-policy';
-import {getMediaObject} from './storage';
+import {validMediaName} from './media-policy';
+import {getMedia,publishedHash,renamedSource,type MediaFile} from './media-store';
 
 type Edit={id:string,before:string,after:string};
 const textFields=['content_md','css','js','ogp_image'];
@@ -47,12 +47,17 @@ async function commit(env:Env,pages:Edit[],components:Edit[],editor:string,extra
   const results=await env.DB.batch(statements);
   if(!results[0].meta.changes)throw new Error('他の編集があります。再読み込みしてください。 / Content changed or is being edited; reload and retry.');
 }
-export async function renameMediaReferences(env:Env,old:string,name:string,editor:string,replacement?:{bytes:Uint8Array;expectedEtag?:string},updateReferences=true) {
+/**
+ * Renames a media file and the references to it. With `replacement` the file also gets new content
+ * (resize, WebP conversion): that content is already on the public site at the new name, and is
+ * recorded only when the last publication carries it there.
+ */
+export async function renameMediaReferences(env:Env,old:string,name:string,editor:string,replacement?:MediaFile&{expectedEtag?:string},updateReferences=true) {
   if(!validMediaName(old)||!validMediaName(name)||old===name||(!replacement&&old.split('.').pop()?.toLowerCase()!==name.split('.').pop()?.toLowerCase()))throw new Error('Check the filename and extension.');
-  if(await getMediaObject(env,name))throw new Error('変更先のファイル名はすでに存在します。 / The target filename already exists.');
-  const image=await env.DB.prepare('SELECT upload_id,etag,size,uploaded FROM media WHERE key=?').bind(old).first<{upload_id:string|null;etag:string|null;size:number;uploaded:string}>();if(!image)throw new Error('Image not found.');
-  const type=replacement&&imageType(replacement.bytes,name.split('.').pop()!.toLowerCase());if(replacement&&(!type||!replacement.bytes.length||replacement.bytes.length>MEDIA_FILE_LIMIT))throw new Error('Invalid replacement image.');
+  if(await getMedia(env,name))throw new Error('変更先のファイル名はすでに存在します。 / The target filename already exists.');
+  const image=await getMedia(env,old);if(!image)throw new Error('Image not found.');
   if(replacement?.expectedEtag&&replacement.expectedEtag.replace(/^"|"$/g,'')!==String(image.etag))throw new Error('Image changed; reload and retry.');
+  if(replacement&&await publishedHash(env,'/media/'+name)!==replacement.hash)throw new Error('公開サイトの画像と内容が一致しません。もう一度お試しください。 / The file on the public site does not match. Try again.');
   const source=await sourceRows(env),pages:Edit[]=[],components:Edit[]=[];
   const siteRow=await env.DB.prepare('SELECT value FROM settings WHERE key=?').bind('settings').first<{value:string}>();
   const site=siteRow?JSON.parse(siteRow.value):null;
@@ -64,16 +69,15 @@ export async function renameMediaReferences(env:Env,old:string,name:string,edito
 
   for(const row of updateReferences?source.pages:[]){const data=JSON.parse(row.data) as PageData;let changed=false;for(const field of textFields){const record=data as unknown as Record<string,unknown>;if(typeof record[field]==='string'){const next=mediaReplace(record[field],old,name);if(next!==record[field]){record[field]=next;changed=true;}}}if(changed){data.revision_tag=crypto.randomUUID();pages.push({id:row.id,before:row.data,after:JSON.stringify(data)});}}
   for(const row of updateReferences?source.components:[]){const data=JSON.parse(row.data) as ComponentData;let changed=false;for(const field of ['html','css','js']){const record=data as unknown as Record<string,unknown>;if(typeof record[field]==='string'){const next=mediaReplace(record[field],old,name);if(next!==record[field]){record[field]=next;changed=true;}}}if(changed)components.push({id:row.id,before:row.data,after:JSON.stringify(data)});}
-  const baseGuard="EXISTS(SELECT 1 FROM media WHERE key=? AND upload_id IS ? AND etag IS ? AND uploaded=? AND size=?) AND NOT EXISTS(SELECT 1 FROM media WHERE key=?) AND NOT EXISTS(SELECT 1 FROM settings, json_each(settings.value,'$.paths') WHERE settings.key='static_publication' AND json_each.value=?) AND NOT EXISTS(SELECT 1 FROM settings WHERE key='publication_lock' AND json_extract(value,'$.expires')>?)"+siteGuard;
-  const baseArgs=[old,image.upload_id,image.etag,image.uploaded,image.size,name,'/media/'+name,Date.now(),...siteArgs];
+  const baseGuard="EXISTS(SELECT 1 FROM media WHERE key=? AND etag IS ? AND uploaded=? AND size=?) AND NOT EXISTS(SELECT 1 FROM media WHERE key=?) AND NOT EXISTS(SELECT 1 FROM settings, json_each(settings.value,'$.paths') WHERE settings.key='static_publication' AND json_each.value=? AND ? IS NULL) AND NOT EXISTS(SELECT 1 FROM settings WHERE key='publication_lock' AND json_extract(value,'$.expires')>?)"+siteGuard;
+  const baseArgs=[old,image.etag,image.uploaded,image.size,name,'/media/'+name,replacement?'replacement':null,Date.now(),...siteArgs];
   if(replacement){
-   const uploadId=crypto.randomUUID(),etag=[...new Uint8Array(await crypto.subtle.digest('SHA-256',replacement.bytes as BufferSource))].map(v=>v.toString(16).padStart(2,'0')).join(''),uploaded=new Date().toISOString();
-   await commit(env,pages,components,editor,marker=>{
-    const statements=[env.DB.prepare('DELETE FROM media_chunks WHERE upload_id=? AND EXISTS(SELECT 1 FROM settings WHERE key=?)').bind(image.upload_id,marker),env.DB.prepare('UPDATE media SET key=?,content_type=?,size=?,uploaded=?,data=?,upload_id=?,etag=?,chunk_count=? WHERE key=? AND EXISTS(SELECT 1 FROM settings WHERE key=?)').bind(name,type,replacement.bytes.length,uploaded,'',uploadId,etag,Math.ceil(replacement.bytes.length/MEDIA_CHUNK_SIZE),old,marker)];
-    for(let i=0;i<replacement.bytes.length;i+=MEDIA_CHUNK_SIZE)statements.push(env.DB.prepare('INSERT INTO media_chunks(upload_id,chunk_index,data) SELECT ?,?,? WHERE EXISTS(SELECT 1 FROM settings WHERE key=?)').bind(uploadId,i/MEDIA_CHUNK_SIZE,replacement.bytes.slice(i,i+MEDIA_CHUNK_SIZE).buffer,marker));return [...statements,...siteWrites(marker)];
-   },baseGuard+' AND (SELECT bytes FROM media_usage WHERE id=1)-?+?<=?',[...baseArgs,image.size,replacement.bytes.length,MEDIA_TOTAL_LIMIT]);return {pages:pages.length,components:components.length};
+   const uploaded=new Date(Math.max(Date.now(),(Date.parse(image.uploaded)||0)+1)).toISOString();
+   await commit(env,pages,components,editor,marker=>[env.DB.prepare('UPDATE media SET key=?,content_type=?,size=?,uploaded=?,etag=?,hash=?,width=?,height=?,source=NULL WHERE key=? AND EXISTS(SELECT 1 FROM settings WHERE key=?)').bind(name,replacement.content_type,replacement.size,uploaded,replacement.etag,replacement.hash,replacement.width,replacement.height,old,marker),...siteWrites(marker)],baseGuard,baseArgs);
+   return {pages:pages.length,components:components.length};
   }
-  await commit(env,pages,components,editor,marker=>[env.DB.prepare('UPDATE media SET key=? WHERE key=? AND EXISTS(SELECT 1 FROM settings WHERE key=?)').bind(name,old,marker),...siteWrites(marker)],baseGuard,baseArgs);
+  // Same content, new name: until the next build the file is still served from where it was.
+  await commit(env,pages,components,editor,marker=>[env.DB.prepare('UPDATE media SET key=?,source=? WHERE key=? AND EXISTS(SELECT 1 FROM settings WHERE key=?)').bind(name,renamedSource(image),old,marker),...siteWrites(marker)],baseGuard,baseArgs);
   return {pages:pages.length,components:components.length};
 }
 export async function removeCategory(env:Env,category:string,editor:string) {

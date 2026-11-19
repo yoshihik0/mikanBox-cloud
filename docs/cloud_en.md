@@ -1,6 +1,6 @@
 <style>.manual-version{font-size:.5em;font-weight:400;white-space:nowrap}</style>
 
-# 🍊mikanBox Cloudflare Manual <small class="manual-version">v0.12.1</small>
+# 🍊mikanBox Cloudflare Manual <small class="manual-version">v0.13.0</small>
 
 This manual covers installation and the Cloudflare edition’s differences. For shared operations, see the [operation manual](https://yoshihiko.com/mikanbox/help_en.html).
 
@@ -180,56 +180,40 @@ JPEG, PNG and WebP images can be resized and converted to WebP in the browser. U
 
 ### Storage
 
-Pages, history and media (images, and uploaded JS and CSS) are all kept in the D1 database. No payment method has to be registered with Cloudflare to stay within the free plan. Storing media in R2, and the migration from D1 to R2, were removed in v0.12.0.
+Pages, history and settings are kept in the D1 database; media files (images, and uploaded JS and CSS) are kept on the public site. D1 keeps only the information about each media file (name, size and so on). No payment method has to be registered with Cloudflare to stay within the free plan.
 
-- Media may total **400 MB**. The D1 free plan allows 500 MB per database; the rest is for pages, history and database overhead.
-- Site → Storage usage shows the D1 database size and the media usage. The media screen also shows the media usage and the file count.
-- A notice appears from 320 MB of media (80% of the limit) or 450 MB of database. Delete unused media or reduce image sizes; the upload options "Limit long edge to" and "Convert to WebP" store the same image smaller.
-- The figures are this site's own. Check account totals in Cloudflare.
+- Site → Storage usage shows the D1 database size and the total of the media on the public site; a notice appears when the database passes 450 MB.
+- Media may hold files of up to 10 MB each and 10,000 files (Cloudflare's free plan allows 20,000 files of up to 25 MiB each on the public site).
+- The public site is the only place the media is kept. Save it regularly with "Download media" or "JSON backup".
 
-Images keep the stable `/media/filename` public URL. Published images are served from Static Assets; images not yet published are served by the management Worker to signed-in editors. Built page HTML is also served directly from Static Assets. See "Static image delivery" below.
+References: [D1 limits](https://developers.cloudflare.com/d1/platform/limits/), [Workers limits](https://developers.cloudflare.com/workers/platform/limits/).
 
-References: [D1 limits](https://developers.cloudflare.com/d1/platform/limits/), [D1 pricing](https://developers.cloudflare.com/d1/platform/pricing/).
+### Recent operations
 
-### JSON backup and restore
+Site → Recent operations shows the latest 50 of: MCP enabled/stopped and key issued, page public-state changes, devices registered/stopped and codes issued, failed sign-ins, deleted users and data restores (the same items and display as PHP). The oldest are removed beyond 200; IP addresses are partly hidden.
 
-Download a single JSON backup from Site settings and select that file to restore. It includes settings, all pages, components, revisions, HTML snapshots, users and original images. Images transfer in 500KB parts. Both operations start from a confirmation screen. Backups contain private content and authentication hashes: store them securely. From v0.10.3 they no longer contain the MCP API key (JSON backup and data ZIP); a normal restore keeps the current key, and after restoring into another site you issue a new one. The D1 export (SQL) is the database itself and still includes it. Large backups consume browser memory and transfer time; keep the screen open. Metadata is limited to 20MB.
+### Exports and backups
 
-Normal restore preserves current site identity, API key, users and Cloudflare connection. Explicit account restoration also restores users (user IDs and display names); devices of users missing from the backup stop and unused codes are cancelled, while devices of users in the backup keep working. Rebuild afterward. Restore stages and validates data before atomic replacement; missing parts or concurrent edits leave existing data intact. Existing, incoming and other staged images must total at most 450MB, and actual D1 free space may impose a lower limit.
+**Site → Data management**
 
-### D1 database backup
+- **Download data (JSON)**: the text of the settings, pages and components as a ZIP. Importing it with "Content package (ZIP) import" into a new site brings the content back.
+- **Download media**: the published media files together as a ZIP.
 
-D1 SQL export and Time Travel are separate server operations available from Site settings with a token granting D1 edit permission. Free Time Travel covers the previous seven days and restores the whole database, including original images, users and stored connection settings. D1 can be unavailable during SQL export; the UI polls through a short-lived encrypted capability without querying D1. Keep the screen open until completion. Time Travel does not rewind deployed static files; rebuild afterward and verify code/schema compatibility for older snapshots. Uploading a SQL file to restore D1 is not implemented in this admin UI.
+**Data migration and import**
 
-Publication, backup and restore consume Worker requests and D1 reads/writes. Static delivery is free, but updates remain subject to account-wide daily limits. Updating the maximum 20,000 files daily is not guaranteed within the Free tier.
+- **Export the public site**: downloads the public site as it is now, as a ZIP.
+- **Export the D1 database as SQL**: the whole database (pages, settings, accounts, media information) as one SQL file. To restore it, load it into a Cloudflare database with `wrangler d1 execute`. The media files themselves are not included.
+- **JSON backup**: everything of the site, images included, as one JSON file. It is not encrypted and contains private content; the MCP API key is not included.
+- **Restore a JSON backup**: the file is checked as a whole first; a damaged file stops without changing anything. Then the current site (images included) is replaced by the backup and the public site is updated. If it stops partway, restore again with the same file. The site ID, MCP API key and Cloudflare connection stay. "Also restore users" restores user IDs and display names too; devices of users missing from the backup stop.
+- **Restore D1 to a past time**: returns the database to a time within Cloudflare's retention period (the last 7 days on the free plan). The public site is not changed; build the site afterwards.
 
-### Static HTML ZIP export
-
-After a build, open the Data migration and import screen and choose Download static ZIP under Static HTML (ZIP). Choose `ID.html` or `ID/index.html`. The root `index` exports as `index.html`; directory-style IDs ending in `/index` retain `directory/index.html`. Output path collisions fail clearly.
-
-Only currently public_static, already-built snapshots are included. Links to included pages, images and component scripts become relative paths. Referenced images and public assets are bundled. Dynamic pages, search and APIs retain live-site links. Credentials, settings, users and private pages are excluded. ZIP pages do not register WebMCP; AI question controls become links to Cloud help.
-
-The complete ZIP is limited to 20 MB and a bounded image-query budget. Missing assets fail rather than returning an incomplete ZIP. Arbitrary runtime JavaScript requests and string-style CSS `@import` are not automatically converted. This is a static site export, not a full D1 backup.
-
-macOS metadata files inside `__MACOSX` or starting with `._` are ignored automatically.
-
-Open “How to arrange files in the ZIP” on the import screen to see the folder layout and resulting page IDs.
+The browser reads each file from the public site and builds the ZIP or backup itself, so the size of a site sets no limit (a large site takes time; keep the screen open until it finishes).
 
 ### Interrupted updates and restores
 
-JSON restoration stages incoming data separately and replaces current data together only after validation. If communication fails while transferring images, select the backup file again and restart restoration. Reopening the screen does not resume at the previous transfer position.
+If only the final restoration response is lost, the screen checks once more by itself and never restores twice. If the screen says the data is restored but publication failed, restore again with the same file.
 
-If only the final restoration response is lost, the browser retries the same operation once and checks its recorded completion result. A completed restoration is not performed again, so later edits are not overwritten. If completion cannot be confirmed, reload and inspect pages and images before retrying. Restoring users may require signing in again.
-
-If the screen says that restoration completed but publication failed, the restored data remains in place. Retry the site build from the page list instead of importing the backup again.
-
-Program updates run the build, pending database migrations, and management Worker deployment in that order. A failed build leaves the database unchanged. If deployment fails after migrations, applied database changes remain. Inspect the failed step in the log, resolve its cause such as connectivity or permissions, and rerun the same update procedure. Do not remove migration records or repeat initial setup.
-
-The import/export screen follows SQLite’s status cards, ZIP import, WordPress XML import and execution log, followed by Cloud-specific complete JSON backup/restore (CSV conversion is under Site → CSV import, as in PHP). ZIP/XML add content while retaining existing IDs; images, accounts and site settings are not imported. Limits: 20 MB files, 15 MB ZIP expansion, 1 MB imported content and 300 records. Settings fields and category add-button alignment use the shared PHP CSS.
-
-Changing an unpublished image needs no Cloudflare publication settings. Deleting or renaming a published image publishes a withdrawal, so it does require the connection. Renaming uses the reference confirmation dialog. See “Storage” for storage limits.
-
-
+Program updates run the build, pending database migrations, and management Worker deployment in that order. A failed build leaves the database unchanged.
 
 ### Cloud-specific MCP
 
@@ -239,7 +223,7 @@ Current tools: `get_site_info`, `list_pages`, `get_page`, `create_page`, `update
 
 SQLite-style flat field arguments and legacy `id` plus `data` are both accepted; do not specify the same field in both. Updates preserve unspecified fields. Call `get_site_info`, then `get_ai_context` on connection. AI document IDs may omit `.md`. `get_settings` excludes credentials and API keys, but includes working notes for authenticated AI clients. Editing requires exact IDs rather than public directory aliases.
 
-`upload_media` accepts `filename` and `content_base64`, up to 10 MB for JPEG, PNG, GIF, WebP and SVG. Optional `category` allows ASCII letters, digits, underscores and hyphens and prefixes the filename. Duplicates fail instead of being overwritten. Large Base64 images have higher transfer and processing costs; use the ordinary media upload form as well. Audio/video and duplicate-name numbering differ from PHP. Administration aliases `/mikanBox/mcp` and `/mikanBox/mcp.php` require the same key.
+`upload_media` accepts `filename` and `content_base64`, up to 10 MB for JPEG, PNG, GIF, WebP, SVG and UTF-8 JS/CSS, and puts the file on the public site at once (when the site was never published, or Cloudflare asks for other files again, it says to build from the admin screen). Optional `category` allows ASCII letters, digits, underscores and hyphens and prefixes the filename. Duplicates fail instead of being overwritten. Large Base64 images have higher transfer and processing costs; use the ordinary media upload form as well. Audio/video and duplicate-name numbering differ from PHP. Administration aliases `/mikanBox/mcp` and `/mikanBox/mcp.php` require the same key.
 
 Check the Cloud site's identity with `get_site_info` before writing. Its `version` changes when the product is updated: if it differs from the one you last saw, read the tool list and `get_ai_context` again. `preview_page` (read-only) shows how a page will be served in its output format before saving or publishing: with only `id` it is the saved page, with fields it renders them without saving (a new `id` works too; a title is then required). `get_ai_context` ends with a built-in document, `mikanbox-output-formats`, explaining how to choose `output_format`. Do not reuse the official site ID. A Cloud API key grants administrative content operations and must remain private.
 
@@ -272,59 +256,27 @@ See [Media](https://yoshihiko.com/mikanbox/help_en.html#media-mgmt) for shared o
 
 ### Image uploads and limits
 
-A page ID such as `test/index` works at `/test/index.html`, `/test/index/`, `/test/`, and `/test` once built. Static pages require a build. An exact `test` page takes precedence when present. These URLs resolve D1 pages; they do not create physical directories or HTML files.
+Choose an image in the media section or drag it onto the screen. The file is sent to the public site first and appears in the media list once it is confirmed there (images used only in drafts are published too; do not upload images that must remain private). If it cannot be sent, nothing is recorded. Click a filename to copy it; use `![Description](filename.png)` or `{{IMAGE:filename.png}}` in content.
 
-Choose an image in the media section or drag it onto the screen. Click its filename to copy it; use `![Description](filename.png)` or `{{IMAGE:filename.png}}` in page content. A Download link saves each file individually.
+- Each file: **10 MB**, up to **10,000 files**.
+- Formats: **JPEG, PNG, GIF, WebP, SVG** and UTF-8 **JS/CSS**. Extension and leading format signature must match. Audio/video are not supported.
+- Duplicate names are rejected.
+- When the site was never published, the first upload builds and publishes the whole site.
 
-The type filter and filename search sit in the heading row (the list follows what you type); category filtering and pagination use the configured media page size. The supported formats are explained inside Upload options. Files can be dropped only on the media section; elsewhere the pointer shows that dropping is not possible. Categories match images referenced by pages in that category or filenames starting with the category name and an underscore.
+### Media editing
 
-In D1 storage, Rename updates references in page content, CSS, JavaScript, OGP images and components. It cannot overwrite another file or change extensions. Memos and previous revisions remain unchanged; affected pages get new revisions. A lock or concurrent change cancels every write, including the image rename. Rebuild affected static pages; component changes invalidate all static snapshots. Large reference sets can exceed the operation limit. External sites and dynamically constructed JavaScript URLs are not updated.
+Resizing and WebP conversion run in the browser; the processed image is sent to the public site, then replaces the image in the list. WebP conversion asks for confirmation first. Renaming updates references in page content, CSS, JavaScript, OGP images and components; it cannot overwrite another file or change extensions.
 
-- Each image: **10 MB** (10,000,000 bytes).
-- Media: **400 MB** total and **10,000 files**.
-- Formats: **JPEG, PNG, GIF, WebP, SVG**. Extension and leading format signature must match. D1 audio/video uploads are unsupported.
-- Duplicate names are rejected. Optional browser resizing and WebP conversion are available before storage; the stored original is the processed file.
-- Media ZIP: **20 MB** total, with a file count that fits the request query budget (about 20 small images, or two 10 MB images). Download individually when exceeded.
+### Media on the public site
 
-Static builds add `width`, `height` and loading hints to local images (JPEG, PNG, GIF, WebP; not SVG), as the PHP editions do: the first large image gets `fetchpriority="high"`, later ones `loading="lazy"`. This applies to `![alt](filename)` and `{{IMAGE:}}`; a hand-written `<img>` is left alone. The size is read from the start of the image file and is not stored. One build looks up at most 30 images; any beyond that get no attributes. Live (unbuilt) rendering and the admin preview do not add them.
-
-The 400 MB media allowance reserves space for content, history and database overhead. Platform storage limits may be reached first.
-
-[D1 Free](https://developers.cloudflare.com/d1/platform/pricing/) includes 5 million rows read/day, 100,000 rows written/day, and 5 GB account-wide storage. [Workers Free](https://developers.cloudflare.com/workers/platform/limits/) allows 100,000 requests/day. D1 image reads use one row per 500 KB chunk. Allowances are shared with other account applications. Free-plan daily exhaustion stops operations until reset. The application does not change your plan automatically. Existing Paid contracts remain subject to their pricing.
-
-Images are published after upload, including images used only in drafts. Do not upload images that must remain private. JavaScript and CSS files are published when the site is built.
-
-Media omits the image conversion note and maximum-file-size line, and explains using files on a page: a bare filename in Markdown and `media/filename` in HTML. Existing `images/filename` references for images remain supported.
-
-When renaming or converting to WebP, an existing target filename stops the operation before the original or published image is withdrawn. If a page whose references would change is being edited, save and close its editor first. Errors remain visible beside the image action.
-
-### Media editing and categories
-
-
-
-The media list retains its scroll position where possible after an operation. Image actions match PHP: “Resize▼”, “Rename▼”, then “Convert to WebP”. WebP conversion appears only for JPEG/PNG; renaming preserves the extension. Conversion uses `.webp` and updates page, component and common OGP references. The top category selection also filters media by filename prefix, while shared `g_` images remain visible; this does not mean only used images. Uploads receive the selected category prefix unless an alphanumeric prefix is already present.
-
-### Static image delivery
-
-Publication includes images. Every stored file is published, including files no page references, because dynamic pages read the same `/media/filename` paths as static pages.
-
-Published images are served from Static Assets. Admin previews can show images before publication. Uploading an image in Media automatically adds that image to the delivery target without rebuilding pages. This needs the Cloudflare publication settings and the last publication state; if the target was changed elsewhere, build the site once. If publication fails, the image remains saved and the admin screen reports that it was not published. MCP uploads do not publish automatically.
-
-The delivery target allows 20,000 files per version and 25 MiB per file. Images are limited to 10 MB each and 10,000 files, so pages and components fit within that budget alongside them.
-
-Renaming or converting a published image keeps the old public image and HTML until the next build. The new image and references are saved in the admin, and the next build switches the public site. The old public filename cannot be reused until the build removes it. Deleting a published image still withdraws it from the delivery target first.
-
-Replacing a file under the same name needs no withdrawal, because its public URL does not change. The delivery target keeps the previous content until the next publication.
-
-
+- A renamed or converted image stays on the public site under its old name too until the next build (published pages still refer to it); the next build leaves only the new name. The old name cannot be reused until then.
+- Deleting a published image withdraws it from the public site first; this needs the Cloudflare publication connection.
+- Admin previews show images from the public site. Opening `/media/…` on the admin address leads to the public site.
+- Static builds add `width`, `height` and loading hints to local images, as the PHP editions do.
 
 ### JS and CSS libraries
 
-Media accepts browser-ready `.js` and `.css` files: nonempty UTF-8 text, up to 10 MB each, saved without rewriting code. The admin screen does not execute them. Copy the URL or embed tag from a card and paste tags into page content or component HTML. Uploads do not insert tags automatically. Only trusted administrators and API keys should upload code from a verified source. Format validation does not guarantee safe code.
-
-Code files receive no category prefix, stay visible across category filters, and bypass image conversion. File-type filtering, same-extension renaming, and deletion are available. Existing names are rejected rather than overwritten. Uploading a folder hierarchy is not supported.
-
-Files are stored in D1 and keep `/media/filename` URLs. Complete JSON backup/restore includes them; code fields remain in D1. Static publication serves these files from the deployed static files; see "Static image delivery". Portable static ZIPs include files referenced by HTML.
+Media accepts browser-ready `.js` and `.css` files: nonempty UTF-8 text, up to 10 MB each, kept as they are and put on the public site at once, like images. The admin screen does not execute them. No category prefix or image conversion applies. The public URL is `/media/filename`.
 
 ## Tags
 
@@ -424,4 +376,14 @@ Differences from the PHP editions and unused parts tidied up, on the way to a su
 - **"Site URL" was removed from the site settings.** The Cloud edition did not use it; the public address comes from `PUBLIC_SITE_URL` (MCP `get_site_info` returns it too).
 - The "Also restore users" label now says what happens: devices of users missing from the backup stop (not everyone is signed out).
 - **Unused data was removed** (D1 change on update): the R2 column and tables, the password-era user columns (password, security question) and settings such as `site_url`. JSON backups made before 0.12.0 still restore (unneeded fields are skipped).
+
+### Changes in 0.13.0
+
+- **Media is kept only on the public site.** D1 keeps the information about each file. The 400 MB media total is gone (10 MB per file, 10,000 files). Uploads, resizing and WebP conversion show in the list once the file is confirmed on the public site. JS and CSS are published at once, like images.
+- **Build the site before updating.** This update removes the image data kept in D1; update with every media file on the public site (built).
+- **Exports and backups were reorganized.** Site: "Download data (JSON)" and "Download media". Data tool: "Export the public site", "Export the D1 database as SQL", "JSON backup and restore", "Restore D1 to a past time". Media and site exports read from the public site in the browser, so the 20 MB limit is gone. The server-built static HTML ZIP (with its file-structure choice) was removed.
+- **Restoring a JSON backup** replaces the current site, images included; the 450 MB limit is gone. A damaged file stops without changes.
+- **Recent operations** were added to the Site screen (the same items as PHP, up to 200).
+- **WebP conversion asks for confirmation** (in all three editions).
+- Every file on the public site allows cross-origin reads (`Access-Control-Allow-Origin: *`), so the admin screen's exports can read it; only published files are concerned.
 

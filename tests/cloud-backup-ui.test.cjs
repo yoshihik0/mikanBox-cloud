@@ -1,27 +1,46 @@
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
-const {environment,login,post}=require('./fixtures.cjs');
-const {savePage,uploadMedia,getMediaObject}=require('../.test-build/src/storage.js');
-test('admin backup restores staged original bytes through authenticated actions',async()=>{
- const env=environment(),auth=await login(env),image=Uint8Array.from(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+X2ioAAAAASUVORK5CYII=','base64'));
- await uploadMedia(env,'original.png',image.buffer,'image/png');
- const manifest=(await post(env,auth,{save_action:'download_backup_json'})).data.manifest;
- const part=(await post(env,auth,{save_action:'backup_media_part',file:'original.png',index:'0',expected:JSON.stringify(manifest.media[0])})).data.part;
- await savePage(env,'later',{title:'Later',status:'draft'});
- const stage=(await post(env,auth,{save_action:'restore_backup_json',manifest:JSON.stringify(manifest)})).data.stage;
- assert.ok(stage);assert.equal((await post(env,auth,{save_action:'backup_restore_part',stage,part:JSON.stringify(part)})).data.success,true);
- const result=await post(env,auth,{save_action:'backup_restore_commit',stage});assert.equal(result.data.success,true);
- assert.equal(env.sqlite.prepare("SELECT id FROM posts WHERE id='later'").get(),undefined);
- assert.deepEqual(new Uint8Array(await(await getMediaObject(env,'original.png')).arrayBuffer()),image);
+const {environment,login,post,putMedia}=require('./fixtures.cjs');
+const {savePage}=require('../.test-build/src/storage.js');
+const {getMedia}=require('../.test-build/src/media-store.js');
+const image=Uint8Array.from(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+X2ioAAAAASUVORK5CYII=','base64'));
+// Runs the real cloud-backup.js: admin actions go to the Worker, media reads go to the mock public site (env.publicFiles).
+function browser(env,auth,{publish,form,file,intercept}={}){
+ let handler,blob,reloaded=false;const output={};
+ const target=form||{dataset:{cloudbackup:'export'},querySelector:()=>output,querySelectorAll:()=>[]};
+ class Fields extends FormData{constructor(input){super();if(input===target&&file)this.set('backup_file',file);}}
+ const context={FormData:Fields,File,Blob,TextDecoder,TextEncoder,Uint8Array,Map,URL,crypto:globalThis.crypto,btoa,atob,setTimeout,
+  location:{reload(){reloaded=true;},set href(v){reloaded=true;}},
+  window:{MikanUI:{confirm:async()=>true},CSRF_TOKEN:auth.csrf_token,PUBLIC_SITE_URL:'https://www.cloud.test',showToast(){},mikanDownload(value){blob=value;},cloudPublish:publish||(async()=>{})},
+  document:{documentElement:{lang:'en'},addEventListener(type,listener){if(type==='submit')handler=listener;}},
+  fetch:async(url,init={})=>{
+   if(String(url).startsWith('https://www.cloud.test/')){const bytes=env.publicFiles?.get(decodeURIComponent(new URL(url).pathname));return bytes?new Response(bytes):new Response('',{status:404});}
+   const data=Object.fromEntries(init.body),response=intercept?await intercept(data,()=>post(env,auth,data)):await post(env,auth,data);return new Response(JSON.stringify(response.data),{status:response.response.status});
+  }};
+ context.globalThis=context;
+ vm.runInNewContext(fs.readFileSync('public/mikanbox/cloud-backup.js','utf8'),context);
+ return {run:async()=>{await handler({target,preventDefault(){},stopImmediatePropagation(){}});return {output,blob:()=>blob,reloaded:()=>reloaded};},target,output};
+}
+test('the browser saves one JSON file with the media from the public site, and restores it, publishing the media from that file',async()=>{
+ const env=environment(),auth=await login(env);await putMedia(env,'one.png',image);await savePage(env,'kept',{title:'Backup',status:'draft'});
+ const saved=await browser(env,auth).run();const text=await saved.blob().text();
+ const backup=JSON.parse(text);assert.equal(backup.manifest.media[0].key,'one.png');assert.equal(backup.parts.length,1);assert.equal(Buffer.from(backup.parts[0].content_base64,'base64').length,image.length);
+ await savePage(env,'kept',{title:'Changed',status:'draft'});env.sqlite.exec("DELETE FROM media");
+ let published=null;
+ const form={dataset:{cloudbackup:'restore'},querySelector:()=>({}),querySelectorAll:()=>[]};
+ const restore=browser(env,auth,{form,file:new File([text],'backup.json'),publish:async(rebuild,excluded,mediaOnly,options)=>{published={rebuild,file:await options.source('/media/one.png')};}});
+ const done=await restore.run();
+ assert.equal(JSON.parse(env.sqlite.prepare("SELECT data FROM posts WHERE id='kept'").get().data).title,'Backup');
+ assert.ok(await getMedia(env,'one.png'));assert.equal(published.rebuild,true);assert.deepEqual(Buffer.from(published.file.bytes),Buffer.from(image));assert.equal(done.reloaded(),true);
 });
-test('browser creates a standard JSON file and streams it back through restore actions',async()=>{
- const source=fs.readFileSync('public/mikanbox/cloud-backup.js','utf8');let handler,download,blob,downloadUrl;const calls=[];
- const part={key:'one.png',index:0,content_base64:'AAAA',sha256:'hash'},manifest={media:[{key:'one.png',chunk_count:1}]};
- const context={FormData,File,Blob,TextDecoder,Uint8Array,URL:{createObjectURL(value){blob=value;return downloadUrl='blob:test';},revokeObjectURL(){}},setTimeout(){},confirm:()=>true,location:{reload(){}},window:{MikanUI:{confirm:async()=>true,toast(){},refresh:async()=>{}},refreshPageList:async()=>{},CSRF_TOKEN:'csrf'},document:{documentElement:{lang:'en'},addEventListener(name,callback){handler=callback;},createElement(){return download={click(){}};}},fetch:async(url,init)=>{const name=init.body.get('save_action');calls.push({name,body:init.body});let result={success:true};if(name==='download_backup_json')result.manifest=manifest;if(name==='backup_media_part')result.part=part;if(name==='restore_backup_json')result.stage='stage';return {ok:true,json:async()=>result};}};
- vm.runInNewContext(source,context);
- async function submit(kind,file){const data=new FormData();data.set('current_password','pw');if(file)data.set('backup_file',file);const output={};const form={dataset:{cloudbackup:kind},querySelector:()=>output,querySelectorAll:()=>[]};context.FormData=class extends FormData{constructor(input){super();if(input===form)for(const [k,v] of data)this.set(k,v);}};await handler({target:form,preventDefault(){},stopImmediatePropagation(){}});return output;}
- await submit('export');assert.equal(download.href,downloadUrl);const text=await blob.text();assert.deepEqual(JSON.parse(text),{manifest,parts:[part]});
- const output=await submit('restore',new File([text],'backup.json',{type:'application/json'}));assert.match(output.textContent,/completed/);
- const staged=calls.find(call=>call.name==='backup_restore_part');assert.deepEqual(JSON.parse(staged.body.get('part')),part);assert.ok(calls.some(call=>call.name==='backup_restore_commit'));
+test('a damaged backup is refused before anything is replaced',async()=>{
+ const env=environment(),auth=await login(env);await putMedia(env,'one.png',image);
+ const text=await(await browser(env,auth).run()).blob().text(),backup=JSON.parse(text);
+ backup.parts[0].content_base64=Buffer.from('changed').toString('base64');
+ const damaged='{"manifest":'+JSON.stringify(backup.manifest)+',\n"parts":[\n'+JSON.stringify(backup.parts[0])+'\n]}\n';
+ await savePage(env,'current',{title:'Current',status:'draft'});
+ const output={};const form={dataset:{cloudbackup:'restore'},querySelector:()=>output,querySelectorAll:()=>[]};
+ await browser(env,auth,{form,file:new File([damaged],'backup.json')}).run();
+ assert.match(output.textContent,/damaged/);assert.ok(env.sqlite.prepare("SELECT id FROM posts WHERE id='current'").get());
 });
 
 test('JSON backup and restore are available on the authenticated import page and absent from site settings',async()=>{
@@ -34,13 +53,10 @@ test('JSON backup and restore are available on the authenticated import page and
 
 for(const publishFailure of [false,true])test('browser confirms a lost restore response'+(publishFailure?' and identifies a separate publication failure':''),async()=>{
  const env=environment(),auth=await login(env);const manifest=(await post(env,auth,{save_action:'download_backup_json'})).data.manifest;await savePage(env,'later',{title:'Later',status:'draft'});
- let handler,commits=0,stage,reloaded=false;const output={};const file=new File(['{"manifest":'+JSON.stringify(manifest)+',\n"parts":[\n]}\n'],'backup.json');const form={dataset:{cloudbackup:'restore'},querySelector:()=>output,querySelectorAll:()=>[]};
- class Fields extends FormData{constructor(input){super();if(input===form)this.set('backup_file',file);}}
- const context={FormData:Fields,File,Blob,TextDecoder,Uint8Array,confirm:()=>true,location:{reload(){reloaded=true;}},window:{MikanUI:{confirm:async()=>true,toast(){},refresh:async()=>{}},refreshPageList:async()=>{},CSRF_TOKEN:auth.csrf_token,showToast(){},cloudPublish:async()=>{if(publishFailure)throw new Error('Injected publication failure');}},document:{documentElement:{lang:'en'},addEventListener(_,h){handler=h;}},fetch:async(_,init)=>{
-  const data=Object.fromEntries(init.body),name=data.save_action;const response=await post(env,auth,data);if(name==='restore_backup_json')stage=response.data.stage;if(name==='backup_restore_commit'&&++commits===1)throw new Error('Injected lost HTTP response');return {ok:response.response.ok,json:async()=>response.data};
- }};
- vm.runInNewContext(fs.readFileSync('public/mikanbox/cloud-backup.js','utf8'),context);await handler({target:form,preventDefault(){},stopImmediatePropagation(){}});
- assert.equal(commits,2);assert.equal(env.sqlite.prepare("SELECT id FROM posts WHERE id='later'").get(),undefined);
- if(publishFailure){assert.match(output.textContent,/Restore completed, but publication failed/);assert.equal(reloaded,false);}else{assert.match(output.textContent,/Restore completed/);assert.equal(reloaded,true);}
- const other=await login(env,'another-editor');assert.equal((await post(env,other,{save_action:'backup_restore_commit',stage})).data.success,false);
+ let commits=0;const output={};const file=new File(['{"manifest":'+JSON.stringify(manifest)+',\n"parts":[\n]}\n'],'backup.json');const form={dataset:{cloudbackup:'restore'},querySelector:()=>output,querySelectorAll:()=>[]};
+ const intercept=async(data,send)=>{const r=await send();if(data.save_action==='backup_restore_commit'&&++commits===1)throw new Error('Injected lost HTTP response');return r;};
+ await browser(env,auth,{form,file,intercept,publish:async()=>{if(publishFailure)throw new Error('Injected publication failure');}}).run();
+ assert.equal(commits,2,'the script asked again after the lost response');
+ assert.equal(env.sqlite.prepare("SELECT id FROM posts WHERE id='later'").get(),undefined);
+ if(publishFailure)assert.match(output.textContent,/data is restored, but publication failed/);else assert.match(output.textContent,/Restore completed/);
 });
