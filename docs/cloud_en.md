@@ -1,6 +1,6 @@
 <style>.manual-version{font-size:.5em;font-weight:400;white-space:nowrap}</style>
 
-# 🍊mikanBox Cloudflare Manual <small class="manual-version">v0.14.0</small>
+# 🍊mikanBox Cloudflare Manual <small class="manual-version">v0.14.1</small>
 
 This manual covers installation and the Cloudflare edition’s differences. For shared operations, see the [operation manual](https://yoshihiko.com/mikanbox/help_en.html).
 
@@ -400,3 +400,7 @@ Differences from the PHP editions and unused parts tidied up, on the way to a su
 - Users are neither saved nor read (users and devices are managed under Devices and users).
 - **Export the public site** has "Use relative paths".
 - Reading a file no longer reloads the screen.
+
+### Changes in 0.14.1
+
+- "Read" checks setting values as the settings screen does (such as the analytics ID and the number per page), and checks page history like pages.

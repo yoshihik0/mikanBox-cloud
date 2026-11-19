@@ -53,4 +53,10 @@ test('saved files never carry the MCP API key, and reading one keeps the current
   await transferImportData(env,'replace',{settings:{site_name:'Other',api_key:'evil',site_id:'evil'}},'admin');
   const now=await loadSettings(env);
   assert.equal(now.site_name,'Other');assert.equal(now.api_key,'DUMMY-LIVE-MCP-KEY-0123456789','the live key is unchanged');assert.equal(now.site_id,'site-keep');
+  // Values are checked as the settings screen checks them; history entries are checked like pages.
+  await transferImportData(env,'overwrite',{settings:{tracking_id:'"><script>x</script>',pages_per_page:-5}},'admin');
+  const checked=await loadSettings(env);assert.notEqual(checked.tracking_id,'"><script>x</script>');assert.notEqual(checked.pages_per_page,-5);
+  await transferImportData(env,'replace',{pages:[{id:'p',data:{title:'P',status:'draft'}}],revisions:[{id:'p',items:[{created_at:'not a date',editor:'x',data:{title:'A'}},{created_at:'2026-01-01T00:00:00Z',editor:'<b>e</b>',data:{title:'B',status:'draft',evil:'x'}}]}]},'admin');
+  const rows=env.sqlite.prepare("SELECT data,editor_id FROM post_revisions WHERE post_id='p'").all();
+  assert.equal(rows.length,1);assert.equal(JSON.parse(rows[0].data).evil,undefined);assert.equal(rows[0].editor_id,'beb');
 });

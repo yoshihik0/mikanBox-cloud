@@ -1,7 +1,7 @@
 import {audit,recentAudit} from '../audit';
 import {mcpLastUsed} from '../mcp';
 import {latestCloudRelease,cloudUpdateUrl} from '../cloud-release';
-import {transferExport,transferImportData,transferImportMedia,transferFinish,transferMode} from '../data-transfer';
+import {transferExport,transferImportData,transferImportMedia,transferFinish,transferMode,TRANSFER_PART_LIMIT} from '../data-transfer';
 import {cloudConfigured,saveCloudToken,cloudTarget,beginD1Export,pollD1Export,prepareD1Download,openD1Download,d1Restore,cloudToken} from '../cloudflare-api';
 import {beginPublication,hashPublicationFiles,preparePublication,uploadPublicationFile,finishPublication,cancelPublication} from '../publication-service';
 import {inspectMedia,getMedia,addMedia,replaceMedia,deleteMedia} from '../media-store';
@@ -171,7 +171,7 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
         case 'publication_cancel': await cancelPublication(env,val(form,'publication_lease'),auth.user.username);return json({success:true});
         // Data tool (data-transfer.ts, data-transfer.js): Save and Read.
         case 'transfer_export': return json({success:true,...await transferExport(env,val(form,'include_revisions')==='1')});
-        case 'transfer_import_data': return json({success:true,...await transferImportData(env,transferMode(val(form,'mode')),JSON.parse(val(form,'part')||'{}'),auth.user.username)});
+        case 'transfer_import_data': {const raw=val(form,'part')||'{}';if(raw.length>TRANSFER_PART_LIMIT.bytes)throw new Error('The part is too large.');return json({success:true,...await transferImportData(env,transferMode(val(form,'mode')),JSON.parse(raw),auth.user.username)});}
         case 'transfer_import_media': {
           const file=form.get('file');if(!(file instanceof File))throw new Error(t('err_upload_failed'));
           return json({success:true,outcome:await transferImportMedia(env,transferMode(val(form,'mode')),val(form,'name'),new Uint8Array(await file.arrayBuffer()))});

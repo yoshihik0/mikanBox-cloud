@@ -1,6 +1,6 @@
 <style>.manual-version{font-size:.5em;font-weight:400;white-space:nowrap}</style>
 
-# 🍊mikanBox Cloudflare版 マニュアル <small class="manual-version">v0.14.0</small>
+# 🍊mikanBox Cloudflare版 マニュアル <small class="manual-version">v0.14.1</small>
 
 このマニュアルはCloudflare版の導入と、PHP版との違いを説明します。共通の操作は[操作マニュアル](https://yoshihiko.com/mikanbox/help_ja.html)も参照してください。flat版・SQLite版との使い分けは、[README](https://github.com/yoshihik0/mikanBox-cloud#readme)を参照してください。
 
@@ -553,3 +553,7 @@ PHP版2.20.0に合わせて、管理画面のページ一覧の並びを変え�
 - ユーザーは、書き出しにも読み込みにも含めません（ユーザーと端末は「端末とユーザー」で管理します）。
 - **公開サイトの書き出し**に「相対パスにする」を付けました。
 - 読み込みのあと、画面は読み込み直しません。
+
+### 0.14.1の変更
+
+- 「読み込み」で、設定の値を、サイト設定の画面と同じ決まりで確かめるようにしました（アクセス解析のIDや、1ページの件数など）。ページの履歴も、ページと同じ決まりで確かめます。

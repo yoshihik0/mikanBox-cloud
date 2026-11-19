@@ -5,6 +5,7 @@ import {inspectMedia} from './media-store';
 import {MEDIA_COUNT_LIMIT} from './media-policy';
 import {normalizeImportedPage,normalizeImportedComponent} from './content-import';
 import {audit} from './audit';
+import {trackingIdValid} from './tracking';
 /**
  * Data tool: Save and Read, the same as the PHP editions (shared/lib/data-transfer.php). One ZIP layout:
  * data/settings.json (content settings only), data/posts/<id>.json, data/components/<id>.json,
@@ -37,11 +38,21 @@ export async function transferExport(env:Env,withHistory:boolean){
 }
 
 /** One part of the data: {settings?, pages, components, revisions}. */
+/** The browser sends about 1 MB at a time; larger parts are refused. */
+export const TRANSFER_PART_LIMIT={bytes:4_000_000,records:1000};
 export async function transferImportData(env:Env,mode:TransferMode,part:Record<string,unknown>,editor:string){
+ const count=(value:unknown)=>Array.isArray(value)?value.length:0;
+ if(count(part.pages)+count(part.components)+count(part.revisions)>TRANSFER_PART_LIMIT.records)throw new Error('The part is too large.');
  const result={pages:0,components:0,skipped:0,refused:[] as string[],settings:false};
  if(mode!=='add'&&part.settings&&typeof part.settings==='object'){
   const current=await loadSettings(env) as Record<string,unknown>;
-  for(const [key,value] of Object.entries(contentSettings(part.settings as Record<string,unknown>)))if(value===null||['string','number','boolean'].includes(typeof value))current[key]=value;
+  for(const [key,value] of Object.entries(contentSettings(part.settings as Record<string,unknown>))){
+   if(!(value===null||['string','number','boolean'].includes(typeof value))||(typeof value==='string'&&value.length>300_000))continue;
+   // Values are checked as the settings screen checks them.
+   if(key==='tracking_id'&&!trackingIdValid(String(value??'')))continue;
+   if((key==='pages_per_page'||key==='media_per_page')&&!(Number.isInteger(Number(value))&&Number(value)>=1&&Number(value)<=1000))continue;
+   current[key]=value;
+  }
   result.settings=await saveSettings(env,current as Settings);
  }
  const now=new Date().toISOString(),added=new Set<string>(),statements:D1PreparedStatement[]=[];
@@ -73,8 +84,11 @@ export async function transferImportData(env:Env,mode:TransferMode,part:Record<s
  for(const entry of Array.isArray(part.revisions)?part.revisions:[]){
   if(!entry||typeof entry.id!=='string'||!Array.isArray(entry.items)||!(mode==='replace'||added.has(entry.id)))continue;
   for(const item of entry.items.slice(-10)){
-   if(!item||typeof item.created_at!=='string'||!item.data||typeof item.data!=='object')continue;
-   statements.push(env.DB.prepare('INSERT INTO post_revisions(post_id,data,created_at,editor_id) SELECT ?,?,?,? WHERE EXISTS(SELECT 1 FROM posts WHERE id=?)').bind(entry.id,JSON.stringify(item.data),item.created_at,String(item.editor||'').slice(0,80),entry.id));
+   // History entries are page data like any other: checked the same way, with a real date.
+   if(!item||typeof item.created_at!=='string'||Number.isNaN(Date.parse(item.created_at))||!item.data||typeof item.data!=='object')continue;
+   let data:PageData;try{data=normalizeImportedPage(item.data);}catch{continue;}
+   const author=String(item.editor||'').replace(/[^A-Za-z0-9_.@-]/g,'').slice(0,80);
+   statements.push(env.DB.prepare('INSERT INTO post_revisions(post_id,data,created_at,editor_id) SELECT ?,?,?,? WHERE EXISTS(SELECT 1 FROM posts WHERE id=?)').bind(entry.id,JSON.stringify(data),new Date(item.created_at).toISOString(),author,entry.id));
   }
  }
  if(statements.length)await env.DB.batch(statements);
