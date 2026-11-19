@@ -196,7 +196,7 @@ Site → Recent operations shows the latest 50 of: MCP enabled/stopped and key i
 
 **Site → Data management**
 
-- **Download data (JSON)**: the text of the settings, pages and components as a ZIP. Importing it with "Content package (ZIP) import" into a new site brings the content back.
+- **Download data (JSON)**: the text of the settings, pages and components as a ZIP (page history and users are not included). Importing it with "Content package (ZIP) import" into a new site brings the content back.
 - **Download media**: the published media files together as a ZIP.
 
 **Data migration and import**
