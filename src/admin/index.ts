@@ -1,7 +1,7 @@
 import {audit,recentAudit} from '../audit';
 import {mcpLastUsed} from '../mcp';
 import {latestCloudRelease,cloudUpdateUrl} from '../cloud-release';
-import {transferExport,transferImportData,transferImportMedia,transferFinish,transferMode,TRANSFER_PART_LIMIT} from '../data-transfer';
+import {transferExport,transferImportData,transferImportMedia,transferRecordMedia,transferFinish,transferMode,TRANSFER_PART_LIMIT} from '../data-transfer';
 import {cloudConfigured,saveCloudToken,cloudTarget,beginD1Export,pollD1Export,prepareD1Download,openD1Download,d1Restore,cloudToken} from '../cloudflare-api';
 import {beginPublication,hashPublicationFiles,preparePublication,uploadPublicationFile,finishPublication,cancelPublication} from '../publication-service';
 import {inspectMedia,getMedia,addMedia,replaceMedia,deleteMedia} from '../media-store';
@@ -174,8 +174,9 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
         case 'transfer_import_data': {const raw=val(form,'part')||'{}';if(raw.length>TRANSFER_PART_LIMIT.bytes)throw new Error('The part is too large.');return json({success:true,...await transferImportData(env,transferMode(val(form,'mode')),JSON.parse(raw),auth.user.username)});}
         case 'transfer_import_media': {
           const file=form.get('file');if(!(file instanceof File))throw new Error(t('err_upload_failed'));
-          return json({success:true,outcome:await transferImportMedia(env,transferMode(val(form,'mode')),val(form,'name'),new Uint8Array(await file.arrayBuffer()))});
+          return json({success:true,...await transferImportMedia(env,transferMode(val(form,'mode')),val(form,'name'),new Uint8Array(await file.arrayBuffer()))});
         }
+        case 'transfer_record_media': return json({success:true,recorded:await transferRecordMedia(env,JSON.parse(val(form,'media')||'[]'))});
         case 'transfer_import_finish': return json({success:true,deleted:await transferFinish(env,transferMode(val(form,'mode')),JSON.parse(val(form,'keep')||'{}'),auth.user.username,request)});
         case 'save_cloud_connection': {
           const target=cloudTarget(env);if(val(form,'cloud_account_id')!==target.account||val(form,'cloud_worker_name')!==target.worker)throw new Error('Cloudflare target must match this installation.');

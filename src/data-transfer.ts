@@ -1,8 +1,8 @@
 import type {Env,PageData,ComponentData,Settings} from './types';
 import {validId,reservedPageId} from './validation';
 import {loadSettings,saveSettings} from './storage';
-import {inspectMedia} from './media-store';
-import {MEDIA_COUNT_LIMIT} from './media-policy';
+import {inspectMedia,publishedHash} from './media-store';
+import {MEDIA_COUNT_LIMIT,validMediaName} from './media-policy';
 import {normalizeImportedPage,normalizeImportedComponent} from './content-import';
 import {audit} from './audit';
 import {trackingIdValid} from './tracking';
@@ -11,8 +11,9 @@ import {trackingIdValid} from './tracking';
  * data/settings.json (content settings only), data/posts/<id>.json, data/components/<id>.json,
  * data/revisions/<page id>.json ([{created_at, editor, data}], when history is included), media/<name>.
  * The browser builds the ZIP from transferExport() and the public site, and reads files with
- * data-transfer.js: data in parts, then each media file, then finish; the media then go to the public
- * site with a publication whose new files come from the file that was read.
+ * data-transfer.js: data in parts, then each media file (checked), then finish; the media then go to the
+ * public site with a full build whose new files come from the file that was read, and are recorded once
+ * the public site carries them (as uploads are: published first, then recorded).
  * Ways to read: add (only what is missing), overwrite (the same ID or name), replace (the site becomes the
  * file, for the kinds the file holds). Users, devices, the site ID and the keys are never read.
  */
@@ -95,16 +96,30 @@ export async function transferImportData(env:Env,mode:TransferMode,part:Record<s
  return result;
 }
 
-/** One media file: checked as on upload and recorded; the publication that follows puts it on the public site. */
-export async function transferImportMedia(env:Env,mode:TransferMode,name:string,bytes:Uint8Array):Promise<'saved'|'skipped'>{
+/**
+ * One media file, checked as on upload. Like an upload it is published first and recorded after
+ * (transferRecordMedia): here it only says whether the file is to be read, and what it is.
+ */
+export async function transferImportMedia(env:Env,mode:TransferMode,name:string,bytes:Uint8Array){
  const file=await inspectMedia(name,bytes);
- const exists=!!await env.DB.prepare('SELECT 1 FROM media WHERE key=?').bind(name).first();
- if(mode==='add'&&exists)return 'skipped';
- const r=await env.DB.prepare(`INSERT INTO media(key,content_type,size,uploaded,etag,hash,width,height,source) SELECT ?,?,?,?,?,?,?,?,NULL WHERE ? OR (SELECT COUNT(*) FROM media)<?
-   ON CONFLICT(key) DO UPDATE SET content_type=excluded.content_type,size=excluded.size,uploaded=excluded.uploaded,etag=excluded.etag,hash=excluded.hash,width=excluded.width,height=excluded.height,source=NULL`)
-  .bind(name,file.content_type,file.size,new Date().toISOString(),file.etag,file.hash,file.width,file.height,exists?1:0,MEDIA_COUNT_LIMIT).run();
- if(!r.meta.changes)throw new Error('ファイル数の上限です。 / The file limit is reached.');
- return 'saved';
+ if(mode==='add'&&await env.DB.prepare('SELECT 1 FROM media WHERE key=?').bind(name).first())return {outcome:'skipped' as const};
+ return {outcome:'pending' as const,media:{name,hash:file.hash,size:file.size,content_type:file.content_type,etag:file.etag,width:file.width,height:file.height}};
+}
+
+/** After the publication: records the files the public site now carries with exactly that content. */
+export async function transferRecordMedia(env:Env,items:unknown){
+ if(!Array.isArray(items)||items.length>MEDIA_COUNT_LIMIT)throw new Error('Invalid media list.');
+ let recorded=0;
+ for(const item of items){
+  if(!item||!validMediaName(String(item.name))||!/^[a-f0-9]{64}$/.test(String(item.etag))||String(item.etag).slice(0,32)!==item.hash)continue;
+  if(await publishedHash(env,'/media/'+item.name)!==item.hash)continue;
+  const exists=!!await env.DB.prepare('SELECT 1 FROM media WHERE key=?').bind(item.name).first();
+  const r=await env.DB.prepare(`INSERT INTO media(key,content_type,size,uploaded,etag,hash,width,height,source) SELECT ?,?,?,?,?,?,?,?,NULL WHERE ? OR (SELECT COUNT(*) FROM media)<?
+    ON CONFLICT(key) DO UPDATE SET content_type=excluded.content_type,size=excluded.size,uploaded=excluded.uploaded,etag=excluded.etag,hash=excluded.hash,width=excluded.width,height=excluded.height,source=NULL`)
+   .bind(item.name,String(item.content_type),Number(item.size),new Date().toISOString(),item.etag,item.hash,Number.isInteger(item.width)?item.width:null,Number.isInteger(item.height)?item.height:null,exists?1:0,MEDIA_COUNT_LIMIT).run();
+  if(r.meta.changes)recorded++;
+ }
+ return recorded;
 }
 
 /** The end of a reading: replace deletes, for each kind the file held, what the file did not have. */

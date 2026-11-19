@@ -1,6 +1,6 @@
 <style>.manual-version{font-size:.5em;font-weight:400;white-space:nowrap}</style>
 
-# 🍊mikanBox Cloudflare Manual <small class="manual-version">v0.14.1</small>
+# 🍊mikanBox Cloudflare Manual <small class="manual-version">v0.14.2</small>
 
 This manual covers installation and the Cloudflare edition’s differences. For shared operations, see the [operation manual](https://yoshihiko.com/mikanbox/help_en.html).
 
@@ -197,7 +197,7 @@ Site → Recent operations shows the latest 50 of: MCP enabled/stopped and key i
 "Save", "Read" and "Export the public site" are the same screen and work as in the PHP editions ([Data Migration & Import Tool](https://yoshihiko.com/mikanbox/help_en.html#data-migration)); a ZIP saved here can be read into a PHP site too. What differs in Cloud:
 
 - **Save**: the browser reads each media file from the public site and puts it in the ZIP. If a public file differs from its record, saving stops: build the site and save again. "Database" saves the whole D1 database (pages, settings, accounts and the media information) as one SQL file, without the media files themselves; load it into a Cloudflare database with `wrangler d1 execute`. It can be chosen once a token with D1 edit permission is set in the Cloudflare publication settings.
-- **Read**: media that are read are sent to the public site at once (the whole site is built). If that fails, read the same file again with "Overwrite items with the same ID". When only pages are read, build the site to update the public pages, as in PHP.
+- **Read**: media that are read are sent to the public site at once (the whole site is built) and join the media list once the public site carries them. If sending fails, the media are not read: read the same file again. When only pages are read, build the site to update the public pages, as in PHP.
 - **Export the public site**: the browser reads the published files from the public site.
 - A large site takes time; keep the screen open until it finishes.
 
@@ -404,3 +404,7 @@ Differences from the PHP editions and unused parts tidied up, on the way to a su
 ### Changes in 0.14.1
 
 - "Read" checks setting values as the settings screen does (such as the analytics ID and the number per page), and checks page history like pages.
+
+### Changes in 0.14.2
+
+- Media read by "Read" join the media list only once the public site carries them, as uploads do. If they cannot be sent to the public site, they are not read (read the same file again).

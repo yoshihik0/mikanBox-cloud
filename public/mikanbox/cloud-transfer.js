@@ -9,7 +9,8 @@
   const json = value => encoder.encode(JSON.stringify(value, null, 2));
   const hex = buffer => [...new Uint8Array(buffer)].map(v => v.toString(16).padStart(2, '0')).join('');
   window.MIKANBOX_ADMIN_ENDPOINT = '/admin';
-  window.MikanTransferPublish = source => window.cloudPublish(true, [], '', { source });
+  // The files read go out with a full build, then are recorded (data-transfer.js calls transfer_record_media).
+  window.MikanTransferPublish = (source, newMedia) => window.cloudPublish(true, [], '', { source, newMedia });
   async function action(values) {
     const data = new FormData();
     for (const [key, value] of Object.entries(values)) data.set(key, value);

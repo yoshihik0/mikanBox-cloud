@@ -29,14 +29,15 @@
  }
  async function digest(bytes){return [...new Uint8Array(await crypto.subtle.digest('SHA-256',bytes))].map(b=>b.toString(16).padStart(2,'0')).join('').slice(0,32);}
  function base64(bytes){let binary='';for(let i=0;i<bytes.length;i+=32768)binary+=String.fromCharCode(...bytes.subarray(i,i+32768));return btoa(binary);}
- // options.newMedia: a media file published before it is recorded ({name,hash,size,content_type}, with options.bytes);
+ // options.newMedia: a media file published before it is recorded ({name,hash,size,content_type}, with options.bytes),
+ // or a list of them with a full build (the data tool; their bytes come from options.source);
  // options.source(path): bytes for media paths from elsewhere (a backup file), or null.
  window.cloudPublish=async(rebuild=true,excluded=[],mediaOnly='',options={})=>{
   if(publishing)throw new Error(ja?'配信更新中です。':'Publication is already running.');publishing=true;let lease='';
   try {
    status(ja?'公開ファイルを準備しています…':'Preparing publication…');const begin=await action('publication_begin',{rebuild:rebuild?'1':'0',excluded,media_only:mediaOnly,...(options.newMedia?{new_media:options.newMedia}:{})});lease=begin.job;
    const byPath=new Map(begin.entries.map(item=>[item.path,item]));
-   const newPath=options.newMedia?'/media/'+options.newMedia.name:'';
+   const newPath=options.newMedia&&!Array.isArray(options.newMedia)?'/media/'+options.newMedia.name:'';
    const source=async path=>path===newPath&&options.bytes?{bytes:options.bytes,type:options.newMedia.content_type}:options.source?await options.source(path):null;
    const unprepared=begin.entries.filter(item=>!item.hash),items=[];
    for(let i=0;i<unprepared.length;i++){

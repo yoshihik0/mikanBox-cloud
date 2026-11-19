@@ -9,7 +9,7 @@ const scripts=['cloud-zip.js','data-transfer.js','cloud-transfer.js'].map(f=>fs.
 function browser(env,auth){
  const handlers=[],toasts=[];let saved=null;
  const window={MikanUI:{confirm:async()=>true,toast:(m,e)=>toasts.push([m,!!e])},CSRF_TOKEN:auth.csrf_token,PUBLIC_SITE_URL:'https://www.cloud.test',
-  cloudPublish:async(rebuild,excluded,mediaOnly,options)=>browserPublish(env,auth,{rebuild,source:options?.source})};
+  cloudPublish:async(rebuild,excluded,mediaOnly,options)=>{if(window.failPublish)throw new Error('Injected publication failure');return browserPublish(env,auth,{rebuild,source:options?.source,newMedia:options?.newMedia});}};
  const context={window,FormData,File,Blob,Response,DataView,DecompressionStream,TextDecoder,TextEncoder,Uint8Array,Map,URL,crypto:globalThis.crypto,setTimeout,
   document:{documentElement:{lang:'en'},addEventListener:(type,fn)=>{if(type==='submit')handlers.push(fn);},body:{append(){}},createElement:()=>({click(){},remove(){}})},
   fetch:async(url,init={})=>{
@@ -24,7 +24,7 @@ function browser(env,auth){
  window.mikanDownload=blob=>{saved=blob;};
  const submit=async form=>{for(const fn of handlers)await fn({target:form,preventDefault(){},stopImmediatePropagation(){}});};
  const fields=values=>{const f=new FormData();for(const [k,v] of Object.entries(values))f.set(k,v);return f;};
- return {toasts,
+ return {toasts,window,
   save:async(contents,history=false)=>{saved=null;const values={contents,...(history?{include_revisions:'1'}:{})};
    const form={dataset:{transfer:'export'},querySelector:()=>null,querySelectorAll:()=>[]};
    const Original=context.FormData;context.FormData=class extends Original{constructor(input){super();if(input===form)for(const [k,v] of fields(values))this.set(k,v);}};
@@ -108,5 +108,22 @@ test('Read: IDs that break the rule and files that are not media are refused, th
   assert.ok(await loadPage(env,'ok'));assert.equal(await loadPage(env,'media/x'),null);
   assert.ok(await getMedia(env,'loose.png'));assert.equal(await getMedia(env,'fake.png'),null);
   const [nothing]=await b.read('add',[new File(['x'],'notes.txt')]);assert.match(nothing,/transfer_nothing/);
+ }finally{cf.restore();}
+});
+
+test('Read: media are recorded only once the public site carries them; a failed publication records nothing',async()=>{
+ const {env,auth,cf}=await site();
+ try{
+  const b=browser(env,auth);
+  b.window.failPublish=true;
+  const [message,error]=await b.read('add',[b.newZip({'media/late.png':png})]);
+  assert.equal(error,true);assert.match(message,/transfer_publish_failed/);
+  assert.equal(await getMedia(env,'late.png'),null,'nothing recorded');assert.ok(!cf.site.has('/media/late.png'));
+  b.window.failPublish=false;
+  await b.read('add',[b.newZip({'media/late.png':png})]);
+  assert.ok(await getMedia(env,'late.png'));assert.ok(cf.site.has('/media/late.png'),'reading again puts it on the public site and records it');
+  // Recording a file the public site does not carry is refused.
+  const r=await post(env,auth,{save_action:'transfer_record_media',media:JSON.stringify([{name:'ghost.png',hash:'a'.repeat(32),etag:'a'.repeat(64),size:3,content_type:'image/png'}])});
+  assert.equal(r.data.recorded,0);assert.equal(await getMedia(env,'ghost.png'),null);
  }finally{cf.restore();}
 });

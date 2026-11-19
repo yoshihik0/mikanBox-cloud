@@ -3,7 +3,7 @@ import {cloudConfigured,cloudResult} from './cloudflare-api';
 import {publicationManifest,readPublicationEntry} from './static-publication';
 import {buildStatic} from './ssg';
 import {publicRequest,assertPublicWorker} from './site-split';
-import {validMediaName,imageType,isCodeMedia,MEDIA_FILE_LIMIT} from './media-policy';
+import {validMediaName,imageType,isCodeMedia,MEDIA_FILE_LIMIT,MEDIA_COUNT_LIMIT} from './media-policy';
 /** A media file published before it is recorded in D1 (upload, resize, conversion): the browser or MCP holds its bytes. */
 export interface NewMedia {name:string;hash:string;size:number;content_type:string}
 interface Job {owner:string;version:string;origin:string;excluded:string[];token?:string;completion?:string;pending?:string[];nextVersion?:string;deployed?:boolean;mediaOnly?:string;routing?:{headers:string;redirects:string};publishedAt?:string|null}
@@ -20,13 +20,20 @@ async function job(env:Env,id:string,owner:string):Promise<Job>{
  if(JSON.parse(lock.value).expires-Date.now()<29*60*1000)await env.DB.prepare("UPDATE settings SET value=? WHERE key='publication_lock' AND json_extract(value,'$.lease')=?").bind(json({lease:id,expires:Date.now()+30*60*1000}),id).run();return state;
 }
 async function saveJob(env:Env,id:string,state:Job){await env.DB.prepare('UPDATE publication_jobs SET state=? WHERE id=?').bind(json(state),id).run();}
-export async function beginPublication(env:Env,request:Request,owner:string,rebuild:boolean,excluded:string[]=[],mediaOnly:string='',extra:NewMedia|null=null){
+/**
+ * extra: media published before they are recorded. One file with mediaOnly (an upload or an edit), or a list
+ * with a full build (files read by the data tool, src/data-transfer.ts).
+ */
+export async function beginPublication(env:Env,request:Request,owner:string,rebuild:boolean,excluded:string[]=[],mediaOnly:string='',extraInput:NewMedia|NewMedia[]|null=null){
+ const list=Array.isArray(extraInput)?extraInput:null,extra:NewMedia|null=Array.isArray(extraInput)?null:extraInput;
  assertPublicWorker(env);
  if(!await cloudConfigured(env))throw new Error('Cloudflare配信用トークンをサイト設定で設定してください。 / Configure the Cloudflare deployment token in Site settings.');
  const version=await activeVersion(env),id=crypto.randomUUID();
  const acquired=await env.DB.prepare("INSERT INTO settings(key,value) VALUES('publication_lock',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value WHERE json_extract(settings.value,'$.expires')<?").bind(json({lease:id,expires:Date.now()+30*60*1000}),Date.now()).run();if(!acquired.meta.changes)throw new Error('Publication is already running.');
  try {
- if(extra&&(!validMediaName(extra.name)||extra.name!==mediaOnly||!/^[a-f0-9]{32}$/.test(extra.hash)||!Number.isInteger(extra.size)||extra.size<1||extra.size>MEDIA_FILE_LIMIT||!/\.(?:jpe?g|png|gif|webp|svg|js|css)$/i.test(extra.name)))throw new Error('Invalid media publication request.');
+ const validNew=(item:NewMedia)=>!!item&&validMediaName(item.name)&&/^[a-f0-9]{32}$/.test(item.hash)&&Number.isInteger(item.size)&&item.size>=1&&item.size<=MEDIA_FILE_LIMIT&&/\.(?:jpe?g|png|gif|webp|svg|js|css)$/i.test(item.name);
+ if(extra&&(!validNew(extra)||extra.name!==mediaOnly))throw new Error('Invalid media publication request.');
+ if(list&&(!rebuild||mediaOnly||list.length>MEDIA_COUNT_LIMIT||!list.every(validNew)))throw new Error('Invalid media publication request.');
  const firstPublication=!(await env.DB.prepare("SELECT value FROM settings WHERE key='static_publication'").first());
  // The first file of a site that was never published goes out with a full build.
  if(mediaOnly&&firstPublication){rebuild=true;}
@@ -34,8 +41,9 @@ export async function beginPublication(env:Env,request:Request,owner:string,rebu
  const manifest=await publicationManifest(env),state:Job={owner,version,origin:new URL(request.url).origin,excluded};
  const old=await env.DB.prepare("SELECT value FROM settings WHERE key='static_publication'").first<{value:string}>();const published=old?JSON.parse(old.value):null;const previous=published?.job;
  const known=previous?(await env.DB.prepare('SELECT path,hash,size,source_version FROM publication_entries WHERE job_id=?').bind(previous).all<{path:string;hash:string;size:number;source_version:string}>()).results:[];
- const newEntry=extra?{path:'/media/'+extra.name,kind:'media' as const,id:extra.name,size:extra.size,hash:extra.hash,source:'',source_version:''}:null;
- let entries=[...manifest.entries.filter(item=>!excluded.includes(item.path)&&item.path!==newEntry?.path).map(item=>({...item,source_version:''})),...(newEntry?[newEntry]:[])];
+ const fresh=(item:NewMedia)=>({path:'/media/'+item.name,kind:'media' as const,id:item.name,size:item.size,hash:item.hash,source:'',source_version:''});
+ const newEntry=extra?fresh(extra):null,newEntries=list?list.map(fresh):newEntry?[newEntry]:[],newPaths=new Set(newEntries.map(item=>item.path));
+ let entries=[...manifest.entries.filter(item=>!excluded.includes(item.path)&&!newPaths.has(item.path)).map(item=>({...item,source_version:''})),...newEntries];
  if(mediaOnly&&!firstPublication){
   if(rebuild||excluded.length||!validMediaName(mediaOnly)||!/\.(?:jpe?g|png|gif|webp|svg|js|css)$/i.test(mediaOnly))throw new Error('Invalid image publication request.');
   if(!previous||published.version!==version||!known.length||known.some(item=>!item.hash||item.size===null))throw new Error('画像を自動公開する前に、サイトを一度ビルドしてください。 / Build the site once before automatic image publication.');
