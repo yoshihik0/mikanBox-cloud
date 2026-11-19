@@ -41,7 +41,6 @@ export interface ComponentData {
 export interface Settings {
   [key: string]: unknown;
   site_id?: string;
-  site_url?: string;
   site_environment?: string;
   category_candidates?: string;
   pages_per_page?: number;
@@ -53,10 +52,9 @@ export interface Settings {
   memo?: string;
   ai_prompt?: string;
   registered_categories?: string;
-  password_hash?: string;
   system_lang?: string;
   ssg_structure?: string;
-  ssg_root_url?: string;
+  mcp_disabled?: boolean;
   _site_base?: string;
 }
 

@@ -95,10 +95,27 @@ async function mergePage(env:Env,settings:Settings,pid:string,incoming:Record<st
   const formatError=validatePageSave(pid,previous?pid:'',saved,createTranslator(getSystemLanguage(settings)));if(formatError)throw new Error(formatError);
   return saved;
 }
+/** Last use of the current key, written at most once an hour (as in PHP) to spare D1 writes. */
+export const MCP_USE_INTERVAL=60*60*1000;
+async function keyHash(key:string){return [...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(key)))].map(v=>v.toString(16).padStart(2,'0')).join('');}
+async function recordMcpUse(env:Env,key:string){
+  const hash=await keyHash(key),now=Date.now();
+  await env.DB.prepare("INSERT INTO settings(key,value) VALUES('mcp_last_used',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value WHERE json_extract(settings.value,'$.key')<>json_extract(excluded.value,'$.key') OR json_extract(settings.value,'$.at')<?")
+    .bind(JSON.stringify({key:hash,at:now}),now-MCP_USE_INTERVAL).run();
+}
+export async function mcpLastUsed(env:Env,key:string):Promise<number>{
+  if(!key)return 0;
+  const row=await env.DB.prepare("SELECT value FROM settings WHERE key='mcp_last_used'").first<{value:string}>();
+  try{const v=JSON.parse(row?.value||'{}');return v.key===await keyHash(key)?Number(v.at)||0:0;}catch{return 0;}
+}
 export async function handleMcp(request:Request,env:Env):Promise<Response> {
   const settings=await loadSettings(env),key=String(settings.api_key||'');
-  if(!key||!verifyCsrf(request.headers.get('Authorization')?.replace(/^Bearer /,'')||'',key))
+  const supplied=request.headers.get('Authorization')?.replace(/^Bearer /,'')||request.headers.get('X-API-Key')||'';
+  if(!key||!verifyCsrf(supplied,key))
     return Response.json({error:'Unauthorized'},{status:401,headers:{'Cache-Control':'no-store'}});
+  // Stopped from Site → MCP API key (as in PHP): the key is kept, every request is refused.
+  if(settings.mcp_disabled)return Response.json({error:'MCP is disabled.'},{status:403,headers:{'Cache-Control':'no-store'}});
+  await recordMcpUse(env,key);
   if(request.method!=='POST')return new Response('Method Not Allowed',{status:405,headers:{Allow:'POST'}});
   let id:unknown=null;
   try {
@@ -125,7 +142,7 @@ export async function handleMcp(request:Request,env:Env):Promise<Response> {
     if(!/^(get_|list_)/.test(name))await checkPublicationLock(env);
     let data:unknown;
     switch(name) {
-      case 'get_site_info':data={site_id:settings.site_id,site_name:settings.site_name,site_url:settings.site_url||new URL(request.url).origin,environment:settings.site_environment||'unspecified',site_environment:settings.site_environment||'unspecified',edition:'cloud',version:CLOUD_VERSION};break;
+      case 'get_site_info':data={site_id:settings.site_id,site_name:settings.site_name,site_url:(env.PUBLIC_SITE_URL||new URL(request.url).origin).replace(/\/$/,''),environment:settings.site_environment||'unspecified',site_environment:settings.site_environment||'unspecified',edition:'cloud',version:CLOUD_VERSION};break;
       case 'list_pages': {
         const pages=(await listPages(env)).map(({id,data:page})=>({id,title:page.title||'',status:page.status||'draft',output_format:pageOutputFormat(page),category:page.category||'',sort_order:page.sort_order||0,updated_at:page.updated_at||''}));
         data={pages,count:pages.length};break;

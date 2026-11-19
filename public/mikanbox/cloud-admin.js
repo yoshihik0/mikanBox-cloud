@@ -83,17 +83,52 @@
       const result=await action('add_category',{category});
       const exists=[...document.querySelectorAll('.category-cloud-tag')].some(tag=>tag.textContent.trim()===category);
       if(!exists){
+        const wrap=document.createElement('span');wrap.className='category-cloud-tag-wrap';
         const tag=document.createElement('a');tag.href='?cat='+encodeURIComponent(category);tag.className='category-cloud-tag';tag.textContent=category;
-        newCategoryInput.closest('.category-control-group').before(tag);
+        const badge=document.createElement('span');badge.className='category-delete-badge';badge.dataset.category=category;badge.textContent='×';
+        wrap.append(tag,badge);newCategoryInput.closest('.category-control-group').before(wrap);
       }
       window.showToast(result.message);
     }catch(error){window.showToast(error.message,true);}
     finally{newCategoryInput.value='';newCategoryInput.style.display='none';addCategoryButton.style.display='inline-flex';}
   });
+  // Deleting categories, as in PHP: "Delete" switches the cloud into delete mode, where
+  // the × mark — or the category itself — deletes it (after a confirmation when pages use it).
+  const deleteCategory=async category=>{
+    try{
+      let result=await action('delete_category',{category});
+      if(result.require_confirm){
+        const toggle=document.querySelector('.btn-toggle-del-cat');
+        if(!await window.MikanUI.confirm(result.message,toggle?.dataset.confirmTitle||'',toggle?.dataset.confirmOk||''))return;
+        result=await action('delete_category',{category,confirmed:'1'});
+      }
+      document.querySelector(`.category-delete-badge[data-category="${CSS.escape(category)}"]`)?.closest('.category-cloud-tag-wrap')?.remove();
+      const url=new URL(location.href);
+      if(url.searchParams.get('cat')===category){
+        for(const key of ['cat','p_pages','p_media','media_all'])url.searchParams.delete(key);
+        history.pushState(null,'',url.pathname+url.search+url.hash);
+        document.querySelectorAll('.category-cloud-tag').forEach(el=>el.classList.remove('active'));document.querySelector('a.category-cloud-tag[href="?cat="]')?.classList.add('active');
+      }
+      await Promise.all([window.refreshPageList(),window.refreshMediaGrid()]);
+      window.showToast(result.message);
+    }catch(error){window.showToast(error.message,true);}
+  };
+  document.addEventListener('click',event=>{
+    const toggle=event.target.closest('.btn-toggle-del-cat');
+    if(toggle){
+      event.preventDefault();
+      const active=document.querySelector('.category-cloud-wrap')?.classList.toggle('delete-mode');
+      toggle.innerHTML=active?toggle.dataset.labelDone:toggle.dataset.labelDelete;toggle.style.color=active?'#15803d':'';toggle.style.borderColor=active?'#bbf7d0':'';
+      return;
+    }
+    const badge=event.target.closest('.category-delete-badge');
+    const inMode=event.target.closest('.category-cloud-wrap.delete-mode .category-cloud-tag-wrap');
+    if(badge||inMode){event.preventDefault();event.stopImmediatePropagation();deleteCategory((badge||inMode.querySelector('.category-delete-badge')).dataset.category);}
+  },true);
   // Choosing a category filters the lists in place (and keeps the URL), as in PHP.
   document.addEventListener('click',async event=>{
     const tag=event.target.closest('.category-cloud-tag');
-    if(!tag||tag.classList.contains('btn-add-cat')||!tag.getAttribute('href'))return;
+    if(!tag||tag.classList.contains('btn-add-cat')||tag.classList.contains('btn-toggle-del-cat')||!tag.getAttribute('href'))return;
     event.preventDefault();
     const url=new URL(tag.href,location.href);
     document.querySelectorAll('.category-cloud-tag').forEach(el=>el.classList.remove('active'));tag.classList.add('active');
@@ -127,14 +162,16 @@
     if(json.issued_code){
       // The section is refreshed here (not by the form) so the code is put into the fresh slot; it is shown once and never fetched again.
       await window.MikanUI.refresh('#users-mgmt');
-      const slot=document.getElementById('issued-code-slot');
+      // Under the button that issued it (own device or invite), as in the SQLite edition.
+      const slot=document.querySelector(`[data-issued-code-slot="${json.issued_invite?'invite':'own'}"]`);
       if(slot){
         slot.textContent='';
-        const box=document.createElement('div');box.setAttribute('role','status');box.style.cssText='background:#ecfdf5;border:1px solid #6ee7b7;border-radius:8px;padding:14px 16px;margin-bottom:18px';
-        const code=document.createElement('div');code.style.cssText='font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:1.6rem;letter-spacing:.12em;font-weight:700;user-select:all';code.textContent=json.issued_code;
-        const note=document.createElement('div');note.className='sub-text';note.style.marginTop='6px';note.textContent=slot.dataset.note||'';
+        const box=document.createElement('div');box.className='issued-code';box.setAttribute('role','status');
+        const code=document.createElement('div');code.className='issued-code-value';code.textContent=json.issued_code;
+        const note=document.createElement('div');note.className='sub-text';note.textContent=slot.dataset.note||'';
         box.append(code,note);slot.append(box);
-        const details=slot.closest('details');if(details)details.open=true;
+        for(let details=slot.closest('details');details;details=details.parentElement?.closest('details'))details.open=true;
+        box.scrollIntoView({block:'nearest',behavior:'smooth'});
       }
     }
     const language=form.querySelector?.('[name="system_lang"]');

@@ -4,7 +4,6 @@ import { deviceSession } from './devices';
 export interface User {
   username: string;
   display_name: string;
-  password_hash: string;
   auth_version: number;
 }
 export async function getUser(env: Env, username: string): Promise<User | null> {
@@ -28,7 +27,7 @@ export function validateUser(username: string, displayName: string) {
 /** The first user only. Later users join through invite codes. */
 export async function addInitialUser(env: Env, username: string, displayName: string) {
   validateUser(username, displayName);
-  const result = await env.DB.prepare("INSERT INTO users (username, display_name, password_hash, auth_version) SELECT ?, ?, '', 1 WHERE NOT EXISTS (SELECT 1 FROM users)")
+  const result = await env.DB.prepare("INSERT INTO users (username, display_name, auth_version) SELECT ?, ?, 1 WHERE NOT EXISTS (SELECT 1 FROM users)")
     .bind(username, displayName.trim()).run();
   if (!result.meta.changes) throw new Error('初期設定済みです。 / Setup is already complete.');
 }

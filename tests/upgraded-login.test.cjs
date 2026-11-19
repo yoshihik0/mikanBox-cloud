@@ -4,7 +4,7 @@ const worker=require('../.test-build/src/index.js').default;
 
 test('an upgraded site (users, no devices) offers the setup token form, and it registers the first device', async()=>{
  const env=environment();
- env.sqlite.prepare("INSERT INTO users(username,display_name,password_hash,auth_version) VALUES('admin','Admin','',1)").run();
+ env.sqlite.prepare("INSERT INTO users(username,display_name,auth_version) VALUES('admin','Admin',1)").run();
  const page=await call(env,'/admin'),html=await page.text();
  assert.match(html,/name="login_action" value="setup"/);
  assert.match(html,/name="setup_token"/);

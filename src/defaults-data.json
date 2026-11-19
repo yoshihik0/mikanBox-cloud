@@ -220,7 +220,7 @@
         "is_global": true,
         "is_wrapper": false,
         "is_ai_doc": false,
-        "memo": "共通headタグ。{{HEAD_CSS}}は、ページやコンポーネントのCSSを整理して出力するタグです。共通の計測タグは、計測コードを入れたコンポーネントを作り、サイト設定の「計測コンポーネント」で指定すると、全ページのhead内へ共通して挿入できます。"
+        "memo": "共通headタグ。{{HEAD_CSS}}は、ページやコンポーネントのCSSを整理して出力するタグです（書かなかったときは、</head>の直前に入れます）。文字コード・viewport・タイトル・説明・OGP画像のタグが無いときも、自動で補います。計測タグは、サイト設定の計測IDか計測コードに入れると、全ページのheadに入ります。"
       },
       "_header": {
         "html": "<header class=\"site-header\">\r\n  <div class=\"header-inner\">\r\n    <a href=\"{{SITE_URL}}\" class=\"header-logo\">\r\n      {{SITE_NAME}}\r\n    </a>\r\n    <button class=\"hamb-btn\" onclick=\"document.getElementById('site-nav').classList.toggle('open')\">\r\n      <span></span><span></span><span></span>\r\n    </button>\r\n    <nav class=\"site-nav\" id=\"site-nav\">\r\n      <ul>\r\n        <li><a href=\"{{SITE_URL}}\">Home</a></li>\r\n        {{NAV_LINKS:_nav}}\r\n        <li><a href=\"https://yoshihiko.com/mikanbox/help_ja.html\">操作マニュアル</a></li>\r\n      </ul>\r\n    </nav>\r\n  </div>\r\n</header>",
@@ -511,7 +511,7 @@
         "is_global": true,
         "is_wrapper": false,
         "is_ai_doc": false,
-        "memo": "Shared head tags. {{HEAD_CSS}} is the tag that collects the CSS of pages and components and outputs it in order. For shared tracking tags, create a component containing the tracking code and select it under \"Tracking component\" in Site settings; it is then inserted into the head of every page."
+        "memo": "Shared head tags. {{HEAD_CSS}} is the tag that collects the CSS of pages and components and outputs it in order (without it, the CSS goes right before </head>). Missing charset, viewport, title, description and OGP image tags are also added automatically. Tracking tags go into the head of every page when you enter a tracking ID or tracking code in Site settings."
       },
       "_header": {
         "html": "<header class=\"site-header\">\r\n  <div class=\"header-inner\">\r\n    <a href=\"{{SITE_URL}}\" class=\"header-logo\">\r\n      {{SITE_NAME}}\r\n    </a>\r\n    <button class=\"hamb-btn\" onclick=\"document.getElementById('site-nav').classList.toggle('open')\">\r\n      <span></span><span></span><span></span>\r\n    </button>\r\n    <nav class=\"site-nav\" id=\"site-nav\">\r\n      <ul>\r\n        <li><a href=\"{{SITE_URL}}\">Home</a></li>\r\n        {{NAV_LINKS:_nav}}\r\n        <li><a href=\"https://yoshihiko.com/mikanbox/help_en.html\">User Guide</a></li>\r\n      </ul>\r\n    </nav>\r\n  </div>\r\n</header>",

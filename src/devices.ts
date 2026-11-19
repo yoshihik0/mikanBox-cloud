@@ -76,7 +76,7 @@ export async function claimCode(env:Env,code:string,name:string,request:Request,
  const used=await env.DB.prepare('UPDATE device_codes SET used_at=? WHERE code_hash=? AND used_at IS NULL').bind(now,hash).run();
  if(!used.meta.changes)return null;
  // An invite must create its own user; never attach a device to an account that appeared meanwhile.
- if((invited||displayName)&&!(await env.DB.prepare("INSERT INTO users(username,display_name,password_hash,auth_version) VALUES(?,?,'',1) ON CONFLICT(username) DO NOTHING").bind(username,displayName).run()).meta.changes)return null;
+ if((invited||displayName)&&!(await env.DB.prepare("INSERT INTO users(username,display_name,auth_version) VALUES(?,?,1) ON CONFLICT(username) DO NOTHING").bind(username,displayName).run()).meta.changes)return null;
  if(!await env.DB.prepare('SELECT 1 FROM users WHERE username=?').bind(username).first())return null;
  return createDevice(env,username,name,request);
 }

@@ -1,3 +1,4 @@
+import {mcpLastUsed} from '../mcp';
 import {importContentPackage,importWordPressContent} from '../content-import';
 import {latestCloudRelease,cloudUpdateUrl} from '../cloud-release';
 import {exportBackupManifest,exportBackupMediaPart,validateExportSnapshot,createBackupRestore,stageBackupMediaPart,commitBackupRestore,abortBackupRestore} from '../backup-restore';
@@ -83,7 +84,6 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
         if (!await setupTokenUsable(env,val(form,'setup_token'))) {await rateLimit(env,key,true);throw new Error('初期設定トークンを確認してください。使用済みのトークンは使えません。 / Check the setup token. A used token does not work again.');}
         const username=val(form,'username').trim();
         if (initial) {
-          if (settings.password_hash) throw new Error('既存認証データの移行が必要です。 / Existing authentication requires explicit migration.');
           await addInitialUser(env,username,val(form,'display_name'));
           if (!settings.site_id) {
             settings.site_id=`site-${crypto.randomUUID()}`; settings.site_environment=env.SITE_ENVIRONMENT||'local'; settings.site_name||='🍊mikanBox';
@@ -210,6 +210,7 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
           if(form.has('stage')){const old=await env.DB.prepare("SELECT value FROM settings WHERE key='static_publication'").first<{value:string}>();paths=[...new Set([...paths,...(old?JSON.parse(old.value).paths||[]:[])])];}
           await env.DB.prepare("INSERT INTO settings(key,value) VALUES('static_publication',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").bind(JSON.stringify({paths,published_at:new Date().toISOString()})).run();return json({success:true});
         }
+        case 'set_mcp_enabled': settings.mcp_disabled=val(form,'mcp_enabled')!=='1';if(!await saveSettings(env,settings))throw new Error(t('err_save_failed'));break;
         case 'generate_api_key': settings.api_key=crypto.randomUUID().replace(/-/g,'')+crypto.randomUUID().replace(/-/g,'');if(!await saveSettings(env,settings))throw new Error(t('err_save_failed'));newApiKey=String(settings.api_key);message=t('msg_mcp_key_generated');break;
         case 'build_ssg': await buildStatic(env,request);break;
         case 'logout': await revokeDevice(env,auth.device,auth.device.id);return redirect(url.pathname,clearDeviceCookie());
@@ -272,8 +273,7 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
             const legacy=settings.tracking_component?await loadComponent(env,String(settings.tracking_component)):null;
             if(trackingLegacyHtml(legacy)!==null||trackingSnippets(settings)!==null)settings.tracking_component='';
           }
-          for(const field of ['site_name','description','keywords','ogp_image','site_url','site_environment','category_candidates']) if(form.has(field)) settings[field]=val(form,field);
-          if(settings.site_url){let parsed:URL;try{parsed=new URL(settings.site_url);}catch{throw new Error('Invalid site URL.');}if(!['http:','https:'].includes(parsed.protocol)||parsed.username||parsed.password)throw new Error('Invalid site URL.');settings.site_url=settings.site_url.trim().replace(/\/+$/,'');}
+          for(const field of ['site_name','description','keywords','ogp_image','site_environment','category_candidates']) if(form.has(field)) settings[field]=val(form,field);
           if(form.has('site_environment')&&!['production','staging','development','local','unspecified'].includes(val(form,'site_environment')))throw new Error('Invalid site environment.');
           for(const field of ['pages_per_page','media_per_page']) if(form.has(field)) settings[field]=Math.min(500,Math.max(1,Number(val(form,field))||30));
           if(form.has('system_lang')) {const next=val(form,'system_lang');if(!['','auto','ja','en'].includes(next)) throw new Error('Invalid language.');settings.system_lang=next;}
@@ -283,7 +283,7 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
         case 'device_code_create': {
           // Shown in the section itself: a toast would vanish before the code could be copied.
           issuedCode=await issueCode(env,auth.device,val(form,'invite')==='1');
-          message=lang==='ja'?'追加用のコードを発行しました。「端末とユーザー」の上部に表示しています。':'A device code was issued. It is shown at the top of Devices and users.';break;
+          message=t('msg_device_code_issued');break;
         }
         case 'device_code_cancel': await cancelCode(env,val(form,'code_hash'));break;
         case 'device_revoke': {
@@ -322,7 +322,13 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
         case 'release_lock': await env.DB.prepare('DELETE FROM edit_locks WHERE post_id=? AND owner=?').bind(val(form,'id'),auth.user.username).run();return json({success:true});
         case 'add_category': case 'delete_category': {
           const cat=val(form,'category').trim();if(!cat||cat.includes(',')||cat.length>100) throw new Error('Invalid category.');
-          if(action==='delete_category'){await removeCategory(env,cat,auth.user.username);break;}
+          if(action==='delete_category'){
+            // As in PHP: a category in use is removed from its pages only after a confirmation.
+            const used=(await listPages(env)).filter(p=>String(p.data.category||'').split(',').map(v=>v.trim()).includes(cat)).length;
+            if(used>0&&val(form,'confirmed')!=='1')return json({success:true,require_confirm:true,usage_count:used,message:t('category_delete_in_use_confirm',used)});
+            const removed=await removeCategory(env,cat,auth.user.username);
+            message=t('msg_category_deleted',cat)+(removed>0?t('msg_category_removed_from_pages',removed):'');break;
+          }
           const cats=new Set((settings.category_candidates||'').split(',').map(x=>x.trim()).filter(Boolean));
           if(action==='add_category') cats.add(cat);else cats.delete(cat);settings.category_candidates=[...cats].sort().join(', ');
           if(!await saveSettings(env,settings)) throw new Error(t('err_save_failed'));break;
@@ -335,7 +341,11 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
           if(!(file instanceof File)){if(action!=='edit_media'||target===old)throw new Error('No changes to save.');await renameMediaReferences(env,old,target,auth.user.username);break;}
           const bytes=new Uint8Array(await file.arrayBuffer());
           if(action==='convert_media_webp'&&(!/\.(?:jpe?g|png)$/i.test(old)||!target.endsWith('.webp')||imageType(bytes,'webp')!=='image/webp')) throw new Error('Invalid WebP conversion.');
-          if(target!==old)await renameMediaReferences(env,old,target,auth.user.username,{bytes,expectedEtag:val(form,'source_etag')});
+          if(target!==old){
+            const updated=await renameMediaReferences(env,old,target,auth.user.username,{bytes,expectedEtag:val(form,'source_etag')});
+            // As in PHP: say what the image became and how many links were updated.
+            if(action==='convert_media_webp')message=t('msg_media_webp_converted',target)+t('msg_media_links_updated',updated.pages+updated.components);
+          }
           else await replaceMediaImage(env,old,bytes,val(form,'source_etag'));break;
         }
         case 'upload_media': {
@@ -373,14 +383,14 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
         }
         case 'download_static_zip': {
           const structure=val(form,'structure');if(!['flat','directory'].includes(structure))throw new Error('Invalid export structure.');
-          const zip=await buildStaticExportZip(env,request,{structure:structure as 'flat'|'directory',siteUrl:settings.ssg_root_url||env.PUBLIC_SITE_URL||undefined});
+          const zip=await buildStaticExportZip(env,request,{structure:structure as 'flat'|'directory',siteUrl:env.PUBLIC_SITE_URL||undefined});
           return new Response(zip.buffer as ArrayBuffer,{headers:{'Content-Type':'application/zip','Content-Disposition':'attachment; filename="mikanbox_static.zip"','Cache-Control':'no-store'}});
         }
         default: throw new Error('未対応の操作です。 / Unsupported action.');
       }
       message||=t('msg_update_success');
     } catch(e) {success=false;statusCode=400;message=e instanceof Error&&(e.message.startsWith('Cloudflare operation failed')||!/D1_|SQLITE_|constraint|UNIQUE/.test(e.message))?e.message:t('err_save_failed');}
-    if(form.has('ajax_request')) return json({success,message,editId,...(issuedCode?{issued_code:issuedCode}:{}),...(newApiKey?{mcp_api_key:newApiKey}:{}),...(uploadedName?{uploaded_name:uploadedName}:{}),...(success&&deletedId?{deleted:deletedId}:{})},statusCode);
+    if(form.has('ajax_request')) return json({success,message,editId,...(issuedCode?{issued_code:issuedCode,issued_invite:val(form,'invite')==='1'}:{}),...(newApiKey?{mcp_api_key:newApiKey}:{}),...(uploadedName?{uploaded_name:uploadedName}:{}),...(success&&deletedId?{deleted:deletedId}:{})},statusCode);
     // A new device code is shown once on this response, never put in a URL.
     if(success&&action==='device_code_create')view='site';
     else if(success) {
@@ -402,7 +412,7 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
   const filtered=pages.filter(p=>(!formatFilter||(formatFilter==='data'?isDataFormat(pageOutputFormat(p.data)):pageOutputFormat(p.data)===formatFilter))&&(!category||(p.data.category||'').split(',').map(x=>x.trim()).includes(category))&&(!query||`${p.id} ${p.data.title} ${p.data.content_md||''}`.toLowerCase().includes(query.toLowerCase())));
   const perPage=Math.min(500,Math.max(1,Number(settings.pages_per_page)||30)),totalPages=Math.max(1,Math.ceil(filtered.length/perPage)),pageNumber=Math.min(totalPages,Math.max(1,Number(url.searchParams.get('p_pages'))||1));
   const hasNew=url.searchParams.has('new'),helpFile=help(lang),listQuery=pageListQuery({category,format:formatFilter,sort:pageSort,query,pageNumber:Number(url.searchParams.get('p_pages'))||1});
-  const pageEditorHtml=view==='pages'&&(editId||hasNew)?renderPageEditor({t,editId,editData:editData as PageData|null,csrf,helpFile,wrapperComponents:components.filter(c=>c.data.is_wrapper),allCategories,publicBase:(env.PUBLIC_SITE_URL||String(settings.ssg_root_url||'')||url.origin).replace(/\/$/,''),settings:{...settings,_site_base:url.origin},revisions:pageRevisions,selectedRevision:pageRevisions.find(r=>r.id===Number(url.searchParams.get('rev'))),listQuery,listCategory:category}):'';
+  const pageEditorHtml=view==='pages'&&(editId||hasNew)?renderPageEditor({t,editId,editData:editData as PageData|null,csrf,helpFile,wrapperComponents:components.filter(c=>c.data.is_wrapper),allCategories,publicBase:(env.PUBLIC_SITE_URL||url.origin).replace(/\/$/,''),settings:{...settings,_site_base:url.origin},revisions:pageRevisions,selectedRevision:pageRevisions.find(r=>r.id===Number(url.searchParams.get('rev'))),listQuery,listCategory:category}):'';
   const designEditorHtml=view==='components'&&(editId||hasNew)?renderDesignEditor({t,editId,editData:editData as ComponentData|null,csrf,helpFile}):'';
   const cloudReady=await cloudConfigured(env);
   const pagesHtml=renderPagesView({t,pages:filtered.slice((pageNumber-1)*perPage,pageNumber*perPage),view,editId,hasNew,csrf,helpFile,settings,query,category,format:formatFilter,sort:pageSort,pageNumber,totalPages,lang,publication:await publicationStatus(env,url.origin,pages),cloudReady,publicWorkerMissing:publicWorkerMissing(env),publicUrl:env.CLOUDFLARE_PUBLIC_WORKER_NAME ? env.PUBLIC_SITE_URL || '' : '',editorHtml:pageEditorHtml});
@@ -420,8 +430,8 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
   if(url.searchParams.has('ajax_comps'))return html(designHtml);
   const databaseProbe=await env.DB.prepare('SELECT 1').run();
   const d1Bytes=typeof databaseProbe.meta.size_after==='number'?databaseProbe.meta.size_after:null;
-  const target=cloudTarget(env),displaySettings={...settings,d1_bytes:d1Bytes,media_bytes:(await mediaUsage(env)).bytes,cloud_connection_ready:cloudReady,cloud_account_id:target.account,cloud_worker_name:target.worker};
-  const siteHtml=view==='import'?renderImportView({t,csrf,lang,stats:{pages:pages.length,components:components.length,users:users.length,media:files.length,mediaBytes:files.reduce((sum,file)=>sum+file.size,0)},cloudReady}):renderSiteView({t,trackingLegacy:(()=>{const id=String(settings.tracking_component||''),data=components.find(c=>c.id===id)?.data;return{id,html:trackingLegacyHtml(data),exists:!!data&&!data.is_ai_doc&&!data.is_wrapper};})(),settings:displaySettings,csrf,helpFile,users,username:auth.user.username,accountsHtml:renderAccountsSection({lang,csrf,users,me:auth.device,devices:await listDevices(env),codes:await listCodes(env),expiryDays:expiryFrom(settings),issuedCode}),lang,updateRepository:String(settings.cloud_update_repository||env.CLOUD_UPDATE_REPOSITORY||''),release:await latestCloudRelease(env,url.searchParams.has('refresh_updates'))});
+  const target=cloudTarget(env),displaySettings={...settings,_mcp_last_used:await mcpLastUsed(env,String(settings.api_key||'')),d1_bytes:d1Bytes,media_bytes:(await mediaUsage(env)).bytes,cloud_connection_ready:cloudReady,cloud_account_id:target.account,cloud_worker_name:target.worker};
+  const siteHtml=view==='import'?renderImportView({t,csrf,lang,stats:{pages:pages.length,components:components.length,users:users.length,media:files.length,mediaBytes:files.reduce((sum,file)=>sum+file.size,0)},cloudReady}):renderSiteView({t,trackingLegacy:(()=>{const id=String(settings.tracking_component||''),data=components.find(c=>c.id===id)?.data;return{id,html:trackingLegacyHtml(data),exists:!!data&&!data.is_ai_doc&&!data.is_wrapper};})(),settings:displaySettings,csrf,helpFile,users,username:auth.user.username,accountsHtml:renderAccountsSection({t,lang,csrf,users,me:auth.device,devices:await listDevices(env),codes:await listCodes(env),expiryDays:expiryFrom(settings)}),lang,updateRepository:String(settings.cloud_update_repository||env.CLOUD_UPDATE_REPOSITORY||''),release:await latestCloudRelease(env,url.searchParams.has('refresh_updates'))});
   const unseen=await unseenDevices(env,auth.device);
   if(unseen.length)message=(message?message+' ':'')+(lang==='ja'?'新しい端末が登録されました: ':'New device registered: ')+unseen.map(d=>`${d.name} (${d.username})`).join(', ')+(lang==='ja'?'。心当たりがなければ「端末とユーザー」で止めてください。':'. If you do not recognise it, stop it under Devices and users.');
   return html(renderAdminShell({lang,t,view,editId,hasNew,helpFile,message,csrf,settings:{...settings,_public_url:publicWorkerMissing(env)?'':env.PUBLIC_SITE_URL||''},pagesHtml,pageEditorHtml,siteHtml,designHtml,designEditorHtml,mediaHtml,

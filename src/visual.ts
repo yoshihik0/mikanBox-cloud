@@ -82,7 +82,7 @@ export async function renderVisual(env: Env, settings: Settings, request: Reques
     css: `.fv-css-start{}\n${nl(String(page.css ?? ''))}\n.fv-css-end{}`,
   };
   const local = { ...env, PUBLIC_SITE_URL: undefined } as Env;
-  const renderer = new MikanBoxRenderer(local, { ...settings, ssg_root_url: '' }, request);
+  const renderer = new MikanBoxRenderer(local, { ...settings }, request);
   const result = await renderer.render(id, true, data);
   return applyMarkers(result.html);
 }

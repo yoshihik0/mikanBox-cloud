@@ -1,6 +1,6 @@
 <style>.manual-version{font-size:.5em;font-weight:400;white-space:nowrap}</style>
 
-# 🍊mikanBox Cloudflare Manual <small class="manual-version">v0.12.0</small>
+# 🍊mikanBox Cloudflare Manual <small class="manual-version">v0.12.1</small>
 
 This manual covers installation and the Cloudflare edition’s differences. For shared operations, see the [operation manual](https://yoshihiko.com/mikanbox/help_en.html).
 
@@ -195,7 +195,7 @@ References: [D1 limits](https://developers.cloudflare.com/d1/platform/limits/), 
 
 Download a single JSON backup from Site settings and select that file to restore. It includes settings, all pages, components, revisions, HTML snapshots, users and original images. Images transfer in 500KB parts. Both operations start from a confirmation screen. Backups contain private content and authentication hashes: store them securely. From v0.10.3 they no longer contain the MCP API key (JSON backup and data ZIP); a normal restore keeps the current key, and after restoring into another site you issue a new one. The D1 export (SQL) is the database itself and still includes it. Large backups consume browser memory and transfer time; keep the screen open. Metadata is limited to 20MB.
 
-Normal restore preserves current site identity, API key, users and Cloudflare connection. Explicit account restoration also restores users; devices of users missing from the backup stop. Rebuild afterward. Restore stages and validates data before atomic replacement; missing parts or concurrent edits leave existing data intact. Existing, incoming and other staged images must total at most 450MB, and actual D1 free space may impose a lower limit.
+Normal restore preserves current site identity, API key, users and Cloudflare connection. Explicit account restoration also restores users (user IDs and display names); devices of users missing from the backup stop and unused codes are cancelled, while devices of users in the backup keep working. Rebuild afterward. Restore stages and validates data before atomic replacement; missing parts or concurrent edits leave existing data intact. Existing, incoming and other staged images must total at most 450MB, and actual D1 free space may impose a lower limit.
 
 ### D1 database backup
 
@@ -225,7 +225,7 @@ If the screen says that restoration completed but publication failed, the restor
 
 Program updates run the build, pending database migrations, and management Worker deployment in that order. A failed build leaves the database unchanged. If deployment fails after migrations, applied database changes remain. Inspect the failed step in the log, resolve its cause such as connectivity or permissions, and rerun the same update procedure. Do not remove migration records or repeat initial setup.
 
-The import/export screen follows SQLite’s status cards, ZIP import, WordPress XML import and execution log, followed by CSV and Cloud-specific complete JSON backup/restore. ZIP/XML add content while retaining existing IDs; images, accounts and site settings are not imported. Limits: 20 MB files, 15 MB ZIP expansion, 1 MB imported content and 300 records. Settings fields and category add-button alignment use the shared PHP CSS.
+The import/export screen follows SQLite’s status cards, ZIP import, WordPress XML import and execution log, followed by Cloud-specific complete JSON backup/restore (CSV conversion is under Site → CSV import, as in PHP). ZIP/XML add content while retaining existing IDs; images, accounts and site settings are not imported. Limits: 20 MB files, 15 MB ZIP expansion, 1 MB imported content and 300 records. Settings fields and category add-button alignment use the shared PHP CSS.
 
 Changing an unpublished image needs no Cloudflare publication settings. Deleting or renaming a published image publishes a withdrawal, so it does require the connection. Renaming uses the reference confirmation dialog. See “Storage” for storage limits.
 
@@ -233,7 +233,7 @@ Changing an unpublished image needs no Cloudflare publication settings. Deleting
 
 ### Cloud-specific MCP
 
-Generate a Cloud-specific API key in Site settings and connect to `/mcp` using a Bearer key from a separate workspace. The root `.mcp.json` remains dedicated to the official PHP server.
+Generate a Cloud-specific API key in Site settings and connect to `/mcp` with the key in an `Authorization: Bearer` or `X-API-Key` header from a separate workspace. Clearing “Enable MCP” and saving refuses every MCP connection while keeping the key (as in PHP); the last use of the current key is shown (recorded at most once an hour). The root `.mcp.json` remains dedicated to the official PHP server.
 
 Current tools: `get_site_info`, `list_pages`, `get_page`, `create_page`, `update_page`, `delete_page`, `list_components`, `get_component`, `create_component`, `update_component`, `delete_component`, `preview_page`, `get_revisions`, `get_settings`, `get_ai_context`, `list_ai_docs`, `get_ai_doc`, `update_ai_doc`, `upload_media`, and `build_ssg`.
 
@@ -408,4 +408,20 @@ One arrangement only, on the way to a supported release.
 - **History keeps the newest 10 entries per page** (as in the SQLite edition). Before, there was no limit and the screen listed the last 50. The update removes entries older than the tenth of each page; save a JSON backup first if you want to keep them.
 - **Only the separated arrangement remains.** The management Worker returns the admin screen, MCP and previews whether or not a public Worker is set. The publication to a single Worker kept for development (`SITE_ENVIRONMENT=local`) and the old `npm run publish:static` command were removed. Without a public Worker, as before, a notice under the build button says where to set it and nothing is deployed.
 - The only script sent to the public site is `ai-question.js`, which public pages load (admin scripts are not sent; this was already so in the separated arrangement).
+
+### Changes in 0.12.1
+
+Differences from the PHP editions and unused parts tidied up, on the way to a supported release.
+
+- **Categories can be deleted** (the same "Delete" button as in PHP). In delete mode, the × or the category name deletes it; when pages use it, a confirmation shows how many. The PHP editions also delete on a click on the name.
+- **The top page (index) ID can be changed** (as in PHP), so a new top page prepared under another ID can be swapped in. While no `index` page exists, the public site has no top page.
+- **Stopping MCP and the last use** were added to Site → MCP API key, as in PHP. The `X-API-Key` header works too.
+- **A device code appears right under the button** that issued it (in the SQLite edition too). "Devices and users" now has the SQLite edition's wording and structure.
+- **CSV import** moved from the data migration screen to the site screen, where it is in PHP.
+- **Design list**: AI instructions come first. "Create New" moved next to the heading, and a search field (ID and memo) sits at the right. The "Selected category" filter, which could not work, was removed (in all three editions).
+- **WebP conversion** reports, as in PHP, which file the image became and how many image links were updated.
+- The component ID hint no longer appears twice. The WordPress import description no longer says that published items become dynamic pages.
+- **"Site URL" was removed from the site settings.** The Cloud edition did not use it; the public address comes from `PUBLIC_SITE_URL` (MCP `get_site_info` returns it too).
+- The "Also restore users" label now says what happens: devices of users missing from the backup stop (not everyone is signed out).
+- **Unused data was removed** (D1 change on update): the R2 column and tables, the password-era user columns (password, security question) and settings such as `site_url`. JSON backups made before 0.12.0 still restore (unneeded fields are skipped).
 

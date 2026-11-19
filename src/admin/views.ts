@@ -22,7 +22,7 @@ function getIcon(name: string): string {
     view: 'visibility', upload: 'upload', video: 'videocam', audio: 'music_note',
     cloud: 'cloud_upload', logout: 'logout', globe: 'language', sparkles: 'auto_awesome',
     edit: 'edit', delete: 'delete', download: 'download', arrow_back: 'arrow_back',
-    add: 'add', copy: 'content_copy', open_in_new: 'open_in_new', history: 'history', warning: 'warning', search: 'search', close: 'close', database: 'database', archive: 'archive', visual: 'edit_square',
+    add: 'add', copy: 'content_copy', open_in_new: 'open_in_new', history: 'history', warning: 'warning', search: 'search', close: 'close', database: 'database', archive: 'archive', settings_backup_restore: 'settings_backup_restore', check: 'check', visual: 'edit_square',
   };
   const iconName = icons[name] || '';
   return iconName ? `<span class="material-symbols-outlined icon">${iconName}</span>` : '';
@@ -156,7 +156,7 @@ export function renderAdminShell(opts: {
           pagesHtml, pageEditorHtml, siteHtml, designHtml, designEditorHtml, mediaHtml, aiPromptJson } = opts;
   const showPageEditor = view === 'pages' && (editId !== null || hasNew);
   const showDesignEditor = view === 'components' && (editId !== null || hasNew);
-  const ssgRootUrl = (settings.ssg_root_url || '').trim().replace(/\/$/, '') || String(settings._public_url || '') || '/';
+  const ssgRootUrl = String(settings._public_url || '') || '/';
 
   return `<!DOCTYPE html>
 <html lang="${h(lang)}">
@@ -223,8 +223,8 @@ ${opts.mediaEnabled?`<div id="drop-zone">${getIcon('cloud')} ${t('hint_drop_uplo
 
     ${view==='import'?'':`    <div class="category-cloud-wrap"><div class="category-cloud"><span class="category-cloud-label">${t('category_cloud_label')}</span>
     <a href="?cat=" class="category-cloud-tag ${!opts.category?'active':''}">${t('all_pages')}</a>
-    ${sortCategories(opts.allCategories||[]).map(cat=>`<a href="?cat=${encodeURIComponent(cat)}" class="category-cloud-tag ${opts.category===cat?'active':''}${isStructuralCategory(cat)?' is-structural':''}"${isStructuralCategory(cat)?` title="${h(t('category_structural_hint'))}"`:''}>${h(cat)}</a>`).join('')}
-    <span class="category-control-group" style="display:inline-flex;align-items:center;gap:8px;white-space:nowrap"><span class="category-cloud-divider" style="margin:0">|</span><a href="#" class="category-cloud-tag btn-add-cat" style="border-style:dashed;background:transparent;display:inline-flex;align-items:center;gap:5px">${getIcon('add')} ${t('btn_add')}</a><input type="text" id="new-category-input" placeholder="${t('placeholder_new_category')}" maxlength="100" style="display:none;width:120px;padding:4px 10px;border-radius:8px;border:1px solid #ff8c00;font-size:.85rem;height:30px;box-sizing:border-box"></span></div></div>
+    ${sortCategories(opts.allCategories||[]).map(cat=>`<span class="category-cloud-tag-wrap"><a href="?cat=${encodeURIComponent(cat)}" class="category-cloud-tag ${opts.category===cat?'active':''}${isStructuralCategory(cat)?' is-structural':''}"${isStructuralCategory(cat)?` title="${h(t('category_structural_hint'))}"`:''}>${h(cat)}</a><span class="category-delete-badge" data-category="${h(cat)}" title="${h(t('category_delete_confirm_title'))}">&times;</span></span>`).join('')}
+    <span class="category-control-group" style="display:inline-flex;align-items:center;gap:8px;white-space:nowrap"><span class="category-cloud-divider" style="margin:0">|</span><a href="#" class="category-cloud-tag btn-add-cat" style="border-style:dashed;background:transparent;display:inline-flex;align-items:center;gap:5px">${getIcon('add')} ${t('btn_add')}</a><a href="#" class="category-cloud-tag btn-toggle-del-cat" style="border-style:dashed;background:transparent;display:inline-flex;align-items:center;gap:5px" data-label-delete="${h(getIcon('delete')+' '+t('btn_delete'))}" data-label-done="${h(getIcon('check')+' '+t('btn_done'))}" data-confirm-title="${h(t('category_delete_confirm_title'))}" data-confirm-ok="${h(t('btn_delete_confirm'))}">${getIcon('delete')} ${t('btn_delete')}</a><input type="text" id="new-category-input" placeholder="${t('placeholder_new_category')}" maxlength="100" style="display:none;width:120px;padding:4px 10px;border-radius:8px;border:1px solid #ff8c00;font-size:.85rem;height:30px;box-sizing:border-box"></span></div></div>
     ${pagesHtml}
 
 `}
@@ -855,8 +855,8 @@ export function renderPageEditor(opts: {
                     <div class="page-edit-grid" id="page-format-grid" data-format="${h(currentFormat)}">
                         <div class="form-group grid-span-1">
                             <label class="sub-label">${t('label_slug')}</label>
-                            <input type="text" name="id" value="${h(editId || '')}" ${(editId && editId === 'index') ? 'readonly' : ''} placeholder="profile" class="input-height">
-                            <small class="sub-text sub-text-block">${t('page_id_hint')} ${editId === 'index' ? t('hint_slug_index') : ''}</small>
+                            <input type="text" name="id" value="${h(editId || '')}" placeholder="profile" class="input-height">
+                            <small class="sub-text sub-text-block">${t('page_id_hint')}</small>
                         </div>
                         <div class="form-group grid-span-1">
                             <label class="sub-label" for="output-format-select">${t('label_output_format')}</label>
@@ -1071,10 +1071,14 @@ export function renderDesignView(opts: {
   const { t, components, view, editId, hasNew, helpFile } = opts;
   const hasEditor = view === 'components' && (editId !== null || hasNew);
 
-  const rows = components.map(({ id: cid, data: cData }) => {
+  // AI instructions first, then page templates, then parts (standard head/header/footer first), as in PHP.
+  const rank = (c: { id: string; data: ComponentData }) => c.data.is_ai_doc ? 0 : c.data.is_wrapper ? 1 : 2;
+  const standard: Record<string, number> = { _global_head: 1, _header: 2, _footer: 3 };
+  const ordered = [...components].sort((a, b) => rank(a) - rank(b) || (standard[a.id] || 99) - (standard[b.id] || 99) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  const rows = ordered.map(({ id: cid, data: cData }) => {
     const typeLabel = cData.is_wrapper ? t('comp_type_page') : cData.is_ai_doc ? t('comp_type_aidoc') : t('comp_type_part');
     const typeClass = cData.is_wrapper ? 'type-badge wrapper' : cData.is_ai_doc ? 'type-badge aidoc' : 'type-badge';
-    return `<tr data-component-id="${h(cid)}" data-component-type="${cData.is_wrapper?'wrapper':cData.is_ai_doc?'ai_doc':'part'}">
+    return `<tr data-component-id="${h(cid)}" data-component-type="${cData.is_wrapper?'wrapper':cData.is_ai_doc?'ai_doc':'part'}" data-component-memo="${h(cData.memo||'')}">
                 <td class="td-narrow">
                     <div class="flex-center">
                          <a href="?view=design&amp;edit=${h(cid)}#design-editor" class="btn btn-sm btn-blue">${getIcon('edit')} ${t('btn_edit')}</a>
@@ -1092,8 +1096,8 @@ export function renderDesignView(opts: {
     <div id="design" class="section-anchor">
         <div class="section-container section-large-bottom">
             <div class="header">
-            <h1>${getIcon('component')} ${t('nav_design')}<a href="${h(helpFile)}#design-mgmt" target="_blank" class="manual-link">${t('admin_help')}</a><span class="component-filter-control"><select class="select-auto component-filter-select" aria-label="${t('component_filter_label')}">${['all','category','wrapper','part','ai_doc','standard'].map(value=>`<option value="${value}">${t('component_filter_'+value)}</option>`).join('')}</select></span></h1>
-            <a href="?view=design&amp;new=1#design-editor" class="btn btn-blue">${getIcon('add')} ${t('btn_create_new')}</a>
+            <h1>${getIcon('component')} ${t('nav_design')}<a href="?view=design&amp;new=1#design-editor" class="btn btn-sm btn-blue" style="margin-left:15px;display:inline-flex;align-items:center;gap:5px;font-size:.85rem;padding:4px 10px;vertical-align:middle">${getIcon('add')} ${t('btn_create_new')}</a><a href="${h(helpFile)}#design-mgmt" target="_blank" class="manual-link">${t('admin_help')}</a><span class="component-filter-control"><select class="select-auto component-filter-select" aria-label="${t('component_filter_label')}">${['all','wrapper','part','ai_doc','standard'].map(value=>`<option value="${value}">${t('component_filter_'+value)}</option>`).join('')}</select></span></h1>
+            <form class="search-bar-wrap" role="search" onsubmit="return false"><div class="admin-search"><input type="search" id="admin-component-search" class="admin-search-input" placeholder="${t('component_search_placeholder')}" aria-label="${t('component_search_placeholder')}"><span class="admin-search-icon">${getIcon('search')}</span></div></form>
         </div>
         <div class="table-responsive ${hasEditor ? 'mb-0' : 'ssg-build-row no-editor'}" id="comps-table-wrap">
         <table>
@@ -1133,7 +1137,6 @@ export function renderDesignEditor(opts: {
                 <div class="form-group">
                     <label>${t('label_component_id')}</label>
                     <input type="text" name="id" value="${h(editId || '')}" required placeholder="header"><small class="sub-text sub-text-block">${t('component_id_hint')}</small>
-                    <small class="sub-text sub-text-block">${t('component_id_hint')}</small>
                 </div>
                 <div class="page-edit-grid"><div class="form-group grid-span-2"><label>${t('label_type')}</label><div class="checkbox-flex">
                 ${['part','wrapper','ai_doc'].map(kind=>`<label class="checkbox-label"><input type="radio" name="comp_type" value="${kind}" ${(d.is_wrapper?'wrapper':d.is_ai_doc?'ai_doc':'part')===kind?'checked':''}>${t(kind==='wrapper'?'comp_type_page':kind==='ai_doc'?'comp_type_aidoc':'comp_type_part')}</label>`).join('')}
@@ -1412,6 +1415,9 @@ export function renderSiteView(opts: {
     </div>
 
     <div id="mcp-key"><div class="section-container section-tight"><details class="section-accordion"><summary class="header section-header accordion-summary"><h2 class="accordion-title">${t('mcp_key_head')} <span class="accordion-arrow">▼</span></h2></summary><div class="editor-container editor-container-sub">
+      <small class="sub-text sub-text-intro">${t('mcp_key_hint')}</small>
+      <form method="post" class="mt-10" data-ajax>${csrfField(csrf)}<input type="hidden" name="save_action" value="set_mcp_enabled"><label><input type="checkbox" name="mcp_enabled" value="1" ${settings.mcp_disabled?'':'checked'}> ${t('mcp_enable_label')}</label> <button type="submit" class="btn btn-gray btn-small">${t('btn_save')}</button><p class="sub-text">${t('mcp_enable_hint')}</p></form>
+      <p>${t('mcp_last_used_label')}: <span id="mcp-last-used">${Number(settings._mcp_last_used||0)?localTime(Number(settings._mcp_last_used),lang):t('mcp_never_used')}</span></p>
       <div class="form-group mt-10"><label for="mcp-url-display">${t('mcp_url_label')}</label><div class="copy-row"><input type="text" id="mcp-url-display" value="" readonly><button type="button" class="btn btn-gray btn-small" onclick="copyField('mcp-url-display')">${getIcon('copy')} ${t('btn_copy')}</button></div></div>
       <div id="mcp-key-issued"${settings.api_key?'':' style="display:none;"'}>
         <div class="form-group mt-10"><label for="mcp-key-display">${t('mcp_key_label')}</label><div class="copy-row"><input type="text" id="mcp-key-display" value="${h(settings.api_key||'')}" readonly><button type="button" class="btn btn-gray btn-small" onclick="copyField('mcp-key-display')">${getIcon('copy')} ${t('btn_copy')}</button></div></div>
@@ -1419,6 +1425,27 @@ export function renderSiteView(opts: {
       </div>
       <form method="post" class="mt-10" id="mcp-key-generate" data-mcp-key-form${settings.api_key?' style="display:none;"':''}>${csrfField(csrf)}<input type="hidden" name="save_action" value="generate_api_key"><button class="btn btn-blue btn-small">${getIcon('sparkles')} ${t('btn_generate_mcp_key')}</button></form>
       </div></details></div></div>
+
+    <div id="csv-import">
+        <div class="section-container section-tight">
+            <details class="section-accordion">
+                <summary class="header section-header accordion-summary">
+                    <h2 class="accordion-title">
+                        ${t('csv_head')} <span class="accordion-arrow">▼</span>
+                    </h2>
+                </summary>
+                <div class="editor-container editor-container-sub">
+                    <small class="sub-text sub-text-intro">${t('csv_hint')}</small>
+                    <div class="mt-10">
+                        <input type="file" id="csv-file-input" accept=".csv,text/csv">
+                    </div>
+                    <div class="mt-10">
+                        <button type="button" class="btn btn-gray btn-small" onclick="csvConvertAndCopy()" id="csv-copy-btn">${getIcon('copy')} ${t('btn_csv_convert')}</button>
+                    </div>
+                </div>
+            </details>
+        </div>
+    </div>
 
     <div id="backup">
         <div class="section-container section-tight">
@@ -1433,11 +1460,8 @@ export function renderSiteView(opts: {
                     <div class="flex-row gap-10">
                         <form method="post">${csrfField(csrf)}<input type="hidden" name="save_action" value="download_backup_data"><button type="submit" class="btn btn-gray btn-small">${getIcon('download')} ${t('backup_data_json')}</button></form>
                         <form method="post">${csrfField(csrf)}<input type="hidden" name="save_action" value="download_backup_media"><button type="submit" class="btn btn-gray btn-small">${getIcon('download')} ${t('backup_media')}</button></form>
-                        <a class="btn btn-orange btn-small" href="/admin?view=import">${getIcon('upload')} ${t('btn_data_tool')}</a>
+                        <a class="btn btn-orange btn-small" href="/admin?view=import" style="text-decoration: none; display: inline-flex; align-items: center; gap: 4px;">${getIcon('settings_backup_restore')} ${t('btn_data_tool')}</a>
                     </div>
-                    
-
-
                 </div>
             </details>
         </div>
@@ -1459,7 +1483,7 @@ export function renderSiteView(opts: {
                                 <div class="form-group"><label>${t('label_site_name')}</label><input type="text" name="site_name" value="${h(settings.site_name||'')}"></div>
                                 <div class="form-group"><label>${t('label_site_id')}</label><input type="text" readonly value="${h(settings.site_id||'')}"><small class="sub-text">${t('hint_site_id')}</small></div>
                             </div>
-                            <div class="form-group"><label>${t('label_site_url')}</label><input type="url" name="site_url" value="${h(settings.site_url||'')}" placeholder="https://example.com"><small class="sub-text">${t('hint_site_url')}</small></div>
+                            
                             <div class="form-group"><label>${t('label_site_environment')}</label><select name="site_environment">${['production','staging','development','local','unspecified'].map(e=>`<option value="${e}" ${(settings.site_environment||'unspecified')===e?'selected':''}>${t('site_environment_'+e)}</option>`).join('')}</select><small class="sub-text">${t('hint_site_environment')}</small></div>
                             <div class="form-group grid-span-2">
                                 <label>${t('label_site_desc')}</label>
@@ -1658,6 +1682,6 @@ export function renderImportView(opts: {t:(key:string,...args:(string|number)[])
     <section id="cloud-json-restore" class="data-tool-card"><h2>${getIcon('upload')} ${lang==='en'?'Restore a JSON backup':'バックアップJSONファイルの復元'}</h2>
     <p>${lang==='en'?'Restoring replaces current site data. Accounts are restored only if selected. Current site identity, API key and Cloud connection are kept.':'復元すると、現在のサイトの内容がバックアップの内容に置き換わります。ユーザーは選択した場合のみ復元され、現在のサイトID・APIキー・Cloud接続は維持されます。'}</p>
     <p>${lang==='en'?'Existing images and the temporary images for the restore must fit within 450 MB together.':'現在の画像と復元用の一時画像の合計が、450 MB以内である必要があります。'}</p>
-    <form method="post" enctype="multipart/form-data" data-cloudbackup="restore">${csrfField(csrf)}<input type="hidden" name="save_action" value="restore_backup_json"><label class="form-group backup-field">${lang==='en'?'Backup JSON file':'バックアップJSONファイル'} <input type="file" name="backup_file" accept="application/json,.json" required></label><label class="form-group backup-field"><input type="checkbox" name="restore_users" value="1"> ${lang==='en'?'Also restore user accounts (signs everyone out)':'ユーザーも復元（全員ログアウト）'}</label><button type="submit" class="btn btn-orange btn-small">${lang==='en'?'Restore and replace':'復元して置き換え'}</button><span data-transfer-status role="status"></span></form></section></div>`;
+    <form method="post" enctype="multipart/form-data" data-cloudbackup="restore">${csrfField(csrf)}<input type="hidden" name="save_action" value="restore_backup_json"><label class="form-group backup-field">${lang==='en'?'Backup JSON file':'バックアップJSONファイル'} <input type="file" name="backup_file" accept="application/json,.json" required></label><label class="form-group backup-field"><input type="checkbox" name="restore_users" value="1"> ${lang==='en'?'Also restore users (devices of users missing from the backup stop)':'ユーザーも復元（バックアップにないユーザーの端末は止まります）'}</label><button type="submit" class="btn btn-orange btn-small">${lang==='en'?'Restore and replace':'復元して置き換え'}</button><span data-transfer-status role="status"></span></form></section></div>`;
   return renderDataImportView({t,csrf,lang,stats:opts.stats||{pages:0,components:0,users:0,media:0,mediaBytes:0},cloudBackupHtml:d1BackupHtml+cloudBackupHtml+`<section id="static-zip" class="data-tool-card"><h2>${getIcon('archive')} ${lang==='en'?'Static HTML (ZIP)':'静的HTML（ZIP）'}</h2><form method="post">${csrfField(csrf)}<input type="hidden" name="save_action" value="download_static_zip"><div class="data-tool-form-row"><label>${lang==='en'?'HTML file structure':'HTMLファイルの構造'} <select name="structure"><option value="flat">ID.html</option><option value="directory">ID/index.html</option></select></label><button class="btn btn-gray btn-small">${getIcon('download')} ${lang==='en'?'Download static ZIP':'静的ZIPを保存'}</button></div><p class="data-action-hint">${lang==='en'?'Exports already-built static pages and referenced local images, up to 20 MB. Dynamic pages and external images remain live links; images loaded dynamically by JavaScript are not collected.':'ビルド済みの静的ページと参照するサイト内画像を、合計20 MBまで保存します。動的ページと外部画像は元のURLのままです。JavaScriptが動的に読み込む画像は収集しません。'}</p></form></section>`});
 }

@@ -116,7 +116,6 @@ export class MikanBoxRenderer {
       description: '',
       keywords: '',
       ogp_image: '',
-      ssg_root_url: '',
       ...settings,
     };
     this.markdown = new MikanBoxMarkdown();
@@ -126,8 +125,6 @@ export class MikanBoxRenderer {
   }
 
   getSiteUrl(): string {
-    const ssgRootUrl = (this.siteSettings.ssg_root_url || '').trim().replace(/\/$/, '');
-    if (ssgRootUrl) return ssgRootUrl;
     // 分離構成では、プレビューでも公開側のURLを使う（管理側のアドレスを出さない）
     if (this.env.PUBLIC_SITE_URL) return this.env.PUBLIC_SITE_URL.trim().replace(/\/$/, '');
     const url = new URL(this.request.url);
@@ -136,7 +133,7 @@ export class MikanBoxRenderer {
 
   // Workers は常にルートにデプロイされるため basePath = '/'
   private getSiteBasePath(): string {
-    const rootUrl = (this.siteSettings.ssg_root_url || '').trim();
+    const rootUrl = (this.env.PUBLIC_SITE_URL || '').trim();
     if (rootUrl) {
       try {
         const path = new URL(rootUrl).pathname;

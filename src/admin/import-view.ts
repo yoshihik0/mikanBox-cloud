@@ -25,12 +25,8 @@ export function renderImportView(opts: {
   const {t,csrf,lang,stats,cloudBackupHtml}=opts;
   const en=lang==='en';
   const size=stats.mediaBytes>=1048576?`${(stats.mediaBytes/1048576).toFixed(1)} MB`:`${Math.round(stats.mediaBytes/1024)} KB`;
-  const packageHint=en
-    ? 'Upload a content ZIP containing settings.json, posts/ and/or components/. Existing IDs are kept; duplicate pages and components are skipped. Package settings are ignored to protect this site’s credentials and runtime configuration.'
-    : 'settings.json、posts/、components/ などを含むコンテンツZIPをアップロードします。既存IDは保持し、重複するページとコンポーネントはスキップします。サイトの認証情報と実行設定を保護するため、パッケージ内の設定は取り込みません。';
-  const wxrHint=en
-    ? 'Upload a WordPress Tools → Export XML (WXR) file. Posts and pages are imported; published items become dynamic pages, pending items remain pending, and other items become drafts. HTML is converted to basic Markdown.'
-    : 'WordPressの「ツール → エクスポート」で作成したXML（WXR）をアップロードします。投稿と固定ページを取り込み、公開記事は動的ページ、承認待ちは承認待ち、それ以外は下書きになります。本文のHTMLは簡易Markdownに変換します。';
+  const packageHint=t('import_zip_hint');
+  const wxrHint=t('import_wp_hint');
   return `<div id="data-import" class="section-anchor">
     <main class="data-tool">
       <header class="data-tool-header"><div class="data-tool-logo">🍊</div><div><h1>${en?'Data migration and import':'データ移行・インポート'}</h1><p>${en?'Review Cloud data and import external content.':'Cloudのデータ状態を確認し、外部コンテンツをインポートします。'}</p></div></header>
@@ -67,7 +63,6 @@ components/
         </form>
       </section>
       <section id="import-log" class="data-tool-card"><h2>${icon('receipt_long')} ${en?'Execution log':'実行ログ'}</h2><div class="data-tool-log" aria-live="polite" data-import-log>${en?'Choose an import file to begin.':'インポートするファイルを選択してください。'}</div></section>
-      <section id="csv-import" class="data-tool-card"><h2>${icon('table_chart')} ${t('csv_head')}</h2><p>${t('csv_hint')}</p><div class="data-tool-form-row"><input type="file" id="csv-file-input" accept=".csv,text/csv"><button type="button" class="btn btn-gray btn-small" onclick="csvConvertAndCopy()" id="csv-copy-btn">${icon('content_copy')} ${t('btn_csv_convert')}</button></div></section>
       ${cloudBackupHtml}
       </div>
       <footer class="data-tool-footer"><a href="/admin">${icon('arrow_back')} ${en?'Back to administration':'管理画面へ戻る'}</a><span>© ${new Date().getFullYear()} mikanBox Cloud</span></footer>

@@ -11,7 +11,7 @@ const {MikanBoxRenderer}=require('../.test-build/src/renderer.js');
 const {handleMcp}=require('../.test-build/src/mcp.js');
 const formats=require('../.test-build/src/output-formats.js');
 const request=new Request('https://cloud.test/admin'),decode=new TextDecoder();
-const site={site_name:'Site',description:'',ssg_root_url:'https://www.example.test'};
+const site={site_name:'Site',description:''};
 
 function env(){const value=environment();value.PUBLIC_SITE_URL='https://www.example.test';value.ASSETS={fetch:async r=>new Response('public:'+new URL(r.url).pathname)};return value;}
 async function sample(value){

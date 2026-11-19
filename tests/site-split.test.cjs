@@ -183,7 +183,7 @@ test('deleted published page remains marked as an unpublished change',async()=>{
 });
 
 test('a recovery token is consumed only once even for concurrent requests',async()=>{
- const env=split(environment());env.sqlite.prepare("INSERT INTO users(username,display_name,password_hash,auth_version) VALUES('admin','Admin','',1)").run();
+ const env=split(environment());env.sqlite.prepare("INSERT INTO users(username,display_name,auth_version) VALUES('admin','Admin',1)").run();
  const body={login_action:'setup',username:'admin',device_name:'Test',setup_token:env.SETUP_TOKEN,csrf_token:'audit-csrf'};
  const responses=await Promise.all([call(env,'/admin',body,'login_csrf=audit-csrf'),call(env,'/admin',body,'login_csrf=audit-csrf')]);assert.equal(responses.filter(r=>r.status===303).length,1);assert.equal(env.sqlite.prepare('SELECT COUNT(*) n FROM device_sessions WHERE revoked_at IS NULL').get().n,1);
 });

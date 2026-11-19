@@ -33,7 +33,7 @@ async function login(env,username='admin',display_name='Admin') {
     if(response.status!==303)throw new Error(await response.text());
     cookie=response.headers.get('Set-Cookie').split(';')[0];
   } else {
-    env.sqlite.prepare("INSERT INTO users(username,display_name,password_hash,auth_version) VALUES(?,?,'',1) ON CONFLICT(username) DO NOTHING").run(username,display_name);
+    env.sqlite.prepare("INSERT INTO users(username,display_name,auth_version) VALUES(?,?,1) ON CONFLICT(username) DO NOTHING").run(username,display_name);
     cookie=(await devices.createDevice(env,username,'Test device',new Request('https://cloud.test/admin'))).cookie.split(';')[0];
   }
   const session=await devices.deviceSession(new Request('https://cloud.test/admin',{headers:{Cookie:cookie}}),env);

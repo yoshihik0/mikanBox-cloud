@@ -37,8 +37,8 @@ test('the public URL is displayed beside the build controls and removes the top 
 test('device management starts closed and exposes an in-place expiry result',async()=>{
  const env=environment(),auth=await login(env);
  const html=await (await call(env,'/admin',undefined,auth.cookie)).text();
- assert.match(html,/<div id="users-mgmt"><div class="section-container section-tight"><details class="section-accordion"><summary/);
+ assert.match(html,/<div id="users-mgmt" class="section-large-bottom"><div class="section-container section-tight"><details class="section-accordion"><summary/);
  // The expiry is saved in place: the result goes to the toast (admin-ui.js), not to a status element.
- assert.match(html,/<form method="post" class="device-expiry-form" data-ajax>/);
+ assert.match(html,/<form method="post" class="device-expiry-form" data-ajax data-refresh="#users-mgmt">/);
  assert.doesNotMatch(html,/data-device-expiry/);
 });

@@ -14,13 +14,12 @@ test('initial setup requires its token and a used token never works again',async
   const env=environment();
   let r=await setup(env,{setup_token:'wrong'});assert.equal(r.status,400);assert.equal(env.sqlite.prepare('SELECT COUNT(*) n FROM users').get().n,0);
   r=await setup(env,{csrf_token:'forged'},true);assert.equal(r.status,403);
-  await saveSettings(env,{password_hash:'$2y$imported'});
-  r=await setup(env);assert.equal(r.status,400);assert.equal(env.sqlite.prepare('SELECT COUNT(*) n FROM users').get().n,0);
+  r=await setup(env);assert.equal(r.status,303);r=await setup(env,{username:'second'});assert.equal(r.status,400);assert.equal(env.sqlite.prepare('SELECT COUNT(*) n FROM users').get().n,1);
 });
 test('setup registers one device; the same token cannot register another',async()=>{
   const env=environment();await login(env);
   assert.equal(env.sqlite.prepare('SELECT COUNT(*) n FROM device_sessions').get().n,1);
-  assert.equal(env.sqlite.prepare("SELECT password_hash FROM users").get().password_hash,'');
+  assert.deepEqual(Object.keys(env.sqlite.prepare('SELECT * FROM users').get()).sort(),['auth_version','display_name','username']);
   const r=await setup(env,{username:'admin'});assert.equal(r.status,400);
   assert.equal(env.sqlite.prepare('SELECT COUNT(*) n FROM device_sessions WHERE revoked_at IS NULL').get().n,1);
 });
@@ -264,7 +263,7 @@ test('URL tags work in Markdown links while code examples stay literal',async()=
   const env=environment();
   await savePage(env,'embedded',{...page('public_static','[embedded]({{SITE_URL}}/embedded-target)'),wrapper_comp:'__none'});
   await savePage(env,'tag-links',{...page('public_static','[details]({{SITE_URL}}/about?x=1&y=2)\n\n[base]({{BASE_URL}}/base)\n\n`[example]({{SITE_URL}}/code)`\n\n```\n[example]({{SITE_URL}}/fenced)\n```\n\n{{POST_MD:embedded}}'),wrapper_comp:'__none'});
-  const {html}=await new MikanBoxRenderer(env,{ssg_root_url:'https://cloud.test/site'},new Request('https://cloud.test/site/tag-links')).render('tag-links');
+  const {html}=await new MikanBoxRenderer(Object.assign(env,{PUBLIC_SITE_URL:'https://cloud.test/site'}),{},new Request('https://cloud.test/site/tag-links')).render('tag-links');
   assert.match(html,/href="https:\/\/cloud\.test\/site\/about\?x=1&amp;y=2"/);
   assert.match(html,/href="https:\/\/cloud\.test\/site\/base"/);
   assert.match(html,/href="https:\/\/cloud\.test\/site\/embedded-target"/);
@@ -276,7 +275,7 @@ test('relative page links resolve to the page URL and keep ?query and #fragment;
   await savePage(env,'other-page',page('public_static','x'));
   await savePage(env,'src',{...page('public_static','[a](other-page?x=1#frag) [b](Other-Page/) [c](other-page.html) [d](no-such-page) [e](../up) [f](page.pdf)\n\n{{NAV_CARDS:cards}}'),wrapper_comp:'__none'});
   await savePage(env,'card1',{...page('public_static','c'),category:'cards',ogp_image:'pic.png'});
-  const {html}=await new MikanBoxRenderer(env,{ssg_root_url:'https://cloud.test'},new Request('https://cloud.test/src')).render('src');
+  const {html}=await new MikanBoxRenderer(Object.assign(env,{PUBLIC_SITE_URL:'https://cloud.test'}),{},new Request('https://cloud.test/src')).render('src');
   assert.match(html,/<a href="https:\/\/cloud\.test\/other-page\/?\?x=1#frag">a<\/a>/);
   assert.match(html,/<a href="https:\/\/cloud\.test\/other-page\/?">b<\/a>/);
   assert.match(html,/<a href="https:\/\/cloud\.test\/other-page\/?">c<\/a>/);
@@ -288,7 +287,7 @@ test('url(media/…) in page CSS and in inline styles points at the media folder
   const env=environment();
   await savePage(env,'deep/page',{...page('public_static','<div style="background:url(\'media/a.jpg\')">x</div>\n\n<p>images/not-a-url.png stays text</p>'),css:'.h{background:url("media/h.jpg")}.i{background:url(images/i.png)}',wrapper_comp:'_layout_t'});
   await saveComponent(env,'_layout_t',{html:'<!DOCTYPE html><html><head>{{HEAD_CSS}}</head><body>{{CONTENT}}</body></html>',css:'',is_global:true,is_wrapper:true});
-  const {html}=await new MikanBoxRenderer(env,{ssg_root_url:'https://cloud.test/site'},new Request('https://cloud.test/site/deep/page')).render('deep/page');
+  const {html}=await new MikanBoxRenderer(Object.assign(env,{PUBLIC_SITE_URL:'https://cloud.test/site'}),{},new Request('https://cloud.test/site/deep/page')).render('deep/page');
   assert.match(html,/url\("\/site\/media\/h\.jpg"\)/,'page CSS: rooted at the site');
   assert.match(html,/url\(\/site\/media\/i\.png\)/);
   assert.match(html,/url\('https:\/\/cloud\.test\/site\/media\/a\.jpg'\)/,'inline style: absolute');
@@ -397,7 +396,7 @@ test('fresh setup installs standard content and AI instruction IDs without overw
   assert.equal(await loadComponent(env,'../DESIGN.md'),null);
 });
 test('the search page is a Google site search form that forwards the standard search box',async()=>{
-  const env=environment();await saveSettings(env,{ssg_root_url:'https://www.example.test/site'});
+  const env=environment();env.PUBLIC_SITE_URL='https://www.example.test/site';
   await savePage(env,'matching',page('public_static','needle PUBLIC'));await savePage(env,'secret',page('draft','needle PRIVATE-CONTENT'));
   await savePage(env,'search',page('public_static','{{SEARCH_RESULTS:_search_result_item}}'));
   const body=await(await publicView(env,'/search')).text();

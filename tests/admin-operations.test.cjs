@@ -46,8 +46,9 @@ test('operations run in place: delete, save and device forms are marked for admi
   assert.match(editor,/<tr data-page-id="about">/,'rows carry the id the close motion returns to');
   const site=await(await call(env,'/admin?view=site',undefined,auth.cookie)).text();
   for(const action of ['save_memo','save_settings','save_cloud_update_repository'])assert.match(site,new RegExp(`<form method="post"[^>]*data-ajax[^>]*>[\\s\\S]{0,200}value="${action}"`),action);
-  assert.match(site,/data-confirm="[^"]+" data-confirm-ok="[^"]*" data-confirm-title="[^"]*">/);
-  assert.match(site,/<div id="issued-code-slot" data-note="/);
+  assert.match(site,/data-confirm="[^"]+" data-confirm-ok="[^"]*">/);
+  // The code goes under the button that issued it: one slot for the own device, one for invites.
+  assert.match(site,/value="device_code_create"><button[^]{0,200}<\/form><div data-issued-code-slot="own" data-note="/);assert.match(site,/value="1"><button[^]{0,200}<\/form><div data-issued-code-slot="invite" data-note="/);
   // A code is shown once: admin-ui does not refresh the form (that would replace the form before the code is placed); cloud-admin.js refreshes, then fills the slot.
   assert.match(site,/<form method="post" data-ajax>[^]{0,200}value="device_code_create"/);assert.doesNotMatch(site,/data-refresh="#users-mgmt">[^]{0,200}value="device_code_create"/);
   const adminScript=fs.readFileSync('public/mikanbox/cloud-admin.js','utf8');
@@ -55,7 +56,7 @@ test('operations run in place: delete, save and device forms are marked for admi
   // The language select is in an in-place form, and the script reloads for any form that contains it.
   assert.match(site,/<form method="post" data-ajax>[^]*?<select name="system_lang">/);
   assert.match(adminScript,/form\.querySelector\?\.\('\[name="system_lang"\]'\)/);
-  assert.match(site,/<form method="post" class="device-expiry-form" data-ajax>/);
+  assert.match(site,/<form method="post" class="device-expiry-form" data-ajax data-refresh="#users-mgmt">/);
   assert.match(site,/data-refresh="#users-mgmt"/);
   // The editor lives in its slot, so closing it removes it.
   assert.match(editor,/<div id="page-editor-slot">\s*<div id="page-editor"/);
