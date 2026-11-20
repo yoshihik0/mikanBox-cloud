@@ -134,13 +134,13 @@ export async function recentAudit(env:Env):Promise<AuditRow[]>{
  * only remembers the version. Checked once per Worker instance.
  */
 const versionChecked=new WeakMap<object,string>();
-export async function noteVersion(env:Env,version:string,request?:Request):Promise<void>{
+export async function noteVersion(env:Env,version:string):Promise<void>{
   if(versionChecked.get(env.DB)===version)return;
   try{
     const previous=(await env.DB.prepare("SELECT value FROM settings WHERE key='cloud_version'").first<{value:string}>())?.value||'';
     if(previous!==version){
       const done=await env.DB.prepare("INSERT INTO settings(key,value) VALUES('cloud_version',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value WHERE settings.value<>excluded.value").bind(version).run();
-      if(previous&&(done.meta?.changes??0)>0)await audit(env,'system_updated',{actor:'system',from:previous,to:version,request});
+      if(previous&&(done.meta?.changes??0)>0)await audit(env,'system_updated',{actor:'system',from:previous,to:version});
     }
     versionChecked.set(env.DB,version);
   }catch{/* recording never stops a request */}
