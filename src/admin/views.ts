@@ -8,6 +8,7 @@ import type { Settings, PageData, ComponentData } from '../types';
 import type { User } from '../accounts';
 import type { Revision } from '../revisions';
 import {CLOUD_VERSION} from '../version';
+import {mcpKeyList,MCP_KEY_NAME_MAX} from '../mcp';
 import {auditGroup,auditTargetText,auditUnusual,AUDIT_EVENTS} from '../audit';
 import {MEDIA_COUNT_LIMIT,D1_WARNING_BYTES} from '../media-policy';
 import {localTime,isoInstant,utcFallback,localTimeScript} from './local-time';
@@ -669,7 +670,7 @@ ${opts.mediaEnabled?`<div id="drop-zone">${getIcon('cloud')} ${t('hint_drop_uplo
 
     <script src="/mikanbox/preview-editor.js?v=${h(CLOUD_VERSION)}-2" defer></script>
     <script src="/mikanbox/cloud-editor.js?v=${h(CLOUD_VERSION)}" defer></script>
-    <script src="/mikanbox/cloud-admin.js?v=${h(CLOUD_VERSION)}-3" defer></script>
+    <script src="/mikanbox/cloud-admin.js?v=${h(CLOUD_VERSION)}-4" defer></script>
     <script src="/mikanbox/cloud-media.js?v=${h(CLOUD_VERSION)}" defer></script>
     <script src="/mikanbox/cloud-zip.js?v=${h(CLOUD_VERSION)}" defer></script><script src="/mikanbox/cloud-export.js?v=${h(CLOUD_VERSION)}" defer></script><script src="/mikanbox/cloud-integrity.js?v=${h(CLOUD_VERSION)}" defer></script><script src="/mikanbox/data-transfer.js?v=${h(CLOUD_VERSION)}" defer></script><script src="/mikanbox/cloud-transfer.js?v=${h(CLOUD_VERSION)}" defer></script><script src="/mikanbox/cloud-publish.js?v=${h(CLOUD_VERSION)}-8" defer></script>
 </div>
@@ -1416,13 +1417,16 @@ export function renderSiteView(opts: {
     <div id="mcp-key"><div class="section-container section-tight"><details class="section-accordion"><summary class="header section-header accordion-summary"><h2 class="accordion-title">${t('mcp_key_head')} <span class="accordion-arrow">▼</span></h2></summary><div class="editor-container editor-container-sub"><div class="panel-card">
       <small class="sub-text sub-text-intro">${t('mcp_key_hint')}</small>
       <form method="post" class="mt-10" data-ajax>${csrfField(csrf)}<input type="hidden" name="save_action" value="set_mcp_enabled"><label><input type="checkbox" name="mcp_enabled" value="1" ${settings.mcp_disabled?'':'checked'}> ${t('mcp_enable_label')}</label> <button type="submit" class="btn btn-gray btn-small">${t('btn_save')}</button></form>
-      <p class="sub-text">${t('mcp_last_used_label')}: <span id="mcp-last-used">${Number(settings._mcp_last_used||0)?localTime(Number(settings._mcp_last_used),lang):t('mcp_never_used')}</span></p>
       <div class="form-group mt-10"><label for="mcp-url-display">${t('mcp_url_label')}</label><div class="copy-row"><input type="text" id="mcp-url-display" value="" readonly><button type="button" class="btn btn-gray btn-small" onclick="copyField('mcp-url-display')">${getIcon('copy')} ${t('btn_copy')}</button></div></div>
-      <div id="mcp-key-issued"${settings.api_key?'':' style="display:none;"'}>
-        <div class="form-group mt-10"><label for="mcp-key-display">${t('mcp_key_label')}</label><div class="copy-row"><input type="text" id="mcp-key-display" value="" placeholder="${h(t('mcp_key_hidden_placeholder'))}" readonly><button type="button" class="btn btn-gray btn-small" onclick="copyField('mcp-key-display')">${getIcon('copy')} ${t('btn_copy')}</button></div><small class="sub-text" id="mcp-key-once" style="display:none;">${t('mcp_key_once_note')}</small></div>
-        <form method="post" class="mt-10" data-mcp-key-form>${csrfField(csrf)}<input type="hidden" name="save_action" value="generate_api_key"><button class="btn btn-gray btn-small">${getIcon('sparkles')} ${t('btn_regenerate_mcp_key')}</button></form>
+      <div id="mcp-key-issued" style="display:none;">
+        <div class="form-group mt-10"><label for="mcp-key-display">${t('mcp_key_label')}</label><div class="copy-row"><input type="text" id="mcp-key-display" value="" readonly><button type="button" class="btn btn-gray btn-small" onclick="copyField('mcp-key-display')">${getIcon('copy')} ${t('btn_copy')}</button></div><small class="sub-text" id="mcp-key-once">${t('mcp_key_once_note')}</small></div>
       </div>
-      <form method="post" class="mt-10" id="mcp-key-generate" data-mcp-key-form${settings.api_key?' style="display:none;"':''}>${csrfField(csrf)}<input type="hidden" name="save_action" value="generate_api_key"><button class="btn btn-blue btn-small">${getIcon('sparkles')} ${t('btn_generate_mcp_key')}</button></form>
+      <div id="mcp-key-list" class="mt-10">${(()=>{
+        const keys=mcpKeyList(settings.api_key),used=(settings._mcp_last_used||{}) as Record<string,number>;
+        if(!keys.length)return `<p class="sub-text">${t('mcp_key_none')}</p>`;
+        return `<table class="mcp-key-table"><thead><tr><th>${t('mcp_key_col_name')}</th><th>${t('mcp_key_col_created')}</th><th>${t('mcp_key_col_last_used')}</th><th></th></tr></thead><tbody>${keys.map(k=>{const name=k.name||t('mcp_key_unnamed');return `<tr><td>${h(name)}</td><td>${k.created?h(new Date(k.created*1000).toISOString().slice(0,10)):'—'}</td><td>${used[k.id]?localTime(used[k.id],lang):t('mcp_never_used')}</td><td><form method="post" data-ajax data-refresh="#mcp-key-list" data-confirm="${h(t('mcp_key_revoke_confirm',name))}">${csrfField(csrf)}<input type="hidden" name="save_action" value="revoke_mcp_key"><input type="hidden" name="mcp_key_id" value="${h(k.id)}"><button type="submit" class="btn btn-gray btn-small">${t('btn_revoke_mcp_key')}</button></form></td></tr>`;}).join('')}</tbody></table>`;
+      })()}</div>
+      <form method="post" class="mt-10" id="mcp-key-generate" data-ajax data-refresh="#mcp-key-list">${csrfField(csrf)}<input type="hidden" name="save_action" value="generate_api_key"><div class="form-group"><label for="mcp-key-name">${t('mcp_key_name_label')}</label><input type="text" id="mcp-key-name" name="mcp_key_name" maxlength="${MCP_KEY_NAME_MAX}" placeholder="${h(t('mcp_key_name_placeholder'))}" autocomplete="off" style="max-width:300px;"><small class="sub-text">${t('mcp_key_split_hint')}</small></div><button class="btn btn-blue btn-small">${getIcon('sparkles')} ${t('btn_generate_mcp_key')}</button></form>
       </div></div></details></div></div>
 
     <div class="section-container section-tight"><details class="section-accordion"><summary class="header section-header accordion-summary"><h2 class="accordion-title">${t('audit_heading')} <span class="accordion-arrow">▼</span></h2></summary><div class="editor-container editor-container-sub">

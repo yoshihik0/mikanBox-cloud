@@ -144,7 +144,7 @@
   document.addEventListener('submit',async event=>{
     const form=event.target;if(!form.closest?.('#site'))return;
     const name=form.querySelector('[name="save_action"]')?.value;
-    if(event.defaultPrevented||form.matches('[data-mcp-key-form],[data-cloudbackup],[data-transfer]')||['restore_d1_time'].includes(name))return;
+    if(event.defaultPrevented||form.matches('[data-cloudbackup],[data-transfer]')||['restore_d1_time'].includes(name))return;
     try{const details=[...document.querySelectorAll('#site details')];sessionStorage.setItem('cloud-site-position',JSON.stringify({y:window.scrollY,open:details.flatMap((d,i)=>d.open?[i]:[])}));}catch{}
   });
   // After an in-place action (admin-ui.js): a device code issued now is shown once in its slot, and a
@@ -177,18 +177,13 @@
     const language=form.querySelector?.('[name="system_lang"]');
     if(language&&language.value&&language.value!==document.documentElement.lang)reloadHere();
   });
-  // Generating or regenerating the MCP API key: show it in place. A reload would close the accordion it lives in.
-  document.addEventListener('submit',async event=>{
-    const form=event.target;if(!form.matches?.('[data-mcp-key-form]'))return;
-    event.preventDefault();
-    const button=form.querySelector('button'),label=button.innerHTML;button.disabled=true;
-    try{
-      const result=await action('generate_api_key');
-      const field=document.getElementById('mcp-key-display');if(field)field.value=result.mcp_api_key;const once=document.getElementById('mcp-key-once');if(once)once.style.display='';
-      const issued=document.getElementById('mcp-key-issued'),generate=document.getElementById('mcp-key-generate');
-      if(issued)issued.style.display='';if(generate)generate.style.display='none';
-      if(typeof window.showToast==='function')window.showToast(result.message);
-    }catch(error){if(typeof window.showToast==='function')window.showToast(error.message,true);}
-    finally{button.disabled=false;button.innerHTML=label;}
+  // A new MCP API key: the form refreshes the list, then the key is shown here once, in place.
+  // A reload would close the accordion it lives in.
+  document.addEventListener('mikan:done',event=>{
+    const form=event.target;if(!form.matches?.('#mcp-key-generate'))return;
+    const key=event.detail&&event.detail.mcp_api_key;if(!key)return;
+    document.getElementById('mcp-key-display').value=key;
+    document.getElementById('mcp-key-issued').style.display='';
+    const name=document.getElementById('mcp-key-name');if(name)name.value='';
   });
 })();

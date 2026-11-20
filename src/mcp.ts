@@ -97,31 +97,69 @@ async function mergePage(env:Env,settings:Settings,pid:string,incoming:Record<st
   const formatError=validatePageSave(pid,previous?pid:'',saved,createTranslator(getSystemLanguage(settings)));if(formatError)throw new Error(formatError);
   return saved;
 }
-/** Last use of the current key, written at most once an hour (as in PHP) to spare D1 writes. */
+/** Last use of each key, written at most once an hour per key (as in PHP) to spare D1 writes. */
 export const MCP_USE_INTERVAL=60*60*1000;
 async function keyHash(key:string){return [...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(key)))].map(v=>v.toString(16).padStart(2,'0')).join('');}
-/** The MCP API key is stored only as its fingerprint ("sha256:" + hex, the same as PHP) and shown once, when it is issued. */
+/** The MCP API keys are stored only as their fingerprints ("sha256:" + hex, the same as PHP) and shown once, when issued.
+ *  settings.api_key is a list of {name,hash,created}, or '' when there is none; a single fingerprint string
+ *  (an earlier version) reads as one key without a name. */
+export type McpKey={id:string;name:string;hash:string;created:number};
+export const MCP_KEY_LIMIT=20,MCP_KEY_NAME_MAX=40;
 export async function mcpKeyStore(key:string){return 'sha256:'+await keyHash(key);}
 const keyDigest=(stored:string)=>/^sha256:([0-9a-f]{64})$/.exec(stored)?.[1]||'';
-async function recordMcpUse(env:Env,digest:string){
-  const now=Date.now();
-  await env.DB.prepare("INSERT INTO settings(key,value) VALUES('mcp_last_used',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value WHERE json_extract(settings.value,'$.key')<>json_extract(excluded.value,'$.key') OR json_extract(settings.value,'$.at')<?")
-    .bind(JSON.stringify({key:digest,at:now}),now-MCP_USE_INTERVAL).run();
+/** The keys settings hold (id: the first 16 hex digits of the sha256). */
+export function mcpKeyList(raw:unknown):McpKey[]{
+  const items=Array.isArray(raw)?raw:typeof raw==='string'&&raw?[{name:'',hash:raw,created:0}]:[];
+  return items.flatMap(item=>{
+    const o=item as Record<string,unknown>,digest=keyDigest(String(o?.hash||''));
+    return digest?[{id:digest.slice(0,16),name:String(o.name||''),hash:'sha256:'+digest,created:Number(o.created)||0}]:[];
+  });
 }
-/** $stored: the key as settings hold it (its fingerprint). */
-export async function mcpLastUsed(env:Env,stored:string):Promise<number>{
-  const digest=keyDigest(stored);if(!digest)return 0;
+const keyStoreList=(list:McpKey[])=>list.length?list.map(k=>({name:k.name,hash:k.hash,created:k.created})):'';
+export const mcpKeyCleanName=(name:string)=>[...name.replace(/[\p{C}\s]+/gu,' ').trim()].slice(0,MCP_KEY_NAME_MAX).join('');
+/** Adds a named key to settings (not saved). Returns the new key, shown once, or '' at the limit. */
+export async function mcpKeyAdd(settings:Record<string,unknown>,name:string):Promise<string>{
+  const list=mcpKeyList(settings.api_key);if(list.length>=MCP_KEY_LIMIT)return '';
+  const key=crypto.randomUUID().replace(/-/g,'')+crypto.randomUUID().replace(/-/g,'');
+  list.push({id:'',name:mcpKeyCleanName(name),hash:await mcpKeyStore(key),created:Math.floor(Date.now()/1000)});
+  settings.api_key=keyStoreList(list);return key;
+}
+/** Removes the key with this id from settings (not saved). */
+export function mcpKeyRevoke(settings:Record<string,unknown>,id:string):boolean{
+  const list=mcpKeyList(settings.api_key),rest=list.filter(k=>k.id!==id);
+  if(rest.length===list.length)return false;
+  settings.api_key=keyStoreList(rest);return true;
+}
+/** The key record the supplied key matches, or null. */
+export async function mcpKeyFind(raw:unknown,supplied:string):Promise<McpKey|null>{
+  if(!supplied)return null;const digest=await keyHash(supplied);
+  let found:McpKey|null=null;
+  for(const key of mcpKeyList(raw))if(verifyCsrf(digest,key.hash.slice(7)))found=key;   // every key is compared
+  return found;
+}
+async function recordMcpUse(env:Env,id:string){
+  const now=Date.now(),used=await mcpLastUsed(env);
+  if(now-(used[id]||0)<MCP_USE_INTERVAL)return;
+  used[id]=now;
+  const kept=Object.fromEntries(Object.entries(used).sort((a,b)=>b[1]-a[1]).slice(0,100));
+  await env.DB.prepare("INSERT INTO settings(key,value) VALUES('mcp_last_used',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").bind(JSON.stringify({used:kept})).run();
+}
+/** When each key was last used: {id: time in ms}. */
+export async function mcpLastUsed(env:Env):Promise<Record<string,number>>{
   const row=await env.DB.prepare("SELECT value FROM settings WHERE key='mcp_last_used'").first<{value:string}>();
-  try{const v=JSON.parse(row?.value||'{}');return v.key===digest?Number(v.at)||0:0;}catch{return 0;}
+  try{const v=JSON.parse(row?.value||'{}').used;return v&&typeof v==='object'?Object.fromEntries(Object.entries(v).map(([k,t])=>[k,Number(t)||0])):{};}catch{return {};}
 }
-export async function handleMcp(request:Request,env:Env):Promise<Response> {
-  const settings=await loadSettings(env),digest=keyDigest(String(settings.api_key||''));
+/** onKey: told the name of the key that signed in, so the history can show which tool acted. */
+export async function handleMcp(request:Request,env:Env,onKey?:(name:string)=>void):Promise<Response> {
+  const settings=await loadSettings(env);
   const supplied=request.headers.get('Authorization')?.replace(/^Bearer /,'')||request.headers.get('X-API-Key')||'';
-  if(!digest||!supplied||!verifyCsrf(await keyHash(supplied),digest))
+  const matched=await mcpKeyFind(settings.api_key,supplied);
+  if(!matched)
     return Response.json({error:'Unauthorized'},{status:401,headers:{'Cache-Control':'no-store'}});
   // Stopped from Site → MCP API key (as in PHP): the key is kept, every request is refused.
   if(settings.mcp_disabled)return Response.json({error:'MCP is disabled.'},{status:403,headers:{'Cache-Control':'no-store'}});
-  await recordMcpUse(env,digest);
+  onKey?.(matched.name);
+  await recordMcpUse(env,matched.id);
   if(request.method!=='POST')return new Response('Method Not Allowed',{status:405,headers:{Allow:'POST'}});
   let id:unknown=null;
   try {

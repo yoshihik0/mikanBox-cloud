@@ -1,6 +1,6 @@
 import {audit,recentAudit} from '../audit';
 import {integrityPlan,integrityAccept,unusualAcceptedUntil} from '../integrity';
-import {mcpLastUsed,mcpKeyStore} from '../mcp';
+import {mcpLastUsed,mcpKeyAdd,mcpKeyRevoke,mcpKeyList,MCP_KEY_LIMIT} from '../mcp';
 import {latestCloudRelease,cloudUpdateUrl} from '../cloud-release';
 import {transferExport,transferImportData,transferImportMedia,transferRecordMedia,transferFinish,transferMode,TRANSFER_PART_LIMIT} from '../data-transfer';
 import {cloudConfigured,saveCloudToken,cloudTarget,beginD1Export,pollD1Export,prepareD1Download,openD1Download,d1Restore,cloudToken} from '../cloudflare-api';
@@ -205,7 +205,8 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
           await env.DB.prepare("INSERT INTO settings(key,value) VALUES('static_publication',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").bind(JSON.stringify({paths,published_at:new Date().toISOString()})).run();return json({success:true});
         }
         case 'set_mcp_enabled': settings.mcp_disabled=val(form,'mcp_enabled')!=='1';if(!await saveSettings(env,settings))throw new Error(t('err_save_failed'));await audit(env,settings.mcp_disabled?'mcp_disabled':'mcp_enabled',{actor:auth.user.username,request});break;
-        case 'generate_api_key': await audit(env,settings.api_key?'mcp_key_rotated':'mcp_key_issued',{actor:auth.user.username,request});{const key=crypto.randomUUID().replace(/-/g,'')+crypto.randomUUID().replace(/-/g,'');settings.api_key=await mcpKeyStore(key);if(!await saveSettings(env,settings))throw new Error(t('err_save_failed'));newApiKey=key;}message=t('msg_mcp_key_generated');break;
+        case 'generate_api_key': {const key=await mcpKeyAdd(settings,val(form,'mcp_key_name'));if(!key)throw new Error(t('err_mcp_key_limit',MCP_KEY_LIMIT));if(!await saveSettings(env,settings))throw new Error(t('err_save_failed'));await audit(env,'mcp_key_issued',{actor:auth.user.username,request,target:mcpKeyList(settings.api_key).at(-1)?.id});newApiKey=key;}message=t('msg_mcp_key_generated');break;
+        case 'revoke_mcp_key': {const id=val(form,'mcp_key_id');if(!mcpKeyRevoke(settings,id)||!await saveSettings(env,settings))throw new Error(t('err_save_failed'));await audit(env,'mcp_key_revoked',{actor:auth.user.username,request,target:id});}message=t('msg_mcp_key_revoked');break;
         case 'build_ssg': await buildStatic(env,request);break;
         case 'logout': await revokeDevice(env,auth.device,auth.device.id);return redirect(url.pathname,clearDeviceCookie());
         case 'save_page': {
@@ -432,7 +433,7 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
   if(url.searchParams.has('ajax_comps'))return html(designHtml);
   const databaseProbe=await env.DB.prepare('SELECT 1').run();
   const d1Bytes=typeof databaseProbe.meta.size_after==='number'?databaseProbe.meta.size_after:null;
-  const target=cloudTarget(env),displaySettings={...settings,_audit:await recentAudit(env),_unusual_until:await unusualAcceptedUntil(env),_mcp_last_used:await mcpLastUsed(env,String(settings.api_key||'')),d1_bytes:d1Bytes,cloud_connection_ready:cloudReady,cloud_account_id:target.account,cloud_worker_name:target.worker,_public_url:publicWorkerMissing(env)?'':env.PUBLIC_SITE_URL||''};
+  const target=cloudTarget(env),displaySettings={...settings,_audit:await recentAudit(env),_unusual_until:await unusualAcceptedUntil(env),_mcp_last_used:await mcpLastUsed(env),d1_bytes:d1Bytes,cloud_connection_ready:cloudReady,cloud_account_id:target.account,cloud_worker_name:target.worker,_public_url:publicWorkerMissing(env)?'':env.PUBLIC_SITE_URL||''};
   const siteHtml=renderSiteView({t,trackingLegacy:(()=>{const id=String(settings.tracking_component||''),data=components.find(c=>c.id===id)?.data;return{id,html:trackingLegacyHtml(data),exists:!!data&&!data.is_ai_doc&&!data.is_wrapper};})(),settings:displaySettings,csrf,helpFile,users,username:auth.user.username,accountsHtml:renderAccountsSection({t,lang,csrf,users,me:auth.device,devices:await listDevices(env),codes:await listCodes(env),expiryDays:expiryFrom(settings)}),lang,updateRepository:String(settings.cloud_update_repository||env.CLOUD_UPDATE_REPOSITORY||''),release:await latestCloudRelease(env,url.searchParams.has('refresh_updates')),dataHtml:renderDataSection({t,csrf,lang,cloudReady,stats:{pages:pages.length,components:components.length,users:users.length,media:files.length,mediaBytes:files.reduce((sum,file)=>sum+file.size,0),databaseBytes:d1Bytes}})});
   const unseen=await unseenDevices(env,auth.device);
   if(unseen.length)message=(message?message+' ':'')+(lang==='ja'?'新しい端末が登録されました: ':'New device registered: ')+unseen.map(d=>`${d.name} (${d.username})`).join(', ')+(lang==='ja'?'。心当たりがなければ「端末とユーザー」で止めてください。':'. If you do not recognise it, stop it under Devices and users.');

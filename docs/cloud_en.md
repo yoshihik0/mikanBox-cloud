@@ -1,6 +1,6 @@
 <style>.manual-version{font-size:.5em;font-weight:400;white-space:nowrap}</style>
 
-# 🍊mikanBox Cloudflare Manual <small class="manual-version">v0.18.1</small>
+# 🍊mikanBox Cloudflare Manual <small class="manual-version">v0.19.0</small>
 
 This manual covers installation and the Cloudflare edition’s differences. For shared operations, see the [operation manual](https://yoshihiko.com/mikanbox/help_en.html).
 
@@ -224,7 +224,7 @@ Program updates run the build, pending database migrations, and management Worke
 
 ### Cloud-specific MCP
 
-Generate a Cloud-specific API key in Site settings and connect to `/mcp` with the key in an `Authorization: Bearer` or `X-API-Key` header from a separate workspace. Clearing “Enable MCP” and saving refuses every MCP connection while keeping the key (as in PHP); the last use of the current key is shown (recorded at most once an hour). The root `.mcp.json` remains dedicated to the official PHP server. The key is shown only once, when it is issued, and the server keeps only its fingerprint (SHA-256) (from 0.18.0); if you lose it, regenerate it.
+In “MCP API key” on the Site screen, name a Cloud-specific API key after the AI tool or machine that will use it and issue it. A separate key for each tool or machine shows in the history which one acted and lets you revoke them one at a time (from 0.19.0; up to 20). Connect to `/mcp` with the key in an `Authorization: Bearer` or `X-API-Key` header from a separate workspace. Clearing “Enable MCP” and saving refuses every MCP connection while keeping the key (as in PHP); each key's last use is shown in the list (recorded at most once an hour per key). The root `.mcp.json` remains dedicated to the official PHP server. The key is shown only once, when it is issued, and the server keeps only its fingerprint (SHA-256) (from 0.18.0); if you lose it, revoke that key in the list and issue a new one.
 
 Current tools: `get_site_info`, `list_pages`, `get_page`, `create_page`, `update_page`, `delete_page`, `list_components`, `get_component`, `create_component`, `update_component`, `delete_component`, `preview_page`, `get_revisions`, `get_settings`, `get_ai_context`, `list_ai_docs`, `get_ai_doc`, `update_ai_doc`, `upload_media`, and `build_ssg`.
 
@@ -459,3 +459,8 @@ Differences from the PHP editions and unused parts tidied up, on the way to a su
 ### Changes in 0.18.1
 
 - In the tamper check, once you have confirmed the “Unusual operations” were yours, “This is my change (accept)” removes the color and the listing for the records up to then (the same as PHP 2.28.1).
+
+### Changes in 0.19.0
+
+- **MCP API keys can now be named, and you can issue as many as you need (up to 20; the same as PHP 2.29.0).** A separate key for each AI tool or machine shows in the history which key acted, and lets you revoke just the one that is a problem in the list. The list shows each key's name, issue date and last-use time. The single key you had keeps working, as a key without a name.
+- The tamper check's description is now the same as in the PHP editions. The “Cloudflare publication settings” and “MCP API key” sections are framed like the language section, and “Set up manual updates” is now “Set up updates connected to GitHub”.

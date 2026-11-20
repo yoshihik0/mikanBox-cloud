@@ -26,7 +26,7 @@ async function withAudit(request:Request,env:Env,handler:()=>Promise<Response>,a
 const userOf=(request:Request,env:Env)=>async()=>(await authenticatedUser(request,env))?.user.username||'';
 async function route(request: Request, env: Env): Promise<Response> {
   const url=new URL(request.url),pathname=url.pathname;
-  if(['/mcp','/mikanBox/mcp','/mikanBox/mcp.php'].includes(pathname))return withAudit(request,env,()=>handleMcp(request,env),async()=>'MCP');
+  if(['/mcp','/mikanBox/mcp','/mikanBox/mcp.php'].includes(pathname)){let actor='MCP';return withAudit(request,env,()=>handleMcp(request,env,name=>{if(name)actor='MCP ('+name+')';}),async()=>actor);}
   if(['/public-mcp','/mikanBox/public-mcp.php','/public-help.html'].includes(pathname))return handlePublicHelp(request,env);
   if(['/admin','/admin/','/admin.php','/mikanBox/admin.php'].includes(pathname)) return withAudit(request,env,()=>handleAdmin(request,env),userOf(request,env));
   if(['/admin/visual','/admin/visual/'].includes(pathname)) return withAudit(request,env,()=>handleVisual(request,env),userOf(request,env));

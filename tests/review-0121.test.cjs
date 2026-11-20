@@ -18,13 +18,13 @@ test('a category in use is deleted only after confirmation, and leaves its pages
 
 test('MCP can be stopped like in PHP; the key stays and the last use is shown',async()=>{
  const env=environment(),auth=await login(env);const key=(await post(env,auth,{save_action:'generate_api_key'})).data.mcp_api_key;
- const stored=(await loadSettings(env)).api_key;assert.match(stored,/^sha256:[0-9a-f]{64}$/,'only the fingerprint is stored');
+ const stored=(await loadSettings(env)).api_key;assert.match(stored[0].hash,/^sha256:[0-9a-f]{64}$/,'only the fingerprint is stored');assert.equal(JSON.stringify(stored).includes(key),false);
  const mcp=(headers)=>worker.fetch(new Request('https://cloud.test/mcp',{method:'POST',headers:{'Content-Type':'application/json',...headers},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/list'})}),env);
  assert.equal((await mcp({'X-API-Key':key})).status,200,'X-API-Key works as in PHP');
  let site=await(await call(env,'/admin?view=site',undefined,auth.cookie)).text();
  assert.match(site,/name="mcp_enabled" value="1" checked/);assert.doesNotMatch(site,/id="mcp-last-used">記録なし|id="mcp-last-used">No record/);
  await post(env,auth,{save_action:'set_mcp_enabled'});
- assert.equal((await mcp({Authorization:'Bearer '+key})).status,403);assert.equal((await loadSettings(env)).api_key,stored);
+ assert.equal((await mcp({Authorization:'Bearer '+key})).status,403);assert.deepEqual((await loadSettings(env)).api_key,stored);
  site=await(await call(env,'/admin?view=site',undefined,auth.cookie)).text();assert.match(site,/name="mcp_enabled" value="1" >/);
  await post(env,auth,{save_action:'set_mcp_enabled',mcp_enabled:'1'});assert.equal((await mcp({Authorization:'Bearer '+key})).status,200);
 });
@@ -58,12 +58,13 @@ test('the leftover R2, password and site-URL data are gone after the update',()=
 test('recent operations: MCP, keys, page status, devices and failed sign-ins are recorded and shown, keeping the newest 50 of each group',async()=>{
  const env=environment(),auth=await login(env);
  await post(env,auth,{save_action:'generate_api_key'});await post(env,auth,{save_action:'generate_api_key'});
+ await post(env,auth,{save_action:'revoke_mcp_key',mcp_key_id:require('../.test-build/src/mcp.js').mcpKeyList((await loadSettings(env)).api_key)[0].id});
  await post(env,auth,{save_action:'set_mcp_enabled'});await post(env,auth,{save_action:'set_mcp_enabled',mcp_enabled:'1'});
  await savePage(env,'p',{title:'P',status:'draft'});const current=await loadPage(env,'p');
  await post(env,auth,{save_action:'save_page',old_id:'p',id:'p',title:'P',status:'public_static',content_md:'',expected_revision:current.revision_tag||''});
  await post(env,auth,{save_action:'device_code_create'});
  const events=env.sqlite.prepare('SELECT event,actor,target,from_value,to_value FROM audit_events ORDER BY id').all().map(r=>r.event);
- for(const event of ['device_registered','mcp_key_issued','mcp_key_rotated','mcp_disabled','mcp_enabled','page_status','code_issued'])assert.ok(events.includes(event),event);
+ for(const event of ['device_registered','mcp_key_issued','mcp_key_revoked','mcp_disabled','mcp_enabled','page_status','code_issued'])assert.ok(events.includes(event),event);
  const status=env.sqlite.prepare("SELECT * FROM audit_events WHERE event='page_status'").get();assert.equal(status.target,'p');assert.equal(status.from_value,'draft');assert.equal(status.to_value,'public_static');assert.equal(status.actor,'admin');
  const site=await(await call(env,'/admin?view=site',undefined,auth.cookie)).text();
  assert.match(site,/最近の操作記録|Recent operations/);assert.match(site,/p \(draft → public_static\)/);
