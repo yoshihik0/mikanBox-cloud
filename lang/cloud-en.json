@@ -5,7 +5,6 @@
     "cloud_publish_setup_link": "Set it up under Site → Cloudflare publication settings (the steps are explained there)",
     "cloud_publish_needs_public_worker": "Publishing is not possible: no public Worker is set. Set a public Worker separate from the management Worker.",
     "cloud_publish_public_worker_link": "How to set it (Help)",
-    "integrity_hint_cloud": "Compares the files of the public site and the stored data with the state on record. Page views are not affected.",
     "integrity_cloud_program_na": "Program files: not applicable to the Cloud edition (the program is the deployed Worker).",
     "integrity_cloud_not_published": "The public site's files cannot be checked yet because nothing has been published.",
     "integrity_cloud_unreachable": "Files that could not be read from the public site (%s). Check the public site address and the network.",

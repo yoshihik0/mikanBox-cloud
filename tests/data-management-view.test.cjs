@@ -19,5 +19,5 @@ test('Data management: the figures, Save and Read as in PHP, then D1 to a past t
  const site=renderSiteView({t,csrf:'token',lang:'ja',settings:{},helpFile:'#',users:[],username:'admin'});
  assert.doesNotMatch(html,/id="csv-import"/);assert.match(site,/id="csv-import"/);assert.ok(site.indexOf('id="mcp-key"')<site.indexOf('id="csv-import"')&&site.indexOf('id="csv-import"')<site.indexOf('id="backup"'));
  assert.doesNotMatch(site,/begin_d1_export|get_ai_context|公開ヘルプ用/);
- assert.match(site,/id="cloud-connection" class="section-large-bottom"/);assert.doesNotMatch(site,/id="image-storage"/);assert.match(site,/Cloudflare公開設定/);
+ assert.match(site,/id="cloud-connection">/);assert.match(site,/class="section-end-gap"/);assert.doesNotMatch(site,/id="image-storage"/);assert.match(site,/Cloudflare公開設定/);
 });

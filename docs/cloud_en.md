@@ -121,7 +121,7 @@ For routine updates, select Update on GitHub in Site settings, press Run workflo
 2. In Settings → Secrets and variables → Actions → Repository secrets, add:
    - `CLOUDFLARE_API_TOKEN`: a Cloudflare token scoped to the target account with Workers Scripts Edit and D1 Edit permissions.
    - `MIKANBOX_UPDATE_CONFIG`: the complete installation `wrangler.production.json` as JSON. Use current management Worker, account, D1, routes and custom-domain settings. Do not use a sample or another site's configuration. Do not add JWT_SECRET, SETUP_TOKEN or API tokens to this JSON.
-3. Open GitHub Actions → Update mikanBox Cloud → Run workflow. If the management settings already include manual updates, save your repository as `owner/repository` there. Updates through Actions configure the link automatically.
+3. Open GitHub Actions → Update mikanBox Cloud → Run workflow. If the admin screen already has "Set up updates connected to GitHub", save your repository as `owner/repository` there. Updates through Actions configure the link automatically.
 
 If Cloudflare Workers Builds or another system already deploys on GitHub pushes, disable that automatic deployment separately to keep updates manual. This workflow has no push or scheduled trigger.
 

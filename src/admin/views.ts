@@ -1362,7 +1362,7 @@ export function renderSiteView(opts: {
         <div class="section-container section-tight">
             <div class="integrity-box" id="integrity-box" data-labels="${h(JSON.stringify(Object.fromEntries(['integrity_ok','integrity_found','integrity_sec_public','integrity_sec_data','integrity_changed','integrity_missing','integrity_data_changed','integrity_data_missing','integrity_data_unrecorded','integrity_item_page','integrity_item_component','integrity_item_settings','integrity_unusual_head','integrity_unusual_hint','integrity_accept_btn','integrity_accept_hint','integrity_checking','integrity_cloud_program_na','integrity_cloud_not_published','integrity_cloud_unreachable','integrity_cloud_unverified','integrity_cloud_truncated','integrity_cloud_checked','err_network_error',...AUDIT_EVENTS.map(e=>'audit_event_'+e)].map(k=>[k,t(k,'%s','%s')]))))}">
                 <button type="button" class="btn btn-gray btn-small" id="integrity-run">${t('integrity_btn')}</button>
-                <small class="sub-text">${t('integrity_hint_cloud')}</small>
+                <small class="sub-text sub-text-block">${t('integrity_hint')}</small>
                 <div id="integrity-output" aria-live="polite"></div>
             </div>
         </div>
@@ -1376,13 +1376,13 @@ export function renderSiteView(opts: {
                 ${opts.release?.url?`<a href="${h(opts.release.url)}" target="_blank" rel="noopener noreferrer">${lang==='en'?'Cloud release':'Cloud版リリース'}</a>`:''}
             </div>
             <small class="sub-text sub-text-block">${lang==='en'?'Open GitHub and press Run workflow to update. Updates run only when you choose. After it succeeds, reload this screen to check the installed version.':'GitHubを開き「Run workflow」を押すと更新します。自動では更新しません。成功後、この画面を再読み込みして現在のバージョンを確認してください。'}</small>
-            <details class="mt-10 js-accordion tracking-code-details"><summary>${lang==='en'?'Set up manual updates':'手動アップデートの設定'} <span class="accordion-arrow">▼</span></summary>
+            <details class="section-accordion mt-10" style="${guideBoxStyle}"><summary class="header section-header accordion-summary" style="${guideSummaryStyle}"><h3 style="font-size: 0.95rem; margin: 0; color: var(--text); display: inline-flex; align-items: center; gap: 8px; pointer-events: none;">${lang==='en'?'Set up updates connected to GitHub':'GitHubと接続したアップデートの設定'}</h3><span class="accordion-arrow" style="font-size: 0.75rem; opacity: 0.5;">▼</span></summary><div class="token-guide-body" style="${guideBodyStyle}">
               <p><a href="${h(helpFile)}#manual-update" target="_blank" rel="noopener noreferrer">${lang==='en'?'First-time GitHub setup instructions':'GitHubでの初回設定手順'}</a></p>
               <form method="post" data-ajax>${csrfField(csrf)}<input type="hidden" name="save_action" value="save_cloud_update_repository">
                 <label>${lang==='en'?'Your GitHub repository (owner/repository)':'自分のGitHubリポジトリ（所有者/リポジトリ名）'} <input name="cloud_update_repository" value="${h(opts.updateRepository||'')}" placeholder="owner/repository" maxlength="200"></label>
                 <button type="submit" class="btn btn-gray btn-small">${t('btn_save')}</button>
               </form>
-            </details>
+            </div></details>
         </div>
 
     <div id="language">
@@ -1413,7 +1413,7 @@ export function renderSiteView(opts: {
         </div>
     </div>
 
-    <div id="mcp-key"><div class="section-container section-tight"><details class="section-accordion"><summary class="header section-header accordion-summary"><h2 class="accordion-title">${t('mcp_key_head')} <span class="accordion-arrow">▼</span></h2></summary><div class="editor-container editor-container-sub">
+    <div id="mcp-key"><div class="section-container section-tight"><details class="section-accordion"><summary class="header section-header accordion-summary"><h2 class="accordion-title">${t('mcp_key_head')} <span class="accordion-arrow">▼</span></h2></summary><div class="editor-container editor-container-sub"><div class="panel-card">
       <small class="sub-text sub-text-intro">${t('mcp_key_hint')}</small>
       <form method="post" class="mt-10" data-ajax>${csrfField(csrf)}<input type="hidden" name="save_action" value="set_mcp_enabled"><label><input type="checkbox" name="mcp_enabled" value="1" ${settings.mcp_disabled?'':'checked'}> ${t('mcp_enable_label')}</label> <button type="submit" class="btn btn-gray btn-small">${t('btn_save')}</button></form>
       <p class="sub-text">${t('mcp_last_used_label')}: <span id="mcp-last-used">${Number(settings._mcp_last_used||0)?localTime(Number(settings._mcp_last_used),lang):t('mcp_never_used')}</span></p>
@@ -1423,7 +1423,7 @@ export function renderSiteView(opts: {
         <form method="post" class="mt-10" data-mcp-key-form>${csrfField(csrf)}<input type="hidden" name="save_action" value="generate_api_key"><button class="btn btn-gray btn-small">${getIcon('sparkles')} ${t('btn_regenerate_mcp_key')}</button></form>
       </div>
       <form method="post" class="mt-10" id="mcp-key-generate" data-mcp-key-form${settings.api_key?' style="display:none;"':''}>${csrfField(csrf)}<input type="hidden" name="save_action" value="generate_api_key"><button class="btn btn-blue btn-small">${getIcon('sparkles')} ${t('btn_generate_mcp_key')}</button></form>
-      </div></details></div></div>
+      </div></div></details></div></div>
 
     <div class="section-container section-tight"><details class="section-accordion"><summary class="header section-header accordion-summary"><h2 class="accordion-title">${t('audit_heading')} <span class="accordion-arrow">▼</span></h2></summary><div class="editor-container editor-container-sub">
     ${(()=>{
@@ -1556,14 +1556,15 @@ export function renderSiteView(opts: {
     </div>
 
     ${opts.accountsHtml||''}
-    <div id="cloud-connection" class="section-large-bottom"><div class="section-container section-tight"><details class="section-accordion"><summary class="header section-header accordion-summary"><h2 class="accordion-title">${lang==='en'?'Cloudflare publication settings':'Cloudflare公開設定'} <span class="accordion-arrow">▼</span></h2></summary><div class="editor-container editor-container-sub">
+    <div id="cloud-connection"><div class="section-container section-tight"><details class="section-accordion"><summary class="header section-header accordion-summary"><h2 class="accordion-title">${lang==='en'?'Cloudflare publication settings':'Cloudflare公開設定'} <span class="accordion-arrow">▼</span></h2></summary><div class="editor-container editor-container-sub">
                     <details class="section-accordion" style="${guideBoxStyle}"><summary class="header section-header accordion-summary" style="${guideSummaryStyle}"><h3 style="font-size: 0.95rem; margin: 0; color: var(--text); display: inline-flex; align-items: center; gap: 8px; pointer-events: none;">${lang==='en'?'How to get a Cloudflare API token':'Cloudflare APIトークンの取得方法'}</h3><span class="accordion-arrow" style="font-size: 0.75rem; opacity: 0.5;">▼</span></summary><div class="token-guide-body" style="${guideBodyStyle}">
                     ${lang==='en'?`<ol class="token-guide"><li>Sign in to Cloudflare with the account that hosts this site, and open <a href="https://dash.cloudflare.com/profile/api-tokens" target="_blank" rel="noopener">My Profile → API Tokens</a>.</li><li>Press <b>Create Token</b>, then <b>Get started</b> next to <b>Create Custom Token</b>.</li><li>Give it a name, such as “mikanBox publishing”.</li><li>Under <b>Permissions</b>, choose <b>Account</b> → <b>Workers Scripts</b> → <b>Edit</b>. To use the D1 backup and Time Travel features as well, add a second row: <b>Account</b> → <b>D1</b> → <b>Edit</b>.</li><li>Under <b>Account Resources</b>, choose <b>Include</b> → the account that hosts this site.</li><li>Press <b>Continue to summary</b>, then <b>Create Token</b>. Copy the long string that is shown. <b>It is shown only once.</b></li><li>Paste it into “Cloudflare API token” below and press Save. The account ID and Worker name are already filled in; leave them as they are.</li></ol><p class="sub-text">You create the token once. The site stores it encrypted and never shows it again. You only need a new one if it is deleted or revoked in Cloudflare, its permissions change, or the site’s secret key (JWT_SECRET) changes.</p>`:`<ol class="token-guide"><li>このサイトを置いているCloudflareのアカウントでログインし、<a href="https://dash.cloudflare.com/profile/api-tokens" target="_blank" rel="noopener">プロフィール → APIトークン</a>を開きます。</li><li>「トークンを作成する」を押し、「カスタムトークンを作成する」の「開始する」を押します。</li><li>トークン名を付けます。例：「mikanBox公開用」。</li><li>「権限」で、<b>アカウント</b> → <b>Workers スクリプト</b> → <b>編集</b> を選びます（英語表示では Account → Workers Scripts → Edit）。D1のバックアップとTime Travelも使う場合は、もう1行、<b>アカウント</b> → <b>D1</b> → <b>編集</b> を追加します。</li><li>「アカウントリソース」で、<b>含める</b> → このサイトを置いているアカウントを選びます。</li><li>「概要に進む」→「トークンを作成する」を押し、表示された長い文字列をコピーします。<b>表示されるのは1回だけです。</b></li><li>下の「Cloudflare APIトークン」欄に貼り付けて「保存」を押します。アカウントIDとWorker名は最初から入っているので、そのままにしてください。</li></ol><p class="sub-text">トークンは最初に1回作るだけです。サイトが暗号化して保存し、再表示しません。作り直すのは、Cloudflareで削除・失効させたとき、権限を変えたとき、サイトの秘密鍵（JWT_SECRET）を変えたときだけです。</p>`}
                     </div></details>
+                    <div class="panel-card">
                     <form method="post" class="grid-2col" data-ajax data-refresh="#cloud-connection, #publish-box"><input type="hidden" name="save_action" value="save_cloud_connection">${csrfField(csrf)}<div class="form-group"><label>${lang==='en'?'Cloudflare account ID':'CloudflareアカウントID'}</label><input type="text" name="cloud_account_id" value="${h(settings.cloud_account_id||'')}" required></div><div class="form-group"><label>${lang==='en'?'Worker name':'Worker名'}</label><input type="text" name="cloud_worker_name" value="${h(settings.cloud_worker_name||'')}" required></div><div class="form-group"><label>${lang==='en'?'Cloudflare API token':'Cloudflare APIトークン'}</label><input type="password" name="cloud_api_token" autocomplete="new-password" ${settings.cloud_connection_ready?'placeholder="•••••••• (set)"':'required'}></div><div class="form-actions"><button class="btn btn-gray btn-small">${t('btn_save')}</button> <span role="status">${settings.cloud_connection_ready?(lang==='en'?'Connection configured':'接続設定済み'):(lang==='en'?'Not configured':'未設定')}</span></div></form>
+                    </div>
     </div></details></div></div>
-
-
+    <div class="section-end-gap" aria-hidden="true"></div>
 `;
 }
 
