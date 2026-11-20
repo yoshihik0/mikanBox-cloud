@@ -33,7 +33,7 @@
         say(''); window.MikanUI?.toast(ja ? 'データベースのダウンロードを開始しました。' : 'Database download started.');
         return;
       }
-      const data = await action({ save_action: 'transfer_export', include_revisions: fields.get('include_revisions') === '1' && contents !== 'media' ? '1' : '0', ...(fields.get('match_filter') === '1' && window.MikanTransferFilter ? { match_filter: '1', filter_json: JSON.stringify(window.MikanTransferFilter()) } : {}) });
+      const data = await action({ save_action: 'transfer_export', contents, include_revisions: fields.get('include_revisions') === '1' && contents !== 'media' ? '1' : '0', ...(fields.get('match_filter') === '1' && window.MikanTransferFilter ? { match_filter: '1', filter_json: JSON.stringify(window.MikanTransferFilter()) } : {}) });
       const zip = new window.MikanZip();
       if (contents !== 'media') {
         zip.add('data/settings.json', json(data.settings));

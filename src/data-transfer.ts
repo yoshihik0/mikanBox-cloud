@@ -3,7 +3,7 @@ import {validId,reservedPageId} from './validation';
 import {loadSettings,saveSettings} from './storage';
 import {inspectMedia,publishedHash} from './media-store';
 import {MEDIA_COUNT_LIMIT,validMediaName,isCodeMedia} from './media-policy';
-import {pageOutputFormat,isDataFormat} from './output-formats';
+import {pageOutputFormat,isDataFormat,normalizeFooterComponents} from './output-formats';
 import {normalizeImportedPage,normalizeImportedComponent} from './content-import';
 import {audit} from './audit';
 /** Inside one batch only: the database's own records skip the writes between these two (migration 0027). */
@@ -54,7 +54,65 @@ function keepMedia(key:string,f:TransferFilter|null):boolean{
  if(f.q_media&&!key.toLowerCase().includes(f.q_media.toLowerCase()))return false;
  return !category||isCodeMedia(key)||key.startsWith('g_')||key.split('_').slice(0,-1).includes(category);
 }
-export async function transferExport(env:Env,withHistory:boolean,filter:TransferFilter|null=null){
+function collectMediaReference(value:string,used:Set<string>) {
+ const raw=value.trim().replace(/^\{\{\s*(?:SITE_URL|BASE_URL)\s*\}\}\//i,'/').split(/[?#]/,1)[0];
+ let path:string;
+ try { path=decodeURIComponent(raw); } catch { return; }
+ const match=path.match(/^(?:(?:\.{1,2}\/)*(?:(?:media|images)\/)?|\/(?:[A-Za-z0-9_.-]+\/)*(?:media|images)\/|\/)([A-Za-z0-9_.-]+)$/i);
+ if(match&&/\.(?:jpe?g|png|gif|webp|svg|mp3|m4a|mp4|js|css)$/i.test(match[1]))used.add(match[1]);
+}
+
+function collectMedia(text:string,used:Set<string>,script=false) {
+ const references=/(?:\b(?:src|poster)\s*=\s*|<link\b[^>]*?\bhref\s*=\s*|\burl\(\s*|!\[[^\]\n]*\]\(\s*)["']?([^\s"'<>\)]+)|\{\{\s*(?:IMAGE|AUDIO|VIDEO):\s*([^}\s]+)\s*\}\}/gi;
+ for(const match of text.matchAll(references))collectMediaReference(match[1]??match[2],used);
+ if(script) {
+  for(const [,path] of text.matchAll(/["']((?:\{\{\s*(?:SITE_URL|BASE_URL)\s*\}\}\/|(?:\.{1,2}\/)*|\/)media\/[^"'\s<>]+)["']/gi))collectMediaReference(path,used);
+ }
+ for(const match of text.matchAll(/\bsrcset\s*=\s*(["'])(.*?)\1/gis)) {
+  for(const candidate of match[2].split(','))collectMediaReference(candidate.trim().split(/\s+/,1)[0],used);
+ }
+}
+
+/** Select authored dependencies only. Navigation and links never add pages to the export. */
+async function transferPageAssets(pages:PageData[],available:Map<string,ComponentData>,settings:Settings) {
+ const components=new Set<string>(),media=new Set<string>();
+ function load(id:string):boolean {
+  const component=available.get(id);
+  if(!component||component.is_ai_doc||id==='__none')return false;
+  if(components.has(id))return true;
+  components.add(id);
+  scan(component.html||'');
+  collectMedia(component.css||'',media);
+  collectMedia(component.js||'',media,true);
+  return true;
+ }
+ function scan(body:string) {
+  body=body.replace(/^[ \t]{0,3}(`{3,}|~{3,})[^\n]*\n[\s\S]*?(?:^[ \t]{0,3}\1[`~]*[ \t]*$|(?![\s\S]))|`[^`\n]*`|<!--[\s\S]*?-->/gm,'');
+  collectMedia(body,media);
+  for(const [,tag,args] of body.matchAll(/\{\{\s*(COMPONENT|NAV_CARDS)\s*((?::[^}]*)?)\}\}/g)) {
+   const parts=args?args.slice(1).split(':').map(p=>p.trim()):[];
+   if(tag==='COMPONENT')load(parts[0]||'');
+   else load(parts.filter(p=>!/^(?:sort|limit|sep)=/.test(p))[1]||'_nav_card');
+  }
+ }
+ if(pages.length)collectMediaReference(settings.ogp_image||'',media);
+ for(const page of pages) {
+  const format=pageOutputFormat(page);
+  if(format==='html'||format==='html_md') {
+   const wrapper=page.wrapper_comp||'_layout';
+   if(wrapper!=='__none'&&!load(wrapper))load('_layout');
+   if(!page.exclude_tracking&&!settings.tracking_id&&!settings.tracking_head_code&&!settings.tracking_body_code)load(typeof settings.tracking_component==='string'?settings.tracking_component:'');
+   collectMedia(page.css||'',media);
+   collectMedia(page.js||'',media,true);
+  }
+  if(format==='html_md'||format==='md')for(const id of await normalizeFooterComponents(page.md_footer_comps,async id=>available.get(id)??null))load(id);
+  collectMediaReference(page.ogp_image||'',media);
+  scan(page.content_md||'');
+ }
+ return {components,media};
+}
+
+export async function transferExport(env:Env,withHistory:boolean,filter:TransferFilter|null=null,mediaOnly=false){
  const [pages,components,revisions,media]=await Promise.all([
   env.DB.prepare('SELECT id,data FROM posts ORDER BY id').all<{id:string;data:string}>(),
   env.DB.prepare('SELECT id,data FROM components ORDER BY id').all<{id:string;data:string}>(),
@@ -64,9 +122,13 @@ export async function transferExport(env:Env,withHistory:boolean,filter:Transfer
  for(const row of revisions.results){try{const list=history.get(row.post_id)||[];list.push({created_at:row.created_at,editor:row.editor_id,data:JSON.parse(row.data)});history.set(row.post_id,list);}catch{}}
  const parse=(rows:Array<{id:string;data:string}>)=>rows.flatMap(row=>{try{return [{id:row.id,data:JSON.parse(row.data)}];}catch{return [];}});
  const pageList=parse(pages.results).filter(p=>keepPage(p.id,p.data as PageData,filter)),pageIds=new Set(pageList.map(p=>p.id));
- const componentList=parse(components.results).filter(c=>!filter||filter.components===null||filter.components.includes(c.id));
- return {settings:contentSettings(await loadSettings(env) as Record<string,unknown>),pages:pageList,components:componentList,
-  revisions:[...history].filter(([id])=>pageIds.has(id)).map(([id,items])=>({id,items})),media:media.results.filter(row=>keepMedia(row.key,filter)).map(row=>({key:row.key,size:row.size,etag:row.etag,from:row.source||'/media/'+encodeURIComponent(row.key)}))};
+ const settings=await loadSettings(env);
+ const allComponents=parse(components.results);
+ const assets=!mediaOnly&&filter&&(filter.cat||filter.q||filter.fmt)
+  ?await transferPageAssets(pageList.map(p=>p.data as PageData),new Map(allComponents.map(c=>[c.id,c.data as ComponentData])),settings):null;
+ const componentList=allComponents.filter(c=>assets?assets.components.has(c.id):!filter||filter.components===null||filter.components.includes(c.id));
+ return {settings:contentSettings(settings as Record<string,unknown>),pages:pageList,components:componentList,
+  revisions:[...history].filter(([id])=>pageIds.has(id)).map(([id,items])=>({id,items})),media:media.results.filter(row=>assets?assets.media.has(row.key):keepMedia(row.key,filter)).map(row=>({key:row.key,size:row.size,etag:row.etag,from:row.source||'/media/'+encodeURIComponent(row.key)}))};
 }
 
 /** One part of the data: {settings?, pages, components, revisions}. */

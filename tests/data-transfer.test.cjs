@@ -45,16 +45,26 @@ async function site(){
  return {env,auth,cf};
 }
 
-test('Save with "Match the filtered lists": pages, components and media follow their own filters; without the box everything is saved',async()=>{
+test('Save with page filters: only selected pages and the assets they use',async()=>{
  const {env,auth,cf}=await site();
  try{
-  await savePage(env,'news/first',{title:'First',status:'draft',category:'news'});
-  await saveComponent(env,'footer',{html:'<p>f</p>'});
-  const filter=JSON.stringify({cat:'news',q:'',fmt:'',q_media:'',media_type:'',media_all:false,components:['header']});
+  await savePage(env,'news/first',{title:'First',status:'draft',category:'news',wrapper_comp:'header',
+   content_md:'<a href="/index">Home</a><a href="/media/photo.png">Download</a>{{NAV_LINKS:all}}{{NAV_CARDS:all:card}} ![cover](news_cover.png)'});
+  await saveComponent(env,'header',{html:'{{COMPONENT:nested}}<img src="media/g_logo.png">'});
+  await saveComponent(env,'nested',{html:'{{COMPONENT:header}}',css:'div{background:url(../media/other_cover.png?v=1)}'});
+  await saveComponent(env,'card',{html:'<a href="{{PAGE_URL}}">{{TITLE}}</a>'});
+  await saveComponent(env,'footer',{html:'<img src="media/photo.png">'});
+  for(const name of ['news_cover.png','g_logo.png','other_cover.png','photo.png'])assert.equal((await uploadThroughAdmin(env,auth,name,png)).success,true);
+  const filter=JSON.stringify({cat:'news',q_media:'logo',components:['footer']});
   const some=(await post(env,auth,{save_action:'transfer_export',match_filter:'1',filter_json:filter})).data;
-  assert.deepEqual(some.pages.map(p=>p.id),['news/first']);assert.deepEqual(some.components.map(c=>c.id),['header']);
+  assert.deepEqual(some.pages.map(p=>p.id),['news/first']);
+  assert.deepEqual(some.components.map(c=>c.id),['card','header','nested']);
+  assert.deepEqual(some.media.map(m=>m.key),['g_logo.png','news_cover.png','other_cover.png']);
+  const onlyMedia=(await post(env,auth,{save_action:'transfer_export',contents:'media',match_filter:'1',filter_json:filter})).data;
+  assert.deepEqual(onlyMedia.media.map(m=>m.key),['g_logo.png']);
   const byFormat=(await post(env,auth,{save_action:'transfer_export',match_filter:'1',filter_json:JSON.stringify({fmt:'data',components:null})})).data;
-  assert.ok(byFormat.pages.length>0&&byFormat.pages.every(p=>['json','xml','csv','txt','js','css'].includes(p.data.output_format)),'only data-format pages');assert.ok(byFormat.components.some(c=>c.id==='footer')&&byFormat.components.some(c=>c.id==='header'),'no component filter saves them all');
+  assert.ok(byFormat.pages.length>0&&byFormat.pages.every(p=>['json','xml','csv','txt','js','css'].includes(p.data.output_format)),'only data-format pages');
+  assert.ok(!byFormat.components.some(c=>c.id==='footer'||c.id==='header'),'unreferenced parts are excluded');
   const bySearch=(await post(env,auth,{save_action:'transfer_export',match_filter:'1',filter_json:JSON.stringify({q:'FIRST',components:null})})).data;
   assert.deepEqual(bySearch.pages.map(p=>p.id),['news/first']);
   const ignored=(await post(env,auth,{save_action:'transfer_export',filter_json:filter})).data;

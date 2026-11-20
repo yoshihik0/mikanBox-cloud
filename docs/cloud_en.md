@@ -1,6 +1,6 @@
 <style>.manual-version{font-size:.5em;font-weight:400;white-space:nowrap}</style>
 
-# 🍊mikanBox Cloudflare Manual <small class="manual-version">v0.20.2</small>
+# 🍊mikanBox Cloudflare Manual <small class="manual-version">v0.20.3</small>
 
 This manual covers installation and the Cloudflare edition’s differences. For shared operations, see the [operation manual](https://yoshihiko.com/mikanbox/help_en.html).
 
@@ -403,7 +403,7 @@ Differences from the PHP editions and unused parts tidied up, on the way to a su
 
 - **The full backup is now one ZIP.** It replaces the JSON backup (which held the images as text inside one JSON file): the data and the image files go into one ZIP as they are, and restoring means choosing that one ZIP. JSON backups from 0.13.1 and earlier cannot be restored; after updating, save a new full backup.
 - **Page history is optional.** It is left out unless you tick it.
-- **“Match the filtered lists” saves the pages, components and media as each list shows them now (the same as PHP 2.30.0).** A list that is not filtered is saved whole. The D1 SQL is not affected.
+- When **Match the filtered lists** is checked and the page list is filtered by category, output format, or search, the export includes the matching pages and their layout components, parts, and literal local media references. It follows parts embedded inside other parts. Linked pages, pages listed by navigation, other pages embedded as content, and references assembled at runtime by JavaScript are outside this selection. With no page filter, or when saving media only, the applicable list filters still apply. Content settings are included in JSON exports. Database exports are unaffected.
 - The data tool now lists: full backup, restore a backup file, export D1 as SQL, restore D1 to a past time, export the public site.
 - Export and backup results appear in the toast at the bottom right.
 
