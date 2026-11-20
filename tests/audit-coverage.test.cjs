@@ -1,7 +1,7 @@
 // Every change to pages, components, media and settings leaves a record, whichever way it was made
 // (admin screen, MCP, data import), with who made it and the content's sha256 (as PHP 2.26.0).
 const test=require('node:test'),assert=require('node:assert/strict');
-const {mcpKey,environment,call,login,post}=require('./fixtures.cjs');
+const {mcpKey,mcpKeys,environment,call,login,post}=require('./fixtures.cjs');
 const {handleMcp}=require('../.test-build/src/mcp.js');
 const {loadPage,saveSettings,loadSettings}=require('../.test-build/src/storage.js');
 const rows=env=>env.sqlite.prepare('SELECT * FROM audit_events ORDER BY id').all();
@@ -44,7 +44,7 @@ test('components, settings and the Cloudflare connection are recorded; setting v
 });
 
 test('MCP edits are recorded as MCP; media changes are recorded with the file hash',async()=>{
- const env=environment();await saveSettings(env,{...await loadSettings(env),api_key:mcpKey('test-mcp-key')});
+ const env=environment();await saveSettings(env,{...await loadSettings(env),api_key:mcpKeys('test-mcp-key')});
  const mcp=(name,args)=>handleMcp(new Request('https://cloud.test/mcp',{method:'POST',headers:{Authorization:'Bearer test-mcp-key','Content-Type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/call',params:{name,arguments:args}})}),env);
  const worker=require('../.test-build/src/index.js').default;
  await worker.fetch(new Request('https://cloud.test/mcp',{method:'POST',headers:{Authorization:'Bearer test-mcp-key','Content-Type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/call',params:{name:'create_page',arguments:{id:'m1',title:'M',content_md:'x'}}})}),env);

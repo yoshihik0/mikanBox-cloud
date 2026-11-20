@@ -129,4 +129,6 @@ async function uploadThroughAdmin(env,auth,filename,bytes,fields={}) {
 }
 /** The MCP API key as settings hold it: only its fingerprint (src/mcp.ts mcpKeyStore). */
 const mcpKey=key=>'sha256:'+require('node:crypto').createHash('sha256').update(key).digest('hex');
-module.exports={mcpKey,environment,call,login,post,publicView,putMedia,mockCloudflare,browserPublish,uploadThroughAdmin,publishNewMedia};
+/** The MCP API keys as settings hold them: a list of {name,hash,created}. */
+const mcpKeys=(...keys)=>keys.map(key=>({name:'',hash:mcpKey(key),created:0}));
+module.exports={mcpKey,mcpKeys,environment,call,login,post,publicView,putMedia,mockCloudflare,browserPublish,uploadThroughAdmin,publishNewMedia};

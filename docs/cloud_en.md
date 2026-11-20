@@ -1,6 +1,6 @@
 <style>.manual-version{font-size:.5em;font-weight:400;white-space:nowrap}</style>
 
-# 🍊mikanBox Cloudflare Manual <small class="manual-version">v0.19.0</small>
+# 🍊mikanBox Cloudflare Manual <small class="manual-version">v0.19.1</small>
 
 This manual covers installation and the Cloudflare edition’s differences. For shared operations, see the [operation manual](https://yoshihiko.com/mikanbox/help_en.html).
 
@@ -462,5 +462,11 @@ Differences from the PHP editions and unused parts tidied up, on the way to a su
 
 ### Changes in 0.19.0
 
-- **MCP API keys can now be named, and you can issue as many as you need (up to 20; the same as PHP 2.29.0).** A separate key for each AI tool or machine shows in the history which key acted, and lets you revoke just the one that is a problem in the list. The list shows each key's name, issue date and last-use time. The single key you had keeps working, as a key without a name.
+- **MCP API keys can now be named, and you can issue as many as you need (up to 20; the same as PHP 2.29.0).** A separate key for each AI tool or machine shows in the history which key acted, and lets you revoke just the one that is a problem in the list. The list shows each key's name, issue date and last-use time.
 - The tamper check's description is now the same as in the PHP editions. The “Cloudflare publication settings” and “MCP API key” sections are framed like the language section, and “Set up manual updates” is now “Set up updates connected to GitHub”.
+
+### Changes in 0.19.1
+
+- **The MCP API key section now sits under “Devices and users”, and an issued key appears in the field under the connection URL (the same order as PHP 2.29.1).** The tables of the history and of the MCP API keys use the same text size as the devices and users tables.
+- **A key issued before this update (0.18.x) no longer works from 0.19.1.** After updating, issue a new key in “MCP API key” on the Site screen and change the setting of your AI tool.
+- The “Update on GitHub” note is reworded and uses the same quiet gray as the version line. The outer frames around “Cloudflare publication settings” and the memo are transparent.

@@ -15,7 +15,7 @@ test('the MCP API key is generated in place, and the token steps are written nex
  const {post}=require('./fixtures.cjs');
  const env=environment(),auth=await login(env);
  const page=await (await call(env,'/admin',undefined,auth.cookie)).text();
- assert.match(page,/id="mcp-key-issued" style="display:none;"/);
+ assert.match(page,/id="mcp-key-issued" class="form-group mt-10"/);assert.match(page,/id="mcp-key-once" style="display:none;"/);assert.ok(page.indexOf('id="mcp-key-generate"')<page.indexOf('id="mcp-url-display"')&&page.indexOf('id="mcp-url-display"')<page.indexOf('id="mcp-key-display"'),'the form, then the connection URL, then the key');
  assert.match(page,/id="mcp-key-generate" data-ajax data-refresh="#mcp-key-list">/);
  assert.match(page,/class="token-guide"/);
  assert.match(page,/Workers スクリプト/);

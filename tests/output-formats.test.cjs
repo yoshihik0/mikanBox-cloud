@@ -2,7 +2,7 @@
 // mikanBox DB, the /id.<extension> URL rules, static publication, admin screens and MCP.
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
-const {mcpKey,environment,call,login,post}=require('./fixtures.cjs');
+const {mcpKey,mcpKeys,environment,call,login,post}=require('./fixtures.cjs');
 const {savePage,saveComponent,saveSettings,loadPage,listPages,sortPagesForAdmin}=require('../.test-build/src/storage.js');
 const {buildStatic}=require('../.test-build/src/ssg.js');
 const {publicationManifest,readPublicationEntry}=require('../.test-build/src/static-publication.js');
@@ -192,7 +192,7 @@ test('page editor: ID, output format, category order, field visibility and savin
 });
 
 test('MCP: format fields, validation, legacy db status and updated_at kept when editing a published page',async()=>{
-  const value=env();await sample(value);await saveSettings(value,{...site,api_key:mcpKey('test-mcp-key')});
+  const value=env();await sample(value);await saveSettings(value,{...site,api_key:mcpKeys('test-mcp-key')});
   const mcp=async(name,args)=>{const r=await handleMcp(new Request('https://cloud.test/mcp',{method:'POST',headers:{Authorization:'Bearer test-mcp-key','Content-Type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/call',params:{name,arguments:args}})}),value);const j=await r.json();return {error:j.result.isError,text:j.result.content[0].text};};
   const list=JSON.parse((await mcp('list_pages',{})).text);assert.equal(list.pages.find(p=>p.id==='notes').output_format,'md');
   const got=JSON.parse((await mcp('get_page',{id:'site'})).text);assert.equal(got.output_format,'js');assert.equal(got.expand_tags,false);assert.deepEqual(got.md_footer_comps,[]);
@@ -276,7 +276,7 @@ test('times are sent as instants and shown in the viewer\'s time zone; the sign-
 });
 
 test('MCP preview_page is read-only: saved page, unsaved fields, a new page, every format; version and guidance for clients',async()=>{
-  const value=env();await sample(value);await saveSettings(value,{...site,api_key:mcpKey('test-mcp-key')});
+  const value=env();await sample(value);await saveSettings(value,{...site,api_key:mcpKeys('test-mcp-key')});
   const rpc=async(method,params={})=>(await(await handleMcp(new Request('https://cloud.test/mcp',{method:'POST',headers:{Authorization:'Bearer test-mcp-key','Content-Type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method,params})}),value)).json()).result;
   const mcp=async(name,args={})=>{const r=await rpc('tools/call',{name,arguments:args});return {error:r.isError,data:r.isError?r.content[0].text:JSON.parse(r.content[0].text)};};
   const init=await rpc('initialize',{protocolVersion:'2025-06-18'});

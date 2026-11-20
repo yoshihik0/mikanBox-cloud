@@ -101,16 +101,14 @@ async function mergePage(env:Env,settings:Settings,pid:string,incoming:Record<st
 export const MCP_USE_INTERVAL=60*60*1000;
 async function keyHash(key:string){return [...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(key)))].map(v=>v.toString(16).padStart(2,'0')).join('');}
 /** The MCP API keys are stored only as their fingerprints ("sha256:" + hex, the same as PHP) and shown once, when issued.
- *  settings.api_key is a list of {name,hash,created}, or '' when there is none; a single fingerprint string
- *  (an earlier version) reads as one key without a name. */
+ *  settings.api_key is a list of {name,hash,created}, or '' when there is none. */
 export type McpKey={id:string;name:string;hash:string;created:number};
 export const MCP_KEY_LIMIT=20,MCP_KEY_NAME_MAX=40;
 export async function mcpKeyStore(key:string){return 'sha256:'+await keyHash(key);}
 const keyDigest=(stored:string)=>/^sha256:([0-9a-f]{64})$/.exec(stored)?.[1]||'';
 /** The keys settings hold (id: the first 16 hex digits of the sha256). */
 export function mcpKeyList(raw:unknown):McpKey[]{
-  const items=Array.isArray(raw)?raw:typeof raw==='string'&&raw?[{name:'',hash:raw,created:0}]:[];
-  return items.flatMap(item=>{
+  return (Array.isArray(raw)?raw:[]).flatMap(item=>{
     const o=item as Record<string,unknown>,digest=keyDigest(String(o?.hash||''));
     return digest?[{id:digest.slice(0,16),name:String(o.name||''),hash:'sha256:'+digest,created:Number(o.created)||0}]:[];
   });

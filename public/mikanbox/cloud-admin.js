@@ -183,7 +183,7 @@
     const form=event.target;if(!form.matches?.('#mcp-key-generate'))return;
     const key=event.detail&&event.detail.mcp_api_key;if(!key)return;
     document.getElementById('mcp-key-display').value=key;
-    document.getElementById('mcp-key-issued').style.display='';
+    document.getElementById('mcp-key-once').style.display='';
     const name=document.getElementById('mcp-key-name');if(name)name.value='';
   });
 })();
