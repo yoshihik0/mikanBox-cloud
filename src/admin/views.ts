@@ -8,7 +8,7 @@ import type { Settings, PageData, ComponentData } from '../types';
 import type { User } from '../accounts';
 import type { Revision } from '../revisions';
 import {CLOUD_VERSION} from '../version';
-import {auditGroup,auditTargetText} from '../audit';
+import {auditGroup,auditTargetText,auditUnusual,AUDIT_EVENTS} from '../audit';
 import {MEDIA_COUNT_LIMIT,D1_WARNING_BYTES} from '../media-policy';
 import {localTime,isoInstant,utcFallback,localTimeScript} from './local-time';
 import {trackingConfigured} from '../tracking';
@@ -671,7 +671,7 @@ ${opts.mediaEnabled?`<div id="drop-zone">${getIcon('cloud')} ${t('hint_drop_uplo
     <script src="/mikanbox/cloud-editor.js?v=${h(CLOUD_VERSION)}" defer></script>
     <script src="/mikanbox/cloud-admin.js?v=${h(CLOUD_VERSION)}-3" defer></script>
     <script src="/mikanbox/cloud-media.js?v=${h(CLOUD_VERSION)}" defer></script>
-    <script src="/mikanbox/cloud-zip.js?v=${h(CLOUD_VERSION)}" defer></script><script src="/mikanbox/cloud-export.js?v=${h(CLOUD_VERSION)}" defer></script><script src="/mikanbox/data-transfer.js?v=${h(CLOUD_VERSION)}" defer></script><script src="/mikanbox/cloud-transfer.js?v=${h(CLOUD_VERSION)}" defer></script><script src="/mikanbox/cloud-publish.js?v=${h(CLOUD_VERSION)}-8" defer></script>
+    <script src="/mikanbox/cloud-zip.js?v=${h(CLOUD_VERSION)}" defer></script><script src="/mikanbox/cloud-export.js?v=${h(CLOUD_VERSION)}" defer></script><script src="/mikanbox/cloud-integrity.js?v=${h(CLOUD_VERSION)}" defer></script><script src="/mikanbox/data-transfer.js?v=${h(CLOUD_VERSION)}" defer></script><script src="/mikanbox/cloud-transfer.js?v=${h(CLOUD_VERSION)}" defer></script><script src="/mikanbox/cloud-publish.js?v=${h(CLOUD_VERSION)}-8" defer></script>
 </div>
 </body>
 </html>`;
@@ -1360,6 +1360,13 @@ export function renderSiteView(opts: {
     </div>
 
         <div class="section-container section-tight">
+            <div class="integrity-box" id="integrity-box" data-labels="${h(JSON.stringify(Object.fromEntries(['integrity_ok','integrity_found','integrity_sec_public','integrity_sec_data','integrity_changed','integrity_missing','integrity_data_changed','integrity_data_missing','integrity_data_unrecorded','integrity_item_page','integrity_item_component','integrity_item_settings','integrity_unusual_head','integrity_unusual_hint','integrity_accept_btn','integrity_accept_hint','integrity_checking','integrity_cloud_program_na','integrity_cloud_not_published','integrity_cloud_unreachable','integrity_cloud_unverified','integrity_cloud_truncated','integrity_cloud_checked','err_network_error',...AUDIT_EVENTS.map(e=>'audit_event_'+e)].map(k=>[k,t(k,'%s','%s')]))))}">
+                <button type="button" class="btn btn-gray btn-small" id="integrity-run">${t('integrity_btn')}</button>
+                <small class="sub-text">${t('integrity_hint_cloud')}</small>
+                <div id="integrity-output" aria-live="polite"></div>
+            </div>
+        </div>
+        <div class="section-container section-tight">
             <div class="system-version-row" id="cloud-version-row">
                 <span>${t('version_current')}: ${h(CLOUD_VERSION)} (Cloud)</span>
                 <span>${t('version_latest')}: ${opts.release?.version?'v'+h(opts.release.version):opts.release?.status==='error'?t('version_check_failed'):(lang==='en'?'Cloud release information not published':'Cloud版のリリース情報は未公開')}</span>
@@ -1422,8 +1429,9 @@ export function renderSiteView(opts: {
     ${(()=>{
       type Row={at:string;event:string;actor:string;target:string;from_value:string;to_value:string;ip:string};
       const rows=(settings._audit as Row[])||[],groups:Array<[string,Row[]]>=[['important',[]],['edit',[]],['login',[]]];
-      for(const e of rows)groups.find(g=>g[0]===auditGroup(e.event))![1].push(e);
-      const table=(list:Row[])=>list.length?`<table><thead><tr><th>${t('audit_time_local')}</th><th>${t('audit_action')}</th><th>${t('audit_actor')}</th><th>${t('audit_target')}</th><th>IP</th></tr></thead><tbody>${list.map(e=>`<tr><td>${localTime(Date.parse(e.at),lang)}</td><td>${h(t('audit_event_'+e.event))}</td><td>${h(e.actor)}</td><td>${h(auditTargetText(e))}</td><td>${h(e.ip)}</td></tr>`).join('')}</tbody></table>`:`<p>${t('audit_empty')}</p>`;
+      const unusual=new Set(auditUnusual([...rows].reverse()).map(i=>rows.length-1-i));   // rows are newest first
+      rows.forEach((e,i)=>{(e as Row&{unusual?:boolean}).unusual=unusual.has(i);groups.find(g=>g[0]===auditGroup(e.event))![1].push(e);});
+      const table=(list:Row[])=>list.length?`<table><thead><tr><th>${t('audit_time_local')}</th><th>${t('audit_action')}</th><th>${t('audit_actor')}</th><th>${t('audit_target')}</th><th>IP</th></tr></thead><tbody>${list.map(e=>`<tr${(e as Row&{unusual?:boolean}).unusual?` class="audit-unusual" title="${h(t('audit_unusual_title'))}"`:''}><td>${localTime(Date.parse(e.at),lang)}</td><td>${h(t('audit_event_'+e.event))}</td><td>${h(e.actor)}</td><td>${h(auditTargetText(e))}</td><td>${h(e.ip)}</td></tr>`).join('')}</tbody></table>`:`<p>${t('audit_empty')}</p>`;
       return `<div class="audit-tabs">${groups.map((g,n)=>`<input type="radio" name="audit-tab" id="audit-tab-${n+1}"${n===0?' checked':''} aria-label="${h(t('audit_tab_'+g[0]))}">`).join('')}<div class="audit-tab-labels">${groups.map((g,n)=>`<label for="audit-tab-${n+1}">${t('audit_tab_'+g[0])} (${g[1].length})</label>`).join('')}</div>${groups.map(g=>`<div class="audit-panel">${table(g[1])}</div>`).join('')}</div>`;
     })()}
     </div></details></div>

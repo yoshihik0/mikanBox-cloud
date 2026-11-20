@@ -4,5 +4,12 @@
     "cloud_publish_needs_token": "公開するには、Cloudflare APIトークンの設定が必要です。",
     "cloud_publish_setup_link": "サイト →「Cloudflare公開設定」で設定する（取得方法も書いてあります）",
     "cloud_publish_needs_public_worker": "公開用のWorkerが設定されていないため、公開できません。管理用とは別の公開用Workerを設定してください。",
-    "cloud_publish_public_worker_link": "設定のしかた（ヘルプ）"
+    "cloud_publish_public_worker_link": "設定のしかた（ヘルプ）",
+    "integrity_hint_cloud": "公開サイトのファイルと保存したデータを、記録している正しい状態と照らし合わせます。ページの表示には影響しません。",
+    "integrity_cloud_program_na": "プログラムのファイル: Cloud版には対象がありません（プログラムは配備されたWorkerです）。",
+    "integrity_cloud_not_published": "公開サイトのファイルは、まだ公開していないので照合できません。",
+    "integrity_cloud_unreachable": "公開サイトから読めなかったファイル（%s件）。公開サイトのアドレスとネットワークを確認してください。",
+    "integrity_cloud_unverified": "公開時の記録がなく、照合できなかったファイル（%s件）。",
+    "integrity_cloud_truncated": "ファイルが多いため、最初の3000件だけを照合しました。",
+    "integrity_cloud_checked": "照合したファイル: %s件"
 }

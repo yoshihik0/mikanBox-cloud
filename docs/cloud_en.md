@@ -1,6 +1,6 @@
 <style>.manual-version{font-size:.5em;font-weight:400;white-space:nowrap}</style>
 
-# 🍊mikanBox Cloudflare Manual <small class="manual-version">v0.16.0</small>
+# 🍊mikanBox Cloudflare Manual <small class="manual-version">v0.17.0</small>
 
 This manual covers installation and the Cloudflare edition’s differences. For shared operations, see the [operation manual](https://yoshihiko.com/mikanbox/help_en.html).
 
@@ -195,6 +195,15 @@ Site → Recent operations shows the records in three tabs (Important, Site edit
 “Site edits” records every addition, change and deletion of pages, components, media and site settings (including the Cloudflare connection), whether it was made in the admin screen, in visual editing, through MCP or by importing data (from 0.16.0). Rewriting only the content of a page that is already public is recorded too. Saving the same item several times within 10 minutes by the same person is one line, and an import is one “Data imported” line. For site settings, only the names of the settings that changed are recorded, never their values.
 
 “Important” holds MCP enabled/stopped and key issued, devices registered/stopped and codes issued, deleted users, recovery and data restores. The latest 50 important operations, the latest 50 failed sign-ins and the latest 500 site edits are kept, so a run of failed sign-ins or of edits never pushes out the important records. A fingerprint (SHA-256) of the content before and after each change is kept but not shown. IP addresses are partly hidden. Changes made to D1 directly in the Cloudflare dashboard or with wrangler are recorded with an empty actor, since who made them is unknown.
+
+“Check for tampering”, above the version display on the Site screen, looks for changes that are not in the history and shows the result under the button. It runs only when you press it, and page views are not affected. It checks two things.
+
+- **Files of the public site**: the published text files (HTML and so on) and the media js, css, svg and html files are compared with the fingerprints recorded at publication. Your browser reads them from the public site and checks them, so a large site does not run into the limits of Cloudflare's free plan. Files that changed and files that disappeared are listed (unknown files added to the public site cannot be listed, so they are not found). Images, audio and video are not checked.
+- **Stored data**: the content of pages, components and site settings is compared with the last “after” fingerprint in the history. Changes made to D1 directly in the Cloudflare dashboard or with wrangler are found this way.
+
+The Cloud edition's program is the deployed Worker itself and there is no way to rewrite files on a server, so program files are not checked; the result says so. If nothing is found, the result says so with the time of the check. If what is found is your own change, press “This is my change (accept)” and the present state becomes the new basis (the acceptance is recorded as an important operation). Anyone with access to D1 or to deployment can also rewrite the records. This is a clue for noticing a problem, not protection against intrusion.
+
+In the history tables, records whose person and IP range have not appeared in any earlier record, or whose actor is empty, get a light background color (there is no setting; nothing is colored while there are no records yet). Such records of the last 30 days are also listed in the result as “Unusual operations”.
 
 ### Save and Read
 
@@ -436,3 +445,9 @@ Differences from the PHP editions and unused parts tidied up, on the way to a su
 ### Changes in 0.16.0
 
 - **Every change to pages, components, media and site settings is recorded in “Site edits”, wherever it was made.** Rewriting only the content of a page that is already public is recorded too. The latest 500 site edits are kept (the same as PHP 2.26.0).
+
+### Changes in 0.17.0
+
+- **Added “Check for tampering” to the Site screen.** It compares the files of the public site and the stored data with the state on record and shows the result under the button. If what it finds is your own change, “This is my change (accept)” makes it the new basis. Program files are not applicable to the Cloud edition.
+- **In the history, records whose person and IP range have not appeared before, or whose actor is empty, get a light background color.** Those of the last 30 days are also listed in the check result.
+- **The history now uses almost no D1 rows read.** Each record used to scan the whole history table (about 600 rows) twice; it now has an index, and old records are removed once in 50 records. Saving a page reads a few rows instead of about 1,200. The numbers shown (50 important operations, 500 site edits, 50 failed sign-ins) do not change. Updating applies a D1 migration (0028).

@@ -1,4 +1,5 @@
 import {audit,recentAudit} from '../audit';
+import {integrityPlan,integrityAccept} from '../integrity';
 import {mcpLastUsed} from '../mcp';
 import {latestCloudRelease,cloudUpdateUrl} from '../cloud-release';
 import {transferExport,transferImportData,transferImportMedia,transferRecordMedia,transferFinish,transferMode,TRANSFER_PART_LIMIT} from '../data-transfer';
@@ -384,6 +385,9 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
           const files=(published.paths||[]).filter(path=>!['/_headers','/_redirects'].includes(path)).sort().map(path=>({name:path.slice(1),from:path.split('/').map(encodeURIComponent).join('/')}));
           return json({success:true,files,extra:routing?{_headers:routing.headers||'',_redirects:routing.redirects||''}:{}});
         }
+        // Tamper check (integrity.ts, cloud-integrity.js): the Worker lists what to compare, the browser compares.
+        case 'integrity_plan': return json(await integrityPlan(env));
+        case 'integrity_accept': {const input=JSON.parse(val(form,'findings')||'{}');await integrityAccept(env,input,auth.user.username,request);return json({success:true,message:t('integrity_accepted_msg')});}
         default: throw new Error('未対応の操作です。 / Unsupported action.');
       }
       message||=t('msg_update_success');

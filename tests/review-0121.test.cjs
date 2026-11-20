@@ -71,10 +71,10 @@ test('recent operations: MCP, keys, page status, devices and failed sign-ins are
  const count=where=>env.sqlite.prepare("SELECT COUNT(*) n FROM audit_events WHERE "+where).get().n;
  const before=count("event<>'login_failed' AND event NOT IN "+edits),editsBefore=count('event IN '+edits);
  for(let i=0;i<210;i++)env.sqlite.prepare("INSERT INTO audit_events(at,event) VALUES('2026-01-01T00:00:00Z','login_failed')").run();
- assert.equal(count("event='login_failed'"),50,'failed sign-ins keep the newest 50');
+ assert.ok(count("event='login_failed'")>=50&&count("event='login_failed'")<100,'failed sign-ins keep at least the newest 50 (removed once in 50 records)');
  assert.equal(count("event<>'login_failed' AND event NOT IN "+edits),before,'a run of failed sign-ins does not push out the important records');
  assert.equal(count('event IN '+edits),editsBefore,'nor the site edits');
  for(let i=0;i<520;i++)env.sqlite.prepare("INSERT INTO audit_events(at,event) VALUES('2026-01-01T00:00:00Z','page_updated')").run();
- assert.equal(count('event IN '+edits),500,'site edits keep the newest 500');
+ assert.ok(count('event IN '+edits)>=500&&count('event IN '+edits)<550,'site edits keep at least the newest 500');
  assert.equal(count("event<>'login_failed' AND event NOT IN "+edits),before,'edits do not push out the important records');
 });

@@ -6,12 +6,12 @@ function environment() {
   for(const file of fs.readdirSync(path.join(__dirname,'../migrations')).sort())sqlite.exec(fs.readFileSync(path.join(__dirname,'../migrations',file),'utf8'));
   const DB={
     prepare(sql) {return {
-      args:[],bind(...args){this.args=args.map(value=>value instanceof ArrayBuffer?new Uint8Array(value):value);return this;},
+      sql,args:[],bind(...args){this.args=args.map(value=>value instanceof ArrayBuffer?new Uint8Array(value):value);return this;},
       async first(column){const row=sqlite.prepare(sql).get(...this.args);return column?(row?.[column]??null):(row??null);},
       async all(){return {success:true,results:sqlite.prepare(sql).all(...this.args)};},
       async run(){const r=sqlite.prepare(sql).run(...this.args);return {success:true,results:[],meta:{changes:Number(r.changes),last_row_id:Number(r.lastInsertRowid)}};}
     };},
-    async batch(statements){sqlite.exec('BEGIN');try{const results=[];for(const statement of statements)results.push(await statement.run());sqlite.exec('COMMIT');return results;}catch(e){sqlite.exec('ROLLBACK');throw e;}}
+    async batch(statements){sqlite.exec('BEGIN');try{const results=[];for(const statement of statements)results.push(/^\s*select/i.test(statement.sql)?await statement.all():await statement.run());sqlite.exec('COMMIT');return results;}catch(e){sqlite.exec('ROLLBACK');throw e;}}
   };
   // The public site is always a Worker of its own: admin at cloud.test, public site at www.cloud.test.
   return {DB,sqlite,JWT_SECRET:'test-secret-'.repeat(4),SETUP_TOKEN:'test-setup-token',CLOUDFLARE_WORKER_NAME:'cloud-admin',CLOUDFLARE_PUBLIC_WORKER_NAME:'cloud-public',PUBLIC_SITE_URL:'https://www.cloud.test'};
