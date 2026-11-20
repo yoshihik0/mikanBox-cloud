@@ -1,6 +1,6 @@
 <style>.manual-version{font-size:.5em;font-weight:400;white-space:nowrap}</style>
 
-# 🍊mikanBox Cloudflare Manual <small class="manual-version">v0.18.0</small>
+# 🍊mikanBox Cloudflare Manual <small class="manual-version">v0.18.1</small>
 
 This manual covers installation and the Cloudflare edition’s differences. For shared operations, see the [operation manual](https://yoshihiko.com/mikanbox/help_en.html).
 
@@ -455,3 +455,7 @@ Differences from the PHP editions and unused parts tidied up, on the way to a su
 ### Changes in 0.18.0
 
 - **The MCP API key is shown only once, when it is issued.** The server keeps only its fingerprint (SHA-256), the same as PHP 2.28.0. **Updating retires the existing key:** issue a new one once under Site → MCP API key and set it in your AI tool.
+
+### Changes in 0.18.1
+
+- In the tamper check, once you have confirmed the “Unusual operations” were yours, “This is my change (accept)” removes the color and the listing for the records up to then (the same as PHP 2.28.1).

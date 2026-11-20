@@ -119,7 +119,7 @@
           return '<tr class="audit-unusual"><td>' + esc(localTime(row.at)) + '</td><td>' + esc(L('audit_event_' + row.event)) + '</td><td>' + esc(row.actor) + '</td><td>' + esc(target) + '</td><td>' + esc(row.ip) + '</td></tr>';
         }).join('') + '</tbody></table>';
     }
-    if (findings) html += '<p><button type="button" class="btn btn-gray btn-small" data-integrity-accept>' + esc(L('integrity_accept_btn')) + '</button> <small class="sub-text">' + esc(L('integrity_accept_hint')) + '</small></p>';
+    if (findings || plan.unusual.length) html += '<p><button type="button" class="btn btn-gray btn-small" data-integrity-accept>' + esc(L('integrity_accept_btn')) + '</button> <small class="sub-text">' + esc(L('integrity_accept_hint')) + '</small></p>';
     output.innerHTML = html + '</div>';
   }
   async function check(note) {
@@ -134,7 +134,7 @@
         return { status: response.status, bytes: response.ok ? new Uint8Array(await response.arrayBuffer()) : null };
       };
       const [data, pub] = await Promise.all([checkData(plan), plan.published && base ? checkPublic(plan, fetchFile) : { found: { changed: [], missing: [] }, current: {}, unreachable: 0, unverified: 0, checked: 0 }]);
-      last = { data, pub };
+      last = { data, pub, plan };
       render(plan, data, pub, note);
     } catch (error) {
       window.showToast && window.showToast(error.message || L('err_network_error'), true);
@@ -143,7 +143,7 @@
   run.addEventListener('click', () => check(''));
   output.addEventListener('click', async event => {
     if (!(event.target instanceof Element) || !event.target.closest('[data-integrity-accept]') || !last) return;
-    const findings = { public: {}, data: {} };
+    const findings = { public: {}, data: {}, unusual: !!(last.plan && last.plan.unusual && last.plan.unusual.length) };
     for (const path of [...last.pub.found.changed, ...last.pub.found.missing]) findings.public[path] = last.pub.current[path] || '';
     for (const key of [...last.data.found.changed, ...last.data.found.missing, ...last.data.found.unrecorded]) findings.data[key] = last.data.current[key] || '';
     try { const done = await action('integrity_accept', { findings: JSON.stringify(findings) }); await check(done.message || ''); }

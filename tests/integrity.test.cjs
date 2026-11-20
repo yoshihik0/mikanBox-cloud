@@ -138,3 +138,17 @@ test('the Site screen has the button above the version row, and the program chec
  const anonymous=await call(env,'/admin',{save_action:'integrity_plan',ajax_request:'1'});
  assert.doesNotMatch(await anonymous.text(),/"success":true|"files"/,'admin only');
 });
+
+test('records up to an acceptance are no longer unusual; later ones still are (as PHP)',async()=>{
+ const {auditUnusual}=require('../.test-build/src/audit.js');
+ const rows=[{actor:'a',ip:'1',at:'2026-11-01T00:00:00Z'},{actor:'b',ip:'1',at:'2026-11-02T00:00:00Z'},{actor:'c',ip:'1',at:'2026-11-04T00:00:00Z'}];
+ assert.deepEqual(auditUnusual(rows),[1,2]);
+ assert.deepEqual(auditUnusual(rows,'2026-11-03T00:00:00Z'),[2]);
+ const {environment}=require('./fixtures.cjs'),{integrityAccept,integrityPlan}=require('../.test-build/src/integrity.js');
+ const env=environment();
+ env.sqlite.prepare("INSERT INTO audit_events(at,event,actor,target,ip) VALUES(?,?,?,?,?)").run(new Date(Date.now()-3600e3).toISOString(),'page_updated','admin','x','1.1.1.x');
+ env.sqlite.prepare("INSERT INTO audit_events(at,event,actor,target,ip) VALUES(?,?,?,?,?)").run(new Date(Date.now()-1800e3).toISOString(),'page_updated','','y','');
+ assert.ok((await integrityPlan(env)).unusual.length>=1,'a record without a person is listed');
+ await integrityAccept(env,{unusual:true},'admin',new Request('https://cloud.test/admin'));
+ assert.equal((await integrityPlan(env)).unusual.length,0,'accepting stops listing what was looked at');
+});

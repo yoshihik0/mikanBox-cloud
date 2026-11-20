@@ -65,11 +65,14 @@ export function canonicalSettings(raw:string):string{
   return raw;
 }
 /** Which records are out of the ordinary (as PHP's mikanBoxAuditUnusual): a person and address range not seen in any earlier record, or no person at all. Rows oldest first; returns indexes. */
-export function auditUnusual(rows:Array<{actor:string;ip:string}>):number[]{
+export function auditUnusual(rows:Array<{actor:string;ip:string;at?:string}>,acceptedUntil=''):number[]{
+  // acceptedUntil: records up to the last "this is my change" are no longer flagged (they were looked at).
+  const until=acceptedUntil?Date.parse(acceptedUntil)||0:0;
   const seen=new Set<string>(),flagged:number[]=[];
   rows.forEach((row,i)=>{
     const actor=(row.actor||'').trim(),key=actor+'\0'+(row.ip||'');
-    if(!actor||(seen.size&&!seen.has(key)))flagged.push(i);
+    const accepted=until>0&&Date.parse(row.at||'')<=until;
+    if(!accepted&&(!actor||(seen.size&&!seen.has(key))))flagged.push(i);
     seen.add(key);
   });
   return flagged;

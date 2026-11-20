@@ -17,13 +17,15 @@ export interface IntegrityPlan {
   unusual:Array<{at:string;event:string;actor:string;target:string;from_value:string;to_value:string;ip:string}>;
 }
 const FILE_LIMIT=3000;
-async function acceptedState(env:Env):Promise<{public:Record<string,string>;data:Record<string,string>}>{
+async function acceptedState(env:Env):Promise<{public:Record<string,string>;data:Record<string,string>;unusual_until:string}>{
   try{
     const row=await env.DB.prepare("SELECT value FROM settings WHERE key='integrity'").first<{value:string}>();
     const value=row?JSON.parse(row.value):{};
-    return {public:value.public&&typeof value.public==='object'?value.public:{},data:value.data&&typeof value.data==='object'?value.data:{}};
-  }catch{return {public:{},data:{}};}
+    return {public:value.public&&typeof value.public==='object'?value.public:{},data:value.data&&typeof value.data==='object'?value.data:{},unusual_until:typeof value.unusual_until==='string'?value.unusual_until:''};
+  }catch{return {public:{},data:{},unusual_until:''};}
 }
+/** Records up to the last acceptance are not "out of the ordinary" any more (as PHP). */
+export async function unusualAcceptedUntil(env:Env):Promise<string>{return (await acceptedState(env)).unusual_until;}
 export async function integrityPlan(env:Env):Promise<IntegrityPlan>{
   const records=(await env.DB.prepare('SELECT id,at,event,actor,target,from_value,to_value,ip,after_hash FROM audit_events ORDER BY id').all<{id:number;at:string;event:string;actor:string;target:string;from_value:string;to_value:string;ip:string;after_hash:string}>()).results;
   // The last known fingerprint of each item: records without one (a change made straight in the database) do not count.
@@ -54,7 +56,7 @@ export async function integrityPlan(env:Env):Promise<IntegrityPlan>{
   results.forEach((result,i)=>{for(const row of result.results as Array<{id:string;data:string}>)values.set(statements[i].kind==='settings'?'settings':statements[i].kind+':'+row.id,statements[i].kind==='settings'?canonicalSettings(row.data):row.data);});
   for(const [key,entry] of last)if(KEY.test(key))data.push({key,after:entry.after,deleted:entry.deleted,value:values.get(key)??null});
   // Unusual records of the last 30 days (the rule of the history tables).
-  const flagged=new Set(auditUnusual(records));
+  const flagged=new Set(auditUnusual(records,(await acceptedState(env)).unusual_until));
   const since=Date.now()-30*86400_000;
   const unusual=records.filter((row,i)=>flagged.has(i)&&Date.parse(row.at)>=since).reverse().slice(0,100).map(({at,event,actor,target,from_value,to_value,ip})=>({at,event,actor,target,from_value,to_value,ip}));
   // The files the public site was last published with (the fingerprints recorded at publication).
@@ -70,13 +72,15 @@ export async function integrityPlan(env:Env):Promise<IntegrityPlan>{
   return {success:true,at:new Date().toISOString(),public_url:(env.PUBLIC_SITE_URL||'').replace(/\/$/,''),published,files,files_truncated:truncated,data,accepted:await acceptedState(env),unusual};
 }
 /** "This is my change": the differences the browser found become the accepted state (kept in D1 settings, recorded as an important event). */
-export async function integrityAccept(env:Env,input:{public?:Record<string,string>;data?:Record<string,string>},actor:string,request:Request):Promise<void>{
+export async function integrityAccept(env:Env,input:{public?:Record<string,string>;data?:Record<string,string>;unusual?:boolean},actor:string,request:Request):Promise<void>{
   const cleanPublic:Record<string,string>={},cleanData:Record<string,string>={};
   for(const [path,hash] of Object.entries(input.public||{}).slice(0,5000))if(/^\/[^\s\\?#]{0,300}$/.test(path)&&/^(?:[0-9a-f]{32})?$/.test(String(hash)))cleanPublic[path]=String(hash);
   for(const [key,hash] of Object.entries(input.data||{}).slice(0,5000))if(KEY.test(key)&&/^(?:[0-9a-f]{64})?$/.test(String(hash)))cleanData[key]=String(hash);
   const previous=await acceptedState(env);
-  const value=JSON.stringify({public:{...previous.public,...cleanPublic},data:{...previous.data,...cleanData},at:new Date().toISOString()});
-  await env.DB.prepare("INSERT INTO settings(key,value) VALUES('integrity',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").bind(value).run();
-  const parts=[Object.keys(cleanPublic).length?'public':'',Object.keys(cleanData).length?'data':''].filter(Boolean).join(',');
+  const parts=[Object.keys(cleanPublic).length?'public':'',Object.keys(cleanData).length?'data':'',input.unusual?'unusual':''].filter(Boolean).join(',');
   await audit(env,'integrity_accepted',{actor,target:parts,request});
+  // Saved after the acceptance's own record, so that record is not "out of the ordinary" either.
+  const now=new Date().toISOString();
+  const value=JSON.stringify({public:{...previous.public,...cleanPublic},data:{...previous.data,...cleanData},at:now,unusual_until:input.unusual?now:previous.unusual_until});
+  await env.DB.prepare("INSERT INTO settings(key,value) VALUES('integrity',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").bind(value).run();
 }

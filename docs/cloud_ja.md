@@ -1,6 +1,6 @@
 <style>.manual-version{font-size:.5em;font-weight:400;white-space:nowrap}</style>
 
-# 🍊mikanBox Cloudflare版 マニュアル <small class="manual-version">v0.18.0</small>
+# 🍊mikanBox Cloudflare版 マニュアル <small class="manual-version">v0.18.1</small>
 
 このマニュアルはCloudflare版の導入と、PHP版との違いを説明します。共通の操作は[操作マニュアル](https://yoshihiko.com/mikanbox/help_ja.html)も参照してください。flat版・SQLite版との使い分けは、[README](https://github.com/yoshihik0/mikanBox-cloud#readme)を参照してください。
 
@@ -608,3 +608,7 @@ PHP版2.20.0に合わせて、管理画面のページ一覧の並びを変え�
 ### 0.18.0の変更
 
 - **MCP APIキーは、発行したときに一度だけ表示します。** サーバーにはキーの指紋（SHA-256）だけを保存します（PHP版2.28.0と同じです）。**更新すると、それまでのキーは使えなくなります。** サイト画面の「MCP APIキー」で一度だけ発行し直し、AIツールの設定を新しいキーに替えてください。
+
+### 0.18.1の変更
+
+- 改ざんチェックの「普段と違う操作」は、自分の操作だと確かめて「これは自分の変更（承認）」を押すと、そこまでの記録が色も一覧も外れます（PHP版2.28.1と同じです）。

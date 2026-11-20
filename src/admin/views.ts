@@ -1429,7 +1429,7 @@ export function renderSiteView(opts: {
     ${(()=>{
       type Row={at:string;event:string;actor:string;target:string;from_value:string;to_value:string;ip:string};
       const rows=(settings._audit as Row[])||[],groups:Array<[string,Row[]]>=[['important',[]],['edit',[]],['login',[]]];
-      const unusual=new Set(auditUnusual([...rows].reverse()).map(i=>rows.length-1-i));   // rows are newest first
+      const unusual=new Set(auditUnusual([...rows].reverse(),String(settings._unusual_until||'')).map(i=>rows.length-1-i));   // rows are newest first
       rows.forEach((e,i)=>{(e as Row&{unusual?:boolean}).unusual=unusual.has(i);groups.find(g=>g[0]===auditGroup(e.event))![1].push(e);});
       const table=(list:Row[])=>list.length?`<table><thead><tr><th>${t('audit_time_local')}</th><th>${t('audit_action')}</th><th>${t('audit_actor')}</th><th>${t('audit_target')}</th><th>IP</th></tr></thead><tbody>${list.map(e=>`<tr${(e as Row&{unusual?:boolean}).unusual?` class="audit-unusual" title="${h(t('audit_unusual_title'))}"`:''}><td>${localTime(Date.parse(e.at),lang)}</td><td>${h(t('audit_event_'+e.event))}</td><td>${h(e.actor)}</td><td>${h(auditTargetText(e))}</td><td>${h(e.ip)}</td></tr>`).join('')}</tbody></table>`:`<p>${t('audit_empty')}</p>`;
       return `<div class="audit-tabs">${groups.map((g,n)=>`<input type="radio" name="audit-tab" id="audit-tab-${n+1}"${n===0?' checked':''} aria-label="${h(t('audit_tab_'+g[0]))}">`).join('')}<div class="audit-tab-labels">${groups.map((g,n)=>`<label for="audit-tab-${n+1}">${t('audit_tab_'+g[0])} (${g[1].length})</label>`).join('')}</div>${groups.map(g=>`<div class="audit-panel">${table(g[1])}</div>`).join('')}</div>`;

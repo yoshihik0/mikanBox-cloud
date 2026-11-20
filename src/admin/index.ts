@@ -1,5 +1,5 @@
 import {audit,recentAudit} from '../audit';
-import {integrityPlan,integrityAccept} from '../integrity';
+import {integrityPlan,integrityAccept,unusualAcceptedUntil} from '../integrity';
 import {mcpLastUsed,mcpKeyStore} from '../mcp';
 import {latestCloudRelease,cloudUpdateUrl} from '../cloud-release';
 import {transferExport,transferImportData,transferImportMedia,transferRecordMedia,transferFinish,transferMode,TRANSFER_PART_LIMIT} from '../data-transfer';
@@ -387,7 +387,7 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
         }
         // Tamper check (integrity.ts, cloud-integrity.js): the Worker lists what to compare, the browser compares.
         case 'integrity_plan': return json(await integrityPlan(env));
-        case 'integrity_accept': {const input=JSON.parse(val(form,'findings')||'{}');await integrityAccept(env,input,auth.user.username,request);return json({success:true,message:t('integrity_accepted_msg')});}
+        case 'integrity_accept': {const input=JSON.parse(val(form,'findings')||'{}');await integrityAccept(env,{...input,unusual:input.unusual===true},auth.user.username,request);return json({success:true,message:t('integrity_accepted_msg')});}
         default: throw new Error('未対応の操作です。 / Unsupported action.');
       }
       message||=t('msg_update_success');
@@ -432,7 +432,7 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
   if(url.searchParams.has('ajax_comps'))return html(designHtml);
   const databaseProbe=await env.DB.prepare('SELECT 1').run();
   const d1Bytes=typeof databaseProbe.meta.size_after==='number'?databaseProbe.meta.size_after:null;
-  const target=cloudTarget(env),displaySettings={...settings,_audit:await recentAudit(env),_mcp_last_used:await mcpLastUsed(env,String(settings.api_key||'')),d1_bytes:d1Bytes,cloud_connection_ready:cloudReady,cloud_account_id:target.account,cloud_worker_name:target.worker,_public_url:publicWorkerMissing(env)?'':env.PUBLIC_SITE_URL||''};
+  const target=cloudTarget(env),displaySettings={...settings,_audit:await recentAudit(env),_unusual_until:await unusualAcceptedUntil(env),_mcp_last_used:await mcpLastUsed(env,String(settings.api_key||'')),d1_bytes:d1Bytes,cloud_connection_ready:cloudReady,cloud_account_id:target.account,cloud_worker_name:target.worker,_public_url:publicWorkerMissing(env)?'':env.PUBLIC_SITE_URL||''};
   const siteHtml=renderSiteView({t,trackingLegacy:(()=>{const id=String(settings.tracking_component||''),data=components.find(c=>c.id===id)?.data;return{id,html:trackingLegacyHtml(data),exists:!!data&&!data.is_ai_doc&&!data.is_wrapper};})(),settings:displaySettings,csrf,helpFile,users,username:auth.user.username,accountsHtml:renderAccountsSection({t,lang,csrf,users,me:auth.device,devices:await listDevices(env),codes:await listCodes(env),expiryDays:expiryFrom(settings)}),lang,updateRepository:String(settings.cloud_update_repository||env.CLOUD_UPDATE_REPOSITORY||''),release:await latestCloudRelease(env,url.searchParams.has('refresh_updates')),dataHtml:renderDataSection({t,csrf,lang,cloudReady,stats:{pages:pages.length,components:components.length,users:users.length,media:files.length,mediaBytes:files.reduce((sum,file)=>sum+file.size,0),databaseBytes:d1Bytes}})});
   const unseen=await unseenDevices(env,auth.device);
   if(unseen.length)message=(message?message+' ':'')+(lang==='ja'?'新しい端末が登録されました: ':'New device registered: ')+unseen.map(d=>`${d.name} (${d.username})`).join(', ')+(lang==='ja'?'。心当たりがなければ「端末とユーザー」で止めてください。':'. If you do not recognise it, stop it under Devices and users.');
