@@ -561,11 +561,11 @@ test('save notification is dismissible and does not persist in navigation state'
   assert.equal(replaced,'https://cloud.test/admin?view=site&cat=news#site');
 });
 
-test('the data tool reads its texts from the shared translations in both languages', async()=>{
+test('Data management reads its texts from the shared translations in both languages', async()=>{
   const env=environment(),auth=await login(env);
   for (const [lang,label] of [['ja','同じIDのものを上書きする'],['en','Overwrite items with the same ID']]) {
     await saveSettings(env,{system_lang:lang});
-    const body=await(await call(env,'/admin?view=import',undefined,auth.cookie)).text();
+    const body=await(await call(env,'/admin?view=site',undefined,auth.cookie)).text();
     assert.ok(body.includes(label),lang);
   }
 });

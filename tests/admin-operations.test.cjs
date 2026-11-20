@@ -19,7 +19,7 @@ test('no alert, confirm or prompt in any admin script or template (a reappearing
 test('rendered admin screens carry no inline dialog handlers',async()=>{
   const env=environment(),auth=await login(env);
   await savePage(env,'about',{title:'About',status:'draft',content_md:'x'});
-  for(const path of ['/admin','/admin?view=pages&edit=about','/admin?view=pages&new=1','/admin?view=design&new=1','/admin?view=import','/admin?view=site']) {
+  for(const path of ['/admin','/admin?view=pages&edit=about','/admin?view=pages&new=1','/admin?view=design&new=1','/admin?view=site']) {
     const html=await(await call(env,path,undefined,auth.cookie)).text();
     assert.doesNotMatch(html,/on(?:submit|click|change)="[^"]*(?:confirm|alert|prompt)\(/,path);
     assert.doesNotMatch(html,DIALOG,path+' has a dialog call in its inline script');

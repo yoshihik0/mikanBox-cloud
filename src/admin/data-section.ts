@@ -5,16 +5,16 @@ const csrfField=(token: string)=>`<input type="hidden" name="csrf_token" value="
 const TEXTS=['transfer_reading','transfer_nothing','transfer_not_zip','transfer_bad_json','transfer_confirm_title','transfer_confirm_replace','transfer_btn_replace','transfer_sending_data','transfer_sending_media','transfer_publishing','transfer_publish_failed','transfer_done','transfer_refused','transfer_media_failed','transfer_build_hint'];
 
 /**
- * The data tool screen: Save and Read, the same structure and wording as the PHP editions
- * (shared/views/data-tool.php). The Cloud edition adds its own sections after them ($extraHtml):
- * restoring D1 to a past time and exporting the public site.
+ * The site screen's "Data management": the site's figures, Save and Read, the same structure and wording as
+ * the PHP editions (shared/views/data-transfer-sections.php). The Cloud edition adds its own sections after
+ * them ($extraHtml): restoring D1 to a past time and exporting the public site.
  */
-export function renderImportView(opts: {t: Translator; csrf: string; cloudReady: boolean; extraHtml: string}): string {
-  const {t,csrf}=opts,texts=Object.fromEntries(TEXTS.map(key=>[key,t(key)]));
-  return `<div id="data-import" class="section-anchor">
-    <main class="data-tool">
-      <header class="data-tool-header"><div class="data-tool-logo">🍊</div><div><h1>${h(t('btn_data_tool'))}</h1><p>${h(t('transfer_tool_intro'))}</p></div></header>
-      <div class="data-tool-content">
+export interface TransferStats {pages:number;components:number;users:number;media:number;mediaBytes:number;databaseBytes:number|null}
+const size=(b:number)=>b>=1048576?`${(b/1048576).toFixed(1)} MB`:`${(b/1024).toFixed(1)} KB`;
+export function renderTransferSections(opts: {t: Translator; csrf: string; cloudReady: boolean; extraHtml: string; stats: TransferStats}): string {
+  const {t,csrf,stats}=opts,texts=Object.fromEntries(TEXTS.map(key=>[key,t(key)]));
+  const figures=[['pages',stats.pages],['components',stats.components],['users',stats.users],['media',stats.media],['media_size',size(stats.mediaBytes)],...(stats.databaseBytes!==null?[['database',size(stats.databaseBytes)]]:[])];
+  return `${`<ul class="transfer-stats">${figures.map(([key,value])=>`<li>${h(t('transfer_stats_'+key))} <strong>${h(value)}</strong></li>`).join('')}</ul>`}
         <section id="transfer-export" class="data-tool-card">
           <h2>${icon('download')} ${h(t('transfer_export_title'))}</h2>
           <p>${h(t('transfer_export_hint'))}</p>
@@ -42,8 +42,5 @@ export function renderImportView(opts: {t: Translator; csrf: string; cloudReady:
             <span data-transfer-status role="status"></span>
           </form>
         </section>
-        ${opts.extraHtml}
-      </div>
-    </main>
-  </div>`;
+        ${opts.extraHtml}`;
 }

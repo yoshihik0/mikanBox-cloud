@@ -1,8 +1,10 @@
 const {test}=require('node:test');const assert=require('node:assert/strict');
-const {renderImportView,renderSiteView}=require('../.test-build/src/admin/views.js');
+const {renderDataSection,renderSiteView}=require('../.test-build/src/admin/views.js');
+const stats={pages:3,components:2,users:1,media:4,mediaBytes:2048,databaseBytes:null};
 const t=key=>key;
-test('Cloud data tool: Save and Read as in PHP, then D1 to a past time and the public site; CSV conversion sits in the site screen',()=>{
- const html=renderImportView({t,csrf:'token',lang:'ja',cloudReady:true});
+test('Data management: the figures, Save and Read as in PHP, then D1 to a past time and the public site; CSV conversion sits in the site screen',()=>{
+ const html=renderDataSection({t,csrf:'token',lang:'ja',cloudReady:true,stats});
+ assert.match(html,/transfer_stats_pages <strong>3<\/strong>/);assert.match(html,/transfer_stats_media_size <strong>2\.0 KB<\/strong>/);
  const order=['transfer-export','transfer-import','cloud-d1-restore','site-export'].map(id=>html.indexOf(`id="${id}"`));
  assert.ok(order.every((at,i)=>at>0&&(i===0||order[i-1]<at)),String(order));
  for(const value of ['both','data','media','database'])assert.match(html,new RegExp(`<option value="${value}">transfer_contents_${value}</option>`));
@@ -12,7 +14,7 @@ test('Cloud data tool: Save and Read as in PHP, then D1 to a past time and the p
  assert.match(html,/公開サイトは変わらないので、復元にはサイトをビルドしてください/);
  assert.match(html,/site_export_hint/);assert.match(html,/name="relative" value="1"> site_export_relative/);
  assert.doesNotMatch(html,/cloud-json-backup|restore_backup_json|content_import|zip-import|wp-import|begin_d1_export/);
- assert.doesNotMatch(renderImportView({t,csrf:'token',lang:'ja',cloudReady:false}),/option value="database"/,'without the token, no database choice');
+ assert.doesNotMatch(renderDataSection({t,csrf:'token',lang:'ja',cloudReady:false,stats}),/option value="database"/,'without the token, no database choice');
  for(const id of ['transfer-export','transfer-import','cloud-d1-restore','site-export'])assert.match(html,new RegExp(`id="${id}" class="data-tool-card"`));
  const site=renderSiteView({t,csrf:'token',lang:'ja',settings:{},helpFile:'#',users:[],username:'admin'});
  assert.doesNotMatch(html,/id="csv-import"/);assert.match(site,/id="csv-import"/);assert.ok(site.indexOf('id="mcp-key"')<site.indexOf('id="csv-import"')&&site.indexOf('id="csv-import"')<site.indexOf('id="backup"'));

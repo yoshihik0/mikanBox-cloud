@@ -1,6 +1,6 @@
 <style>.manual-version{font-size:.5em;font-weight:400;white-space:nowrap}</style>
 
-# 🍊mikanBox Cloudflare Manual <small class="manual-version">v0.14.2</small>
+# 🍊mikanBox Cloudflare Manual <small class="manual-version">v0.15.0</small>
 
 This manual covers installation and the Cloudflare edition’s differences. For shared operations, see the [operation manual](https://yoshihiko.com/mikanbox/help_en.html).
 
@@ -184,7 +184,7 @@ Pages, history and settings are kept in the D1 database; media files (images, an
 
 - Site → Storage usage shows the D1 database size; a notice appears when it passes 450 MB.
 - Media may hold files of up to 10 MB each and 10,000 files (Cloudflare's free plan allows 20,000 files of up to 25 MiB each on the public site). The media screen warns when the file count passes 90% of the limit.
-- The public site is the only place the media is kept. Save it regularly with "Save" (JSON and media) in the Data Migration & Import Tool.
+- The public site is the only place the media is kept. Save it regularly with "Save" (JSON and media) under Site → Data management.
 
 References: [D1 limits](https://developers.cloudflare.com/d1/platform/limits/), [Workers limits](https://developers.cloudflare.com/workers/platform/limits/).
 
@@ -194,7 +194,7 @@ Site → Recent operations shows the latest 50 of: MCP enabled/stopped and key i
 
 ### Save and Read
 
-"Save", "Read" and "Export the public site" are the same screen and work as in the PHP editions ([Data Migration & Import Tool](https://yoshihiko.com/mikanbox/help_en.html#data-migration)); a ZIP saved here can be read into a PHP site too. What differs in Cloud:
+The figures, "Save", "Read" and "Export the public site" look and work as in the PHP editions ([Data management](https://yoshihiko.com/mikanbox/help_en.html#site-data-mgmt)); a ZIP saved here can be read into a PHP site too. What differs in Cloud:
 
 - **Save**: the browser reads each media file from the public site and puts it in the ZIP. If a public file differs from its record, saving stops: build the site and save again. "Database" saves the whole D1 database (pages, settings, accounts and the media information) as one SQL file, without the media files themselves; load it into a Cloudflare database with `wrangler d1 execute`. It can be chosen once a token with D1 edit permission is set in the Cloudflare publication settings.
 - **Read**: media that are read are sent to the public site at once (the whole site is built) and join the media list once the public site carries them. If sending fails, the media are not read: read the same file again. When only pages are read, build the site to update the public pages, as in PHP.
@@ -408,3 +408,7 @@ Differences from the PHP editions and unused parts tidied up, on the way to a su
 ### Changes in 0.14.2
 
 - Media read by "Read" join the media list only once the public site carries them, as uploads do. If they cannot be sent to the public site, they are not read (read the same file again).
+
+### Changes in 0.15.0
+
+- **The Data Migration & Import Tool screen is gone; its contents are now under Site → Data management.** The top of the section shows the number of pages, components, users and media files, with the media total and the database size. Save, Read, Restore D1 to a past time and Export the public site work there as before (as in PHP 2.25.0).

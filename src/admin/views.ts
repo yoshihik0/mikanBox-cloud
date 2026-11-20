@@ -1,4 +1,4 @@
-import { renderImportView as renderDataImportView } from './import-view';
+import { renderTransferSections, type TransferStats } from './data-section';
 // ==========================================
 // mikanBox Admin Views
 // SQLite版を参照したCloud専用テンプレート。未移植部分はdocs/cloud_ja.mdを参照。
@@ -1326,6 +1326,7 @@ export function renderSiteView(opts: {
   release?:CloudRelease;
   updateRepository?:string;
   lang?:string;
+  dataHtml?:string;
 }): string {
   const { t, settings, csrf, helpFile } = opts;
   const lang = opts.lang || settings.system_lang || '';
@@ -1447,9 +1448,7 @@ export function renderSiteView(opts: {
                 </summary>
                 <div class="editor-container editor-container-sub">
                     <small class="sub-text sub-text-intro">${t('backup_hint')}</small>
-                    <div class="flex-row gap-10">
-                        <a class="btn btn-orange btn-small" href="/admin?view=import" style="text-decoration: none; display: inline-flex; align-items: center; gap: 4px;">${getIcon('settings_backup_restore')} ${t('btn_data_tool')}</a>
-                    </div>
+                    ${opts.dataHtml||''}
                 </div>
             </details>
         </div>
@@ -1655,14 +1654,18 @@ function buildTagGuide(
     </details>`;
 }
 
-export function renderImportView(opts: {t:(key:string,...args:(string|number)[])=>string;csrf:string;lang:string;cloudReady?:boolean}):string {
+function cloudDataExtra(opts: {t:(key:string,...args:(string|number)[])=>string;csrf:string;lang:string;cloudReady?:boolean}):string {
   const {t,csrf,lang}=opts,en=lang==='en';
   const needsToken=`<p>${en?'Configure Cloudflare publication settings with D1 edit permission.':'D1編集権限を持つトークンをCloudflare公開設定に登録してください。'}</p>`;
-  // After Save and Read (import-view.ts), the Cloud edition's own: D1 to a past time, then the public site.
+  // After Save and Read (data-section.ts), the Cloud edition's own: D1 to a past time, then the public site.
   const extraHtml=`<section id="cloud-d1-restore" class="data-tool-card"><h2>${getIcon('history')} ${en?'Restore D1 to a past time':'D1の指定時刻への復元'}</h2><p>${en?'Returns the database to a time within Cloudflare’s retention period (the last 7 days on the free plan). The public site is not changed: to restore it, build the site.':'データベースを、Cloudflareが保持している期間内（無料プランは直近7日）の指定時刻に戻します。公開サイトは変わらないので、復元にはサイトをビルドしてください。'}</p>
     ${opts.cloudReady?`<form method="post" data-cloudbackup="d1-restore">${csrfField(csrf)}<input type="hidden" name="save_action" value="restore_d1_time"><label class="form-group backup-field">${en?'Restore to time':'復元する時刻'} <input type="datetime-local" name="restore_at" required></label><button class="btn btn-orange btn-small">${en?'Restore D1 to this time':'D1を指定時刻に戻す'}</button><span data-transfer-status role="status"></span></form>`:needsToken}</section>
     <section id="site-export" class="data-tool-card"><h2>${getIcon('download')} ${t('site_export_title')}</h2>
     <p>${t('site_export_hint')}</p>
     <form method="post" data-cloud-export="site">${csrfField(csrf)}<div class="flex-row flex-row-wrap items-center"><label class="transfer-field"><input type="checkbox" name="relative" value="1"> ${t('site_export_relative')}</label><button type="submit" class="btn btn-gray btn-small">${getIcon('download')} ${t('site_export_btn')}</button></div><span data-transfer-status role="status"></span></form></section>`;
-  return renderDataImportView({t,csrf,cloudReady:!!opts.cloudReady,extraHtml});
+  return extraHtml;
+}
+/** The site screen's "Data management": the site's figures, Save, Read, then the Cloud edition's own sections. */
+export function renderDataSection(opts: {t:(key:string,...args:(string|number)[])=>string;csrf:string;lang:string;cloudReady?:boolean;stats:TransferStats}):string {
+  return renderTransferSections({t:opts.t,csrf:opts.csrf,cloudReady:!!opts.cloudReady,extraHtml:cloudDataExtra(opts),stats:opts.stats});
 }
