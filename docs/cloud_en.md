@@ -1,6 +1,6 @@
 <style>.manual-version{font-size:.5em;font-weight:400;white-space:nowrap}</style>
 
-# 🍊mikanBox Cloudflare Manual <small class="manual-version">v0.20.1</small>
+# 🍊mikanBox Cloudflare Manual <small class="manual-version">v0.20.2</small>
 
 This manual covers installation and the Cloudflare edition’s differences. For shared operations, see the [operation manual](https://yoshihiko.com/mikanbox/help_en.html).
 
@@ -194,7 +194,7 @@ Site → Recent operations shows the records in three tabs (Important, Site edit
 
 “Site edits” records every addition, change and deletion of pages, components, media and site settings (including the Cloudflare connection), whether it was made in the admin screen, in visual editing, through MCP or by importing data (from 0.16.0). Rewriting only the content of a page that is already public is recorded too. Saving the same item several times within 10 minutes by the same person is one line, and an import is one “Data imported” line. For site settings, only the names of the settings that changed are recorded, never their values.
 
-“Important” holds MCP enabled/stopped and key issued, devices registered/stopped and codes issued, deleted users, recovery and data restores. The latest 50 important operations, the latest 50 failed sign-ins and the latest 500 site edits are kept, so a run of failed sign-ins or of edits never pushes out the important records. A fingerprint (SHA-256) of the content before and after each change is kept but not shown. IP addresses are partly hidden. Changes made to D1 directly in the Cloudflare dashboard or with wrangler are recorded with an empty actor, since who made them is unknown.
+“Important” holds MCP enabled/stopped and key issued/revoked, devices registered/stopped and codes issued, deleted users, recovery, data restores and program updates. A program update is done from outside (the GitHub workflow), so it is recorded at the first admin or MCP request after the switch, as old version → new version (from 0.20.2; updating to 0.20.2 itself only remembers the version). The latest 50 important operations, the latest 50 failed sign-ins and the latest 500 site edits are kept, so a run of failed sign-ins or of edits never pushes out the important records. A fingerprint (SHA-256) of the content before and after each change is kept but not shown. IP addresses are partly hidden. Changes made to D1 directly in the Cloudflare dashboard or with wrangler are recorded with an empty actor, since who made them is unknown.
 
 “Check for tampering”, under the version and update display on the Site screen, looks for changes that are not in the history and shows the result under the button. It runs only when you press it, and page views are not affected. It checks two things.
 
@@ -483,3 +483,7 @@ Differences from the PHP editions and unused parts tidied up, on the way to a su
 - **Invitation codes are now valid for 6 hours (the same as PHP SQLite 2.30.1),** so they can reach someone far away. A code for adding your own device stays at 3 hours.
 - The connection note of “API key” moved into the “Add an API key” box, above “Key name”. The “Read” and “Restore D1 to a past time” buttons are gray.
 - In the page editor, when “Trailing components of the Markdown version” comes and goes with the output format, the thumbnail (OGP image) no longer moves.
+
+### Changes in 0.20.2
+
+- **Program updates are now recorded in “Important”.** The PHP editions already did; in Cloud the program is replaced from outside, so it was not recorded. The first request after the switch records old version → new version. MCP key issuing/revoking and enabling/stopping were already recorded.

@@ -5,7 +5,8 @@ import { generateSitemapXml, generateRssXml, generatePodcastXml } from './feeds'
 import { handleAdmin } from './admin/index';
 import { handleVisual } from './visual';
 import { authenticatedUser } from './accounts';
-import { auditMark, claimAudit } from './audit';
+import { auditMark, claimAudit, noteVersion } from './audit';
+import { CLOUD_VERSION } from './version';
 import { validId } from './validation';
 import { handleMcp } from './mcp';
 import { handlePublicHelp } from './public-help';
@@ -26,6 +27,7 @@ async function withAudit(request:Request,env:Env,handler:()=>Promise<Response>,a
 const userOf=(request:Request,env:Env)=>async()=>(await authenticatedUser(request,env))?.user.username||'';
 async function route(request: Request, env: Env): Promise<Response> {
   const url=new URL(request.url),pathname=url.pathname;
+  if(pathname.startsWith('/admin')||pathname.startsWith('/mcp')||pathname.startsWith('/mikanBox/'))await noteVersion(env,CLOUD_VERSION,request);
   if(['/mcp','/mikanBox/mcp','/mikanBox/mcp.php'].includes(pathname)){let actor='MCP';return withAudit(request,env,()=>handleMcp(request,env,name=>{if(name)actor='MCP ('+name+')';}),async()=>actor);}
   if(['/public-mcp','/mikanBox/public-mcp.php','/public-help.html'].includes(pathname))return handlePublicHelp(request,env);
   if(['/admin','/admin/','/admin.php','/mikanBox/admin.php'].includes(pathname)) return withAudit(request,env,()=>handleAdmin(request,env),userOf(request,env));

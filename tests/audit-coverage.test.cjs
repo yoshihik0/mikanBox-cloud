@@ -71,3 +71,20 @@ test('a data import is one record, and recording resumes after it',async()=>{
  const site=await(await call(env,'/admin?view=site',undefined,auth.cookie)).text();
  assert.match(site,/データの読み込み|Data imported/);
 });
+
+test('a program update done from outside (the update workflow) is recorded once, from the old version to the new one',async()=>{
+ const {CLOUD_VERSION}=require('../.test-build/src/version.js');
+ const env=environment(),auth=await login(env);
+ const events=()=>env.sqlite.prepare("SELECT event,actor,from_value,to_value FROM audit_events WHERE event='system_updated'").all();
+ await call(env,'/admin?view=site',undefined,auth.cookie);
+ assert.equal(events().length,0,'the first run only remembers its version');
+ assert.equal(env.sqlite.prepare("SELECT value FROM settings WHERE key='cloud_version'").get().value,CLOUD_VERSION);
+ env.sqlite.prepare("UPDATE settings SET value='0.0.1' WHERE key='cloud_version'").run();
+ const fresh={...env,DB:Object.create(env.DB)};   // another Worker instance
+ await call(fresh,'/admin?view=site',undefined,auth.cookie);
+ assert.deepEqual(JSON.parse(JSON.stringify(events())),[{event:'system_updated',actor:'system',from_value:'0.0.1',to_value:CLOUD_VERSION}]);
+ await call(fresh,'/admin?view=site',undefined,auth.cookie);
+ assert.equal(events().length,1,'recorded once');
+ const site=await(await call(fresh,'/admin?view=site',undefined,auth.cookie)).text();
+ assert.match(site,/0\.0\.1 → /);
+});

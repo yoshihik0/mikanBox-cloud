@@ -2,7 +2,7 @@ import type {Env} from './types';
 /** Site edits: every change to pages, components, media and settings (recorded by the database, migration 0027). */
 export const AUDIT_EDIT_EVENTS=['page_status','page_created','page_updated','page_deleted','component_created','component_updated','component_deleted','media_uploaded','media_changed','media_deleted','settings_changed','data_imported'] as const;
 /** The events PHP records (lib/security.php mikanBoxAudit), those the Cloud edition has, plus data restores. */
-export const AUDIT_EVENTS=['mcp_enabled','mcp_disabled','mcp_key_issued','mcp_key_rotated','mcp_key_revoked','login_failed','device_registered','device_revoked','code_issued','invite_issued','recovery','user_deleted','data_restored','integrity_accepted',...AUDIT_EDIT_EVENTS] as const;
+export const AUDIT_EVENTS=['mcp_enabled','mcp_disabled','mcp_key_issued','mcp_key_rotated','mcp_key_revoked','login_failed','device_registered','device_revoked','code_issued','invite_issued','recovery','user_deleted','data_restored','integrity_accepted','system_updated',...AUDIT_EDIT_EVENTS] as const;
 export type AuditEvent=typeof AUDIT_EVENTS[number];
 export interface AuditRow {at:string;event:string;actor:string;target:string;from_value:string;to_value:string;ip:string}
 /** The three groups of the site screen: important, site edits, failed sign-ins (as PHP's mikanBoxAuditGroup). */
@@ -126,4 +126,22 @@ export async function recentAudit(env:Env):Promise<AuditRow[]>{
     const count={important:0,edit:0,login:0};
     return rows.filter(row=>{const g=auditGroup(row.event);return ++count[g]<=AUDIT_KEEP[g];});
   }catch{return [];}
+}
+/**
+ * The program is replaced from outside (the GitHub update workflow), so the Worker cannot see it happen.
+ * It notices on its next request: the version it last ran as is kept in the database, and a different one
+ * is recorded as "program update" (from → to), as the PHP editions record their own updates. The first run
+ * only remembers the version. Checked once per Worker instance.
+ */
+const versionChecked=new WeakMap<object,string>();
+export async function noteVersion(env:Env,version:string,request?:Request):Promise<void>{
+  if(versionChecked.get(env.DB)===version)return;
+  try{
+    const previous=(await env.DB.prepare("SELECT value FROM settings WHERE key='cloud_version'").first<{value:string}>())?.value||'';
+    if(previous!==version){
+      const done=await env.DB.prepare("INSERT INTO settings(key,value) VALUES('cloud_version',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value WHERE settings.value<>excluded.value").bind(version).run();
+      if(previous&&(done.meta?.changes??0)>0)await audit(env,'system_updated',{actor:'system',from:previous,to:version,request});
+    }
+    versionChecked.set(env.DB,version);
+  }catch{/* recording never stops a request */}
 }
