@@ -1,6 +1,6 @@
 <style>.manual-version{font-size:.5em;font-weight:400;white-space:nowrap}</style>
 
-# 🍊mikanBox Cloudflare Manual <small class="manual-version">v0.15.3</small>
+# 🍊mikanBox Cloudflare Manual <small class="manual-version">v0.16.0</small>
 
 This manual covers installation and the Cloudflare edition’s differences. For shared operations, see the [operation manual](https://yoshihiko.com/mikanbox/help_en.html).
 
@@ -190,7 +190,11 @@ References: [D1 limits](https://developers.cloudflare.com/d1/platform/limits/), 
 
 ### Recent operations
 
-Site → Recent operations shows, in three tabs (Important, Site edits, Failed sign-ins) and newest first: MCP enabled/stopped and key issued, page public-state changes, devices registered/stopped and codes issued, failed sign-ins, deleted users and data restores (the same items and display as PHP). Records are kept in three groups, each holding only its latest 50 (150 in all) with the oldest removed: important operations, page public-state changes, and failed sign-ins, so a run of failed sign-ins never pushes out the important ones; IP addresses are partly hidden.
+Site → Recent operations shows the records in three tabs (Important, Site edits, Failed sign-ins), newest first (the same items and display as PHP).
+
+“Site edits” records every addition, change and deletion of pages, components, media and site settings (including the Cloudflare connection), whether it was made in the admin screen, in visual editing, through MCP or by importing data (from 0.16.0). Rewriting only the content of a page that is already public is recorded too. Saving the same item several times within 10 minutes by the same person is one line, and an import is one “Data imported” line. For site settings, only the names of the settings that changed are recorded, never their values.
+
+“Important” holds MCP enabled/stopped and key issued, devices registered/stopped and codes issued, deleted users, recovery and data restores. The latest 50 important operations, the latest 50 failed sign-ins and the latest 500 site edits are kept, so a run of failed sign-ins or of edits never pushes out the important records. A fingerprint (SHA-256) of the content before and after each change is kept but not shown. IP addresses are partly hidden. Changes made to D1 directly in the Cloudflare dashboard or with wrangler are recorded with an empty actor, since who made them is unknown.
 
 ### Save and Read
 
@@ -428,3 +432,7 @@ Differences from the PHP editions and unused parts tidied up, on the way to a su
 ### Changes in 0.15.3
 
 - **Recent operations has three tabs: Important, Site edits and Failed sign-ins.**
+
+### Changes in 0.16.0
+
+- **Every change to pages, components, media and site settings is recorded in “Site edits”, wherever it was made.** Rewriting only the content of a page that is already public is recorded too. The latest 500 site edits are kept (the same as PHP 2.26.0).

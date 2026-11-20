@@ -1,4 +1,3 @@
-import { audit } from './audit';
 import type { Env, PageData } from './types';
 export interface Revision { id: number; post_id: string; data: string; created_at: string; editor_id: string }
 /** Entries kept per page. The trigger post_revisions_keep (migration 0020) removes older ones on every insert. */
@@ -19,7 +18,6 @@ export async function saveWithRevision(env: Env, id: string, oldId: string, data
   const args = [id, JSON.stringify(data), data.status, data.sort_order || 0, data.updated_at || ''];
   if (!current) {
     await env.DB.prepare('INSERT INTO posts (id,data,status,sort_order,updated_at) VALUES (?,?,?,?,?)').bind(...args).run();
-    if (data.status === 'public_static') await audit(env, 'page_status', { actor: editor, target: id, from: '', to: data.status });
     return;
   }
   const [_, updated] = await env.DB.batch([
@@ -37,7 +35,5 @@ export async function saveWithRevision(env: Env, id: string, oldId: string, data
     ])
   ]);
   if (!updated.meta.changes) throw new Error('Concurrent update detected.');
-  // As in PHP: a change of the public state is recorded in the recent operations.
-  const before = JSON.parse(current.data).status || '';
-  if (before !== data.status) await audit(env, 'page_status', { actor: editor, target: id, from: before, to: data.status });
+  // The change (and a change of the public state) is recorded by the database (migration 0027).
 }

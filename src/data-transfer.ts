@@ -5,6 +5,9 @@ import {inspectMedia,publishedHash} from './media-store';
 import {MEDIA_COUNT_LIMIT,validMediaName} from './media-policy';
 import {normalizeImportedPage,normalizeImportedComponent} from './content-import';
 import {audit} from './audit';
+/** Inside one batch only: the database's own records skip the writes between these two (migration 0027). */
+const quietOn=(env:Env)=>env.DB.prepare("INSERT INTO settings(key,value) VALUES('audit_quiet','1') ON CONFLICT(key) DO NOTHING");
+const quietOff=(env:Env)=>env.DB.prepare("DELETE FROM settings WHERE key='audit_quiet'");
 import {trackingIdValid} from './tracking';
 /**
  * Data tool: Save and Read, the same as the PHP editions (shared/lib/data-transfer.php). One ZIP layout:
@@ -92,7 +95,10 @@ export async function transferImportData(env:Env,mode:TransferMode,part:Record<s
    statements.push(env.DB.prepare('INSERT INTO post_revisions(post_id,data,created_at,editor_id) SELECT ?,?,?,? WHERE EXISTS(SELECT 1 FROM posts WHERE id=?)').bind(entry.id,JSON.stringify(data),new Date(item.created_at).toISOString(),author,entry.id));
   }
  }
- if(statements.length)await env.DB.batch(statements);
+ // One record for the reading (repeated parts merge into it), not a line per page: the 'audit_quiet'
+ // setting exists only inside this batch, so the database's own records skip these writes.
+ if(statements.length)await env.DB.batch([quietOn(env),...statements,quietOff(env)]);
+ if(result.pages||result.components||result.settings)await audit(env,'data_imported',{actor:editor,target:mode});
  return result;
 }
 
@@ -107,18 +113,19 @@ export async function transferImportMedia(env:Env,mode:TransferMode,name:string,
 }
 
 /** After the publication: records the files the public site now carries with exactly that content. */
-export async function transferRecordMedia(env:Env,items:unknown){
+export async function transferRecordMedia(env:Env,items:unknown,actor='system',mode=''){
  if(!Array.isArray(items)||items.length>MEDIA_COUNT_LIMIT)throw new Error('Invalid media list.');
  let recorded=0;
  for(const item of items){
   if(!item||!validMediaName(String(item.name))||!/^[a-f0-9]{64}$/.test(String(item.etag))||String(item.etag).slice(0,32)!==item.hash)continue;
   if(await publishedHash(env,'/media/'+item.name)!==item.hash)continue;
   const exists=!!await env.DB.prepare('SELECT 1 FROM media WHERE key=?').bind(item.name).first();
-  const r=await env.DB.prepare(`INSERT INTO media(key,content_type,size,uploaded,etag,hash,width,height,source) SELECT ?,?,?,?,?,?,?,?,NULL WHERE ? OR (SELECT COUNT(*) FROM media)<?
+  const [,r]=await env.DB.batch([quietOn(env),env.DB.prepare(`INSERT INTO media(key,content_type,size,uploaded,etag,hash,width,height,source) SELECT ?,?,?,?,?,?,?,?,NULL WHERE ? OR (SELECT COUNT(*) FROM media)<?
     ON CONFLICT(key) DO UPDATE SET content_type=excluded.content_type,size=excluded.size,uploaded=excluded.uploaded,etag=excluded.etag,hash=excluded.hash,width=excluded.width,height=excluded.height,source=NULL`)
-   .bind(item.name,String(item.content_type),Number(item.size),new Date().toISOString(),item.etag,item.hash,Number.isInteger(item.width)?item.width:null,Number.isInteger(item.height)?item.height:null,exists?1:0,MEDIA_COUNT_LIMIT).run();
+   .bind(item.name,String(item.content_type),Number(item.size),new Date().toISOString(),item.etag,item.hash,Number.isInteger(item.width)?item.width:null,Number.isInteger(item.height)?item.height:null,exists?1:0,MEDIA_COUNT_LIMIT),quietOff(env)]);
   if(r.meta.changes)recorded++;
  }
+ if(recorded)await audit(env,'data_imported',{actor,target:mode});
  return recorded;
 }
 

@@ -1,5 +1,5 @@
 const {test}=require('node:test');const assert=require('node:assert/strict');
-const {environment,login,post,call,putMedia,mockCloudflare,publishNewMedia,uploadThroughAdmin}=require('./fixtures.cjs');
+const {environment,login,post,call,putMedia,mockCloudflare,publishNewMedia,uploadThroughAdmin}=require('./fixtures.cjs');const callPage=call;
 const {getMedia}=require('../.test-build/src/media-store.js');
 const {savePage,loadPage,saveComponent,loadComponent,saveSettings,loadSettings,listMediaFiles}=require('../.test-build/src/storage.js');
 const {renameMediaReferences,removeCategory}=require('../.test-build/src/content-operations.js');
@@ -30,6 +30,8 @@ test('category deletion removes references across many pages with history and co
  assert.equal(await removeCategory(env,'news','admin'),80);assert.ok(queries<15);assert.equal((await loadSettings(env)).api_key,'keep-key');assert.equal((await loadSettings(env)).category_candidates,'other');assert.equal((await loadPage(env,'p1')).category,'other');assert.equal(env.sqlite.prepare('SELECT COUNT(*) n FROM post_revisions').get().n,80);
 });
 test('media search, category filters and page size settings are honored',async()=>{
+ // The admin page also carries the recent operations, which name the uploaded files: look at the media list only.
+ const call=async(...args)=>{const r=await callPage(...args);return {text:async()=>(await r.text()).replace(/<div class="audit-tabs">[\s\S]*?<\/details>/,'')};};
  const env=environment(),auth=await login(env);const settings=await loadSettings(env);settings.media_per_page=1;await saveSettings(env,settings);
  await upload(env,'first.png');await upload(env,'second.png');await savePage(env,'news',{title:'News',status:'draft',category:'news',content_md:'![x](second.png)'});
  let h=await(await call(env,'/admin?view=media',undefined,auth.cookie)).text();assert.equal((h.match(/class="media-card"/g)||[]).length,1);assert.match(h,/p_media=2/);

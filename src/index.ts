@@ -5,6 +5,7 @@ import { generateSitemapXml, generateRssXml, generatePodcastXml } from './feeds'
 import { handleAdmin } from './admin/index';
 import { handleVisual } from './visual';
 import { authenticatedUser } from './accounts';
+import { auditMark, claimAudit } from './audit';
 import { validId } from './validation';
 import { handleMcp } from './mcp';
 import { handlePublicHelp } from './public-help';
@@ -15,12 +16,20 @@ import { pageOutputFormat, formatHasHtml, formatHasMarkdown, isDataFormat, isApi
 const notFoundText=()=>new Response('Not Found',{status:404,headers:{'Content-Type':'text/plain; charset=utf-8','Cache-Control':'no-store'}});
 const textOutput=(body:string,type:string)=>new Response(body,{headers:{'Content-Type':type,'Cache-Control':'no-store','Referrer-Policy':'no-referrer','Content-Security-Policy':PREVIEW_SANDBOX}});
 
+/** Changes a request makes are recorded by the database; afterwards they get who made them (src/audit.ts). */
+async function withAudit(request:Request,env:Env,handler:()=>Promise<Response>,actorOf:()=>Promise<string>):Promise<Response>{
+  if(request.method!=='POST')return handler();
+  const since=await auditMark(env);
+  try{return await handler();}
+  finally{await claimAudit(env,since,request,actorOf);}
+}
+const userOf=(request:Request,env:Env)=>async()=>(await authenticatedUser(request,env))?.user.username||'';
 async function route(request: Request, env: Env): Promise<Response> {
   const url=new URL(request.url),pathname=url.pathname;
-  if(['/mcp','/mikanBox/mcp','/mikanBox/mcp.php'].includes(pathname))return handleMcp(request,env);
+  if(['/mcp','/mikanBox/mcp','/mikanBox/mcp.php'].includes(pathname))return withAudit(request,env,()=>handleMcp(request,env),async()=>'MCP');
   if(['/public-mcp','/mikanBox/public-mcp.php','/public-help.html'].includes(pathname))return handlePublicHelp(request,env);
-  if(['/admin','/admin/','/admin.php','/mikanBox/admin.php'].includes(pathname)) return handleAdmin(request,env);
-  if(['/admin/visual','/admin/visual/'].includes(pathname)) return handleVisual(request,env);
+  if(['/admin','/admin/','/admin.php','/mikanBox/admin.php'].includes(pathname)) return withAudit(request,env,()=>handleAdmin(request,env),userOf(request,env));
+  if(['/admin/visual','/admin/visual/'].includes(pathname)) return withAudit(request,env,()=>handleVisual(request,env),userOf(request,env));
   if(!['GET','HEAD'].includes(request.method)) return new Response('Method Not Allowed',{status:405,headers:{Allow:'GET, HEAD'}});
   if(pathname==='/admin.css'||pathname.startsWith('/mikanbox/')) {
     if(!env.ASSETS) return new Response('Not Found',{status:404});

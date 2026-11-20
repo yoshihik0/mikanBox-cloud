@@ -176,7 +176,7 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
           const file=form.get('file');if(!(file instanceof File))throw new Error(t('err_upload_failed'));
           return json({success:true,...await transferImportMedia(env,transferMode(val(form,'mode')),val(form,'name'),new Uint8Array(await file.arrayBuffer()))});
         }
-        case 'transfer_record_media': return json({success:true,recorded:await transferRecordMedia(env,JSON.parse(val(form,'media')||'[]'))});
+        case 'transfer_record_media': return json({success:true,recorded:await transferRecordMedia(env,JSON.parse(val(form,'media')||'[]'),auth.user.username,transferMode(val(form,'mode')))});
         case 'transfer_import_finish': return json({success:true,deleted:await transferFinish(env,transferMode(val(form,'mode')),JSON.parse(val(form,'keep')||'{}'),auth.user.username,request)});
         case 'save_cloud_connection': {
           const target=cloudTarget(env);if(val(form,'cloud_account_id')!==target.account||val(form,'cloud_worker_name')!==target.worker)throw new Error('Cloudflare target must match this installation.');

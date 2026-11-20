@@ -16,5 +16,6 @@ export async function installDefaults(env: Env,language: string) {
     statements.push(env.DB.prepare('INSERT INTO posts(id,data,status,sort_order,updated_at) VALUES(?,?,?,?,?) ON CONFLICT(id) DO NOTHING')
       .bind(id,JSON.stringify(page),page.status,page.sort_order||0,page.updated_at||''));
   }
-  await env.DB.batch(statements);
+  // The standard set is not an edit: the database's own records skip it (migration 0027).
+  await env.DB.batch([env.DB.prepare("INSERT INTO settings(key,value) VALUES('audit_quiet','1') ON CONFLICT(key) DO NOTHING"),...statements,env.DB.prepare("DELETE FROM settings WHERE key='audit_quiet'")]);
 }
