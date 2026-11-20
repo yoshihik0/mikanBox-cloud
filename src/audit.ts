@@ -19,5 +19,5 @@ export async function audit(env:Env,event:AuditEvent,details:{actor?:string;targ
   }catch{}
 }
 export async function recentAudit(env:Env):Promise<AuditRow[]>{
-  try{return (await env.DB.prepare('SELECT at,event,actor,target,from_value,to_value,ip FROM audit_events ORDER BY id DESC LIMIT 50').all<AuditRow>()).results;}catch{return [];}
+  try{return (await env.DB.prepare('SELECT at,event,actor,target,from_value,to_value,ip FROM audit_events ORDER BY id DESC LIMIT 150').all<AuditRow>()).results;}catch{return [];}
 }

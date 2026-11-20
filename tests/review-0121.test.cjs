@@ -55,7 +55,7 @@ test('the leftover R2, password and site-URL data are gone after the update',()=
   assert.doesNotMatch(env.sqlite.prepare("SELECT sql FROM sqlite_master WHERE name=?").get(table).sql,new RegExp(column));
 });
 
-test('recent operations: MCP, keys, page status, devices and failed sign-ins are recorded and shown, keeping the newest 200',async()=>{
+test('recent operations: MCP, keys, page status, devices and failed sign-ins are recorded and shown, keeping the newest 50 of each group',async()=>{
  const env=environment(),auth=await login(env);
  await post(env,auth,{save_action:'generate_api_key'});await post(env,auth,{save_action:'generate_api_key'});
  await post(env,auth,{save_action:'set_mcp_enabled'});await post(env,auth,{save_action:'set_mcp_enabled',mcp_enabled:'1'});
@@ -67,6 +67,12 @@ test('recent operations: MCP, keys, page status, devices and failed sign-ins are
  const status=env.sqlite.prepare("SELECT * FROM audit_events WHERE event='page_status'").get();assert.equal(status.target,'p');assert.equal(status.from_value,'draft');assert.equal(status.to_value,'public_static');assert.equal(status.actor,'admin');
  const site=await(await call(env,'/admin?view=site',undefined,auth.cookie)).text();
  assert.match(site,/最近の操作記録|Recent operations/);assert.match(site,/p \(draft → public_static\)/);
+ const before=env.sqlite.prepare("SELECT COUNT(*) n FROM audit_events WHERE event NOT IN ('login_failed','page_status')").get().n;
  for(let i=0;i<210;i++)env.sqlite.prepare("INSERT INTO audit_events(at,event) VALUES('2026-01-01T00:00:00Z','login_failed')").run();
- assert.equal(env.sqlite.prepare("SELECT COUNT(*) n FROM audit_events").get().n,50);
+ const count=where=>env.sqlite.prepare("SELECT COUNT(*) n FROM audit_events WHERE "+where).get().n;
+ assert.equal(count("event='login_failed'"),50,'failed sign-ins keep the newest 50');
+ assert.equal(count("event NOT IN ('login_failed','page_status')"),before,'a run of failed sign-ins does not push out the important records');
+ assert.equal(count("event='page_status'"),1,'nor the page edits');
+ for(let i=0;i<60;i++)env.sqlite.prepare("INSERT INTO audit_events(at,event) VALUES('2026-01-01T00:00:00Z','page_status')").run();
+ assert.equal(count("event='page_status'"),50,'page edits keep the newest 50');
 });

@@ -1,6 +1,6 @@
 <style>.manual-version{font-size:.5em;font-weight:400;white-space:nowrap}</style>
 
-# 🍊mikanBox Cloudflare Manual <small class="manual-version">v0.15.1</small>
+# 🍊mikanBox Cloudflare Manual <small class="manual-version">v0.15.2</small>
 
 This manual covers installation and the Cloudflare edition’s differences. For shared operations, see the [operation manual](https://yoshihiko.com/mikanbox/help_en.html).
 
@@ -190,7 +190,7 @@ References: [D1 limits](https://developers.cloudflare.com/d1/platform/limits/), 
 
 ### Recent operations
 
-Site → Recent operations shows the latest 50 of: MCP enabled/stopped and key issued, page public-state changes, devices registered/stopped and codes issued, failed sign-ins, deleted users and data restores (the same items and display as PHP). Only the latest 50 are kept, and the oldest are removed; IP addresses are partly hidden.
+Site → Recent operations shows, newest first: MCP enabled/stopped and key issued, page public-state changes, devices registered/stopped and codes issued, failed sign-ins, deleted users and data restores (the same items and display as PHP). Records are kept in three groups, each holding only its latest 50 (150 in all) with the oldest removed: important operations, page public-state changes, and failed sign-ins, so a run of failed sign-ins never pushes out the important ones; IP addresses are partly hidden.
 
 ### Save and Read
 
@@ -420,3 +420,7 @@ Differences from the PHP editions and unused parts tidied up, on the way to a su
 - Site → Storage usage was removed. The D1 database size is shown at the top of Data management, where the near-limit notice now appears too.
 - "How to get a Cloudflare API token" now opens and closes like "Add a device".
 - The site screen's helper texts were trimmed, and every section keeps the same gap between its heading and contents. Language, CSV import and site settings sit in one box each, like Data management (as in PHP 2.25.1).
+
+### Changes in 0.15.2
+
+- **Recent operations are kept in three groups, each holding its latest 50: important operations, page public-state changes, and failed sign-ins.** A run of failed sign-ins can no longer push out records such as MCP key issuance, device registration or restores. Updating removes the records older than the 51st in each group.
