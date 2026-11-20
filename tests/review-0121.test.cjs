@@ -17,14 +17,14 @@ test('a category in use is deleted only after confirmation, and leaves its pages
 });
 
 test('MCP can be stopped like in PHP; the key stays and the last use is shown',async()=>{
- const env=environment(),auth=await login(env);await post(env,auth,{save_action:'generate_api_key'});
- const key=(await loadSettings(env)).api_key;
+ const env=environment(),auth=await login(env);const key=(await post(env,auth,{save_action:'generate_api_key'})).data.mcp_api_key;
+ const stored=(await loadSettings(env)).api_key;assert.match(stored,/^sha256:[0-9a-f]{64}$/,'only the fingerprint is stored');
  const mcp=(headers)=>worker.fetch(new Request('https://cloud.test/mcp',{method:'POST',headers:{'Content-Type':'application/json',...headers},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/list'})}),env);
  assert.equal((await mcp({'X-API-Key':key})).status,200,'X-API-Key works as in PHP');
  let site=await(await call(env,'/admin?view=site',undefined,auth.cookie)).text();
  assert.match(site,/name="mcp_enabled" value="1" checked/);assert.doesNotMatch(site,/id="mcp-last-used">記録なし|id="mcp-last-used">No record/);
  await post(env,auth,{save_action:'set_mcp_enabled'});
- assert.equal((await mcp({Authorization:'Bearer '+key})).status,403);assert.equal((await loadSettings(env)).api_key,key);
+ assert.equal((await mcp({Authorization:'Bearer '+key})).status,403);assert.equal((await loadSettings(env)).api_key,stored);
  site=await(await call(env,'/admin?view=site',undefined,auth.cookie)).text();assert.match(site,/name="mcp_enabled" value="1" >/);
  await post(env,auth,{save_action:'set_mcp_enabled',mcp_enabled:'1'});assert.equal((await mcp({Authorization:'Bearer '+key})).status,200);
 });

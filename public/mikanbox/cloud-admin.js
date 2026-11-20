@@ -184,7 +184,7 @@
     const button=form.querySelector('button'),label=button.innerHTML;button.disabled=true;
     try{
       const result=await action('generate_api_key');
-      const field=document.getElementById('mcp-key-display');if(field)field.value=result.mcp_api_key;
+      const field=document.getElementById('mcp-key-display');if(field)field.value=result.mcp_api_key;const once=document.getElementById('mcp-key-once');if(once)once.style.display='';
       const issued=document.getElementById('mcp-key-issued'),generate=document.getElementById('mcp-key-generate');
       if(issued)issued.style.display='';if(generate)generate.style.display='none';
       if(typeof window.showToast==='function')window.showToast(result.message);

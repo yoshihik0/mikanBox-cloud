@@ -100,24 +100,28 @@ async function mergePage(env:Env,settings:Settings,pid:string,incoming:Record<st
 /** Last use of the current key, written at most once an hour (as in PHP) to spare D1 writes. */
 export const MCP_USE_INTERVAL=60*60*1000;
 async function keyHash(key:string){return [...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(key)))].map(v=>v.toString(16).padStart(2,'0')).join('');}
-async function recordMcpUse(env:Env,key:string){
-  const hash=await keyHash(key),now=Date.now();
+/** The MCP API key is stored only as its fingerprint ("sha256:" + hex, the same as PHP) and shown once, when it is issued. */
+export async function mcpKeyStore(key:string){return 'sha256:'+await keyHash(key);}
+const keyDigest=(stored:string)=>/^sha256:([0-9a-f]{64})$/.exec(stored)?.[1]||'';
+async function recordMcpUse(env:Env,digest:string){
+  const now=Date.now();
   await env.DB.prepare("INSERT INTO settings(key,value) VALUES('mcp_last_used',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value WHERE json_extract(settings.value,'$.key')<>json_extract(excluded.value,'$.key') OR json_extract(settings.value,'$.at')<?")
-    .bind(JSON.stringify({key:hash,at:now}),now-MCP_USE_INTERVAL).run();
+    .bind(JSON.stringify({key:digest,at:now}),now-MCP_USE_INTERVAL).run();
 }
-export async function mcpLastUsed(env:Env,key:string):Promise<number>{
-  if(!key)return 0;
+/** $stored: the key as settings hold it (its fingerprint). */
+export async function mcpLastUsed(env:Env,stored:string):Promise<number>{
+  const digest=keyDigest(stored);if(!digest)return 0;
   const row=await env.DB.prepare("SELECT value FROM settings WHERE key='mcp_last_used'").first<{value:string}>();
-  try{const v=JSON.parse(row?.value||'{}');return v.key===await keyHash(key)?Number(v.at)||0:0;}catch{return 0;}
+  try{const v=JSON.parse(row?.value||'{}');return v.key===digest?Number(v.at)||0:0;}catch{return 0;}
 }
 export async function handleMcp(request:Request,env:Env):Promise<Response> {
-  const settings=await loadSettings(env),key=String(settings.api_key||'');
+  const settings=await loadSettings(env),digest=keyDigest(String(settings.api_key||''));
   const supplied=request.headers.get('Authorization')?.replace(/^Bearer /,'')||request.headers.get('X-API-Key')||'';
-  if(!key||!verifyCsrf(supplied,key))
+  if(!digest||!supplied||!verifyCsrf(await keyHash(supplied),digest))
     return Response.json({error:'Unauthorized'},{status:401,headers:{'Cache-Control':'no-store'}});
   // Stopped from Site → MCP API key (as in PHP): the key is kept, every request is refused.
   if(settings.mcp_disabled)return Response.json({error:'MCP is disabled.'},{status:403,headers:{'Cache-Control':'no-store'}});
-  await recordMcpUse(env,key);
+  await recordMcpUse(env,digest);
   if(request.method!=='POST')return new Response('Method Not Allowed',{status:405,headers:{Allow:'POST'}});
   let id:unknown=null;
   try {

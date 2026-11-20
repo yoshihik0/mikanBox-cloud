@@ -1,6 +1,6 @@
 <style>.manual-version{font-size:.5em;font-weight:400;white-space:nowrap}</style>
 
-# 🍊mikanBox Cloudflare Manual <small class="manual-version">v0.17.0</small>
+# 🍊mikanBox Cloudflare Manual <small class="manual-version">v0.18.0</small>
 
 This manual covers installation and the Cloudflare edition’s differences. For shared operations, see the [operation manual](https://yoshihiko.com/mikanbox/help_en.html).
 
@@ -224,7 +224,7 @@ Program updates run the build, pending database migrations, and management Worke
 
 ### Cloud-specific MCP
 
-Generate a Cloud-specific API key in Site settings and connect to `/mcp` with the key in an `Authorization: Bearer` or `X-API-Key` header from a separate workspace. Clearing “Enable MCP” and saving refuses every MCP connection while keeping the key (as in PHP); the last use of the current key is shown (recorded at most once an hour). The root `.mcp.json` remains dedicated to the official PHP server.
+Generate a Cloud-specific API key in Site settings and connect to `/mcp` with the key in an `Authorization: Bearer` or `X-API-Key` header from a separate workspace. Clearing “Enable MCP” and saving refuses every MCP connection while keeping the key (as in PHP); the last use of the current key is shown (recorded at most once an hour). The root `.mcp.json` remains dedicated to the official PHP server. The key is shown only once, when it is issued, and the server keeps only its fingerprint (SHA-256) (from 0.18.0); if you lose it, regenerate it.
 
 Current tools: `get_site_info`, `list_pages`, `get_page`, `create_page`, `update_page`, `delete_page`, `list_components`, `get_component`, `create_component`, `update_component`, `delete_component`, `preview_page`, `get_revisions`, `get_settings`, `get_ai_context`, `list_ai_docs`, `get_ai_doc`, `update_ai_doc`, `upload_media`, and `build_ssg`.
 
@@ -451,3 +451,7 @@ Differences from the PHP editions and unused parts tidied up, on the way to a su
 - **Added “Check for tampering” to the Site screen.** It compares the files of the public site and the stored data with the state on record and shows the result under the button. If what it finds is your own change, “This is my change (accept)” makes it the new basis. Program files are not applicable to the Cloud edition.
 - **In the history, records whose person and IP range have not appeared before, or whose actor is empty, get a light background color.** Those of the last 30 days are also listed in the check result.
 - **The history now uses almost no D1 rows read.** Each record used to scan the whole history table (about 600 rows) twice; it now has an index, and old records are removed once in 50 records. Saving a page reads a few rows instead of about 1,200. The numbers shown (50 important operations, 500 site edits, 50 failed sign-ins) do not change. Updating applies a D1 migration (0028).
+
+### Changes in 0.18.0
+
+- **The MCP API key is shown only once, when it is issued.** The server keeps only its fingerprint (SHA-256), the same as PHP 2.28.0. **Updating retires the existing key:** issue a new one once under Site → MCP API key and set it in your AI tool.

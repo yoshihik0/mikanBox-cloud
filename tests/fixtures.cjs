@@ -127,4 +127,6 @@ async function uploadThroughAdmin(env,auth,filename,bytes,fields={}) {
   await browserPublish(env,auth,{mediaOnly:prepared.media.name,newMedia:prepared.media,bytes:new Uint8Array(bytes)});
   return {...await multipart({save_action:'upload_media',media_name:prepared.media.name,image:file}),media:prepared.media};
 }
-module.exports={environment,call,login,post,publicView,putMedia,mockCloudflare,browserPublish,uploadThroughAdmin,publishNewMedia};
+/** The MCP API key as settings hold it: only its fingerprint (src/mcp.ts mcpKeyStore). */
+const mcpKey=key=>'sha256:'+require('node:crypto').createHash('sha256').update(key).digest('hex');
+module.exports={mcpKey,environment,call,login,post,publicView,putMedia,mockCloudflare,browserPublish,uploadThroughAdmin,publishNewMedia};

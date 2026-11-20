@@ -1,7 +1,7 @@
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const vm=require('node:vm');
-const {environment,call,login,post,publicView,putMedia}=require('./fixtures.cjs');
+const {mcpKey,environment,call,login,post,publicView,putMedia}=require('./fixtures.cjs');
 const {getMedia}=require('../.test-build/src/media-store.js');
 const {savePage,loadPage,saveComponent,loadComponent,saveSettings,loadSettings}=require('../.test-build/src/storage.js');
 const {MikanBoxRenderer}=require('../.test-build/src/renderer.js');
@@ -87,7 +87,7 @@ test('a new device cannot stop older devices for three days; older devices can s
   assert.match(await(await call(env,'/admin',undefined,auth.cookie)).text(),/name="login_action"/);
 });
 test('recovery with a new SETUP_TOKEN stops every device and clears codes and the MCP key',async()=>{
-  const env=environment(),auth=await login(env);await saveSettings(env,{...await loadSettings(env),api_key:'mcp-secret'});
+  const env=environment(),auth=await login(env);await saveSettings(env,{...await loadSettings(env),api_key:mcpKey('mcp-secret')});
   await post(env,auth,{save_action:'device_code_create'});
   assert.equal((await setup(env,{username:'admin'})).status,400);
   env.SETUP_TOKEN='new-setup-token-value';
@@ -205,7 +205,7 @@ test('translations come from current shared JSON copies',()=>{
   const ja=require('../lang/ja.json'),en=require('../lang/en.json');assert.equal(createTranslator('ja')('nav_pages'),ja.nav_pages);assert.equal(createTranslator('en')('label_raw_html'),en.label_raw_html);
 });
 test('MCP requires a key, identifies this isolated site, and preserves unspecified fields',async()=>{
-  const env=environment();await saveSettings(env,{api_key:'test-api-key',site_id:'cloud-isolated',site_name:'Cloud Test'});
+  const env=environment();await saveSettings(env,{api_key:mcpKey('test-api-key'),site_id:'cloud-isolated',site_name:'Cloud Test'});
   const worker=require('../.test-build/src/index.js').default;
   const rpc=async(name,args={},key='test-api-key')=>{
     const response=await worker.fetch(new Request('https://cloud.test/mcp',{method:'POST',headers:{Authorization:'Bearer '+key,'Content-Type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/call',params:{name,arguments:args}})}),env);

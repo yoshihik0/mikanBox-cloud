@@ -1,6 +1,6 @@
 import {audit,recentAudit} from '../audit';
 import {integrityPlan,integrityAccept} from '../integrity';
-import {mcpLastUsed} from '../mcp';
+import {mcpLastUsed,mcpKeyStore} from '../mcp';
 import {latestCloudRelease,cloudUpdateUrl} from '../cloud-release';
 import {transferExport,transferImportData,transferImportMedia,transferRecordMedia,transferFinish,transferMode,TRANSFER_PART_LIMIT} from '../data-transfer';
 import {cloudConfigured,saveCloudToken,cloudTarget,beginD1Export,pollD1Export,prepareD1Download,openD1Download,d1Restore,cloudToken} from '../cloudflare-api';
@@ -205,7 +205,7 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
           await env.DB.prepare("INSERT INTO settings(key,value) VALUES('static_publication',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").bind(JSON.stringify({paths,published_at:new Date().toISOString()})).run();return json({success:true});
         }
         case 'set_mcp_enabled': settings.mcp_disabled=val(form,'mcp_enabled')!=='1';if(!await saveSettings(env,settings))throw new Error(t('err_save_failed'));await audit(env,settings.mcp_disabled?'mcp_disabled':'mcp_enabled',{actor:auth.user.username,request});break;
-        case 'generate_api_key': await audit(env,settings.api_key?'mcp_key_rotated':'mcp_key_issued',{actor:auth.user.username,request});settings.api_key=crypto.randomUUID().replace(/-/g,'')+crypto.randomUUID().replace(/-/g,'');if(!await saveSettings(env,settings))throw new Error(t('err_save_failed'));newApiKey=String(settings.api_key);message=t('msg_mcp_key_generated');break;
+        case 'generate_api_key': await audit(env,settings.api_key?'mcp_key_rotated':'mcp_key_issued',{actor:auth.user.username,request});{const key=crypto.randomUUID().replace(/-/g,'')+crypto.randomUUID().replace(/-/g,'');settings.api_key=await mcpKeyStore(key);if(!await saveSettings(env,settings))throw new Error(t('err_save_failed'));newApiKey=key;}message=t('msg_mcp_key_generated');break;
         case 'build_ssg': await buildStatic(env,request);break;
         case 'logout': await revokeDevice(env,auth.device,auth.device.id);return redirect(url.pathname,clearDeviceCookie());
         case 'save_page': {

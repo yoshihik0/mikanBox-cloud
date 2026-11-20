@@ -1,10 +1,10 @@
 const test=require('node:test');
 const assert=require('node:assert/strict');
-const {environment}=require('./fixtures.cjs');
+const {mcpKey,environment}=require('./fixtures.cjs');
 const {saveSettings,savePage,loadPage,saveComponent,loadComponent}=require('../.test-build/src/storage.js');
 const {handleMcp}=require('../.test-build/src/mcp.js');
 async function client(settings={}) {
-  const env=environment();await saveSettings(env,{api_key:'test-mcp-key',site_id:'site-test',...settings});
+  const env=environment();await saveSettings(env,{api_key:mcpKey('test-mcp-key'),site_id:'site-test',...settings});
   async function rpc(method,params={}) {
     const response=await handleMcp(new Request('https://cloud.test/mcp',{method:'POST',headers:{Authorization:'Bearer test-mcp-key','Content-Type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method,params})}),env);
     return (await response.json()).result;
