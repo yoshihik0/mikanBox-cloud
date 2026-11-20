@@ -22,6 +22,7 @@ export function renderTransferSections(opts: {t: Translator; csrf: string; cloud
             <div class="flex-row flex-row-wrap items-center">
               <label class="transfer-field">${h(t('transfer_contents_label'))} <select name="contents"><option value="both">${h(t('transfer_contents_both'))}</option><option value="data">${h(t('transfer_contents_data'))}</option><option value="media">${h(t('transfer_contents_media'))}</option>${opts.cloudReady?`<option value="database">${h(t('transfer_contents_database'))}</option>`:''}</select></label>
               <label class="transfer-field transfer-revisions"><input type="checkbox" name="include_revisions" value="1"> ${h(t('transfer_include_revisions'))}</label>
+              <label class="transfer-field transfer-match-filter" title="${h(t('transfer_match_filter_hint'))}"><input type="checkbox" name="match_filter" value="1"> ${h(t('transfer_match_filter'))}</label>
               <button type="submit" class="btn btn-gray btn-small">${icon('download')} ${h(t('transfer_btn_export'))}</button>
             </div>
             <span data-transfer-status role="status"></span>
@@ -38,7 +39,7 @@ export function renderTransferSections(opts: {t: Translator; csrf: string; cloud
               <label><input type="radio" name="mode" value="replace"> ${h(t('transfer_mode_replace'))}</label>
             </fieldset>
             <p class="sub-text">${h(t('transfer_import_note'))}</p>
-            <button type="submit" class="btn btn-orange btn-small">${icon('upload')} ${h(t('transfer_btn_import'))}</button>
+            <button type="submit" class="btn btn-blue btn-small">${icon('upload')} ${h(t('transfer_btn_import'))}</button>
             <span data-transfer-status role="status"></span>
           </form>
         </section>

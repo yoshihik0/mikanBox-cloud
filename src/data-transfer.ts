@@ -2,7 +2,8 @@ import type {Env,PageData,ComponentData,Settings} from './types';
 import {validId,reservedPageId} from './validation';
 import {loadSettings,saveSettings} from './storage';
 import {inspectMedia,publishedHash} from './media-store';
-import {MEDIA_COUNT_LIMIT,validMediaName} from './media-policy';
+import {MEDIA_COUNT_LIMIT,validMediaName,isCodeMedia} from './media-policy';
+import {pageOutputFormat,isDataFormat} from './output-formats';
 import {normalizeImportedPage,normalizeImportedComponent} from './content-import';
 import {audit} from './audit';
 /** Inside one batch only: the database's own records skip the writes between these two (migration 0027). */
@@ -28,7 +29,32 @@ export const transferMode=(value:unknown):TransferMode=>(TRANSFER_MODES as reado
 const contentSettings=(settings:Record<string,unknown>)=>Object.fromEntries(TRANSFER_SETTINGS.filter(key=>Object.hasOwn(settings,key)).map(key=>[key,settings[key]]));
 
 /** What the browser puts in the ZIP; the media files themselves it reads from the public site. */
-export async function transferExport(env:Env,withHistory:boolean){
+/** The lists' filters as the browser read them (see public/mikanbox/data-transfer.js MikanTransferFilter). Each kind is saved on its own filter; with none set, all of it. */
+export interface TransferFilter{cat:string;q:string;fmt:string;q_media:string;media_type:string;media_all:boolean;components:string[]|null}
+export function transferFilter(raw:unknown):TransferFilter|null{
+ let input:unknown=raw;if(typeof raw==='string'){try{input=JSON.parse(raw);}catch{return null;}}
+ if(!input||typeof input!=='object'||Array.isArray(input))return null;
+ const o=input as Record<string,unknown>,text=(key:string)=>typeof o[key]==='string'?(o[key] as string).trim():'';
+ return {cat:text('cat'),q:text('q'),fmt:text('fmt'),q_media:text('q_media'),media_type:text('media_type'),media_all:o.media_all===true,
+  components:Array.isArray(o.components)?o.components.filter((id):id is string=>typeof id==='string'&&id!==''):null};
+}
+const MEDIA_TYPES:Record<string,string[]>={image:['jpg','jpeg','png','gif','webp','svg'],audio:['mp3','m4a'],video:['mp4'],js:['js'],css:['css']};
+/** The pages the page list shows with these filters (the same rules as the list). */
+function keepPage(id:string,page:PageData,f:TransferFilter|null):boolean{
+ if(!f||(!f.cat&&!f.q&&!f.fmt))return true;
+ if(f.fmt){const format=pageOutputFormat(page);if(f.fmt==='data'?!isDataFormat(format):format!==f.fmt)return false;}
+ if(f.cat&&!(page.category||'').split(',').map(x=>x.trim()).includes(f.cat))return false;
+ return !f.q||`${id} ${page.title} ${page.content_md||''}`.toLowerCase().includes(f.q.toLowerCase());
+}
+/** The media the media list shows with these filters. */
+function keepMedia(key:string,f:TransferFilter|null):boolean{
+ if(!f)return true;
+ const category=f.media_all?'':f.cat;
+ if(f.media_type&&MEDIA_TYPES[f.media_type]&&!MEDIA_TYPES[f.media_type].includes(key.split('.').pop()!.toLowerCase()))return false;
+ if(f.q_media&&!key.toLowerCase().includes(f.q_media.toLowerCase()))return false;
+ return !category||isCodeMedia(key)||key.startsWith('g_')||key.split('_').slice(0,-1).includes(category);
+}
+export async function transferExport(env:Env,withHistory:boolean,filter:TransferFilter|null=null){
  const [pages,components,revisions,media]=await Promise.all([
   env.DB.prepare('SELECT id,data FROM posts ORDER BY id').all<{id:string;data:string}>(),
   env.DB.prepare('SELECT id,data FROM components ORDER BY id').all<{id:string;data:string}>(),
@@ -37,8 +63,10 @@ export async function transferExport(env:Env,withHistory:boolean){
  const history=new Map<string,Array<{created_at:string;editor:string;data:unknown}>>();
  for(const row of revisions.results){try{const list=history.get(row.post_id)||[];list.push({created_at:row.created_at,editor:row.editor_id,data:JSON.parse(row.data)});history.set(row.post_id,list);}catch{}}
  const parse=(rows:Array<{id:string;data:string}>)=>rows.flatMap(row=>{try{return [{id:row.id,data:JSON.parse(row.data)}];}catch{return [];}});
- return {settings:contentSettings(await loadSettings(env) as Record<string,unknown>),pages:parse(pages.results),components:parse(components.results),
-  revisions:[...history].map(([id,items])=>({id,items})),media:media.results.map(row=>({key:row.key,size:row.size,etag:row.etag,from:row.source||'/media/'+encodeURIComponent(row.key)}))};
+ const pageList=parse(pages.results).filter(p=>keepPage(p.id,p.data as PageData,filter)),pageIds=new Set(pageList.map(p=>p.id));
+ const componentList=parse(components.results).filter(c=>!filter||filter.components===null||filter.components.includes(c.id));
+ return {settings:contentSettings(await loadSettings(env) as Record<string,unknown>),pages:pageList,components:componentList,
+  revisions:[...history].filter(([id])=>pageIds.has(id)).map(([id,items])=>({id,items})),media:media.results.filter(row=>keepMedia(row.key,filter)).map(row=>({key:row.key,size:row.size,etag:row.etag,from:row.source||'/media/'+encodeURIComponent(row.key)}))};
 }
 
 /** One part of the data: {settings?, pages, components, revisions}. */

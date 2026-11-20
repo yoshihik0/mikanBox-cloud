@@ -17,7 +17,7 @@ test('Data management: the figures, Save and Read as in PHP, then D1 to a past t
  assert.doesNotMatch(renderDataSection({t,csrf:'token',lang:'ja',cloudReady:false,stats}),/option value="database"/,'without the token, no database choice');
  for(const id of ['transfer-export','transfer-import','cloud-d1-restore','site-export'])assert.match(html,new RegExp(`id="${id}" class="data-tool-card"`));
  const site=renderSiteView({t,csrf:'token',lang:'ja',settings:{},helpFile:'#',users:[],username:'admin'});
- assert.doesNotMatch(html,/id="csv-import"/);assert.match(site,/id="csv-import"/);assert.ok(site.indexOf('id="csv-import"')<site.indexOf('id="backup"')&&site.indexOf('id="backup"')<site.indexOf('id="mcp-key"')&&site.indexOf('id="mcp-key"')<site.indexOf('id="cloud-connection"'));
+ assert.doesNotMatch(html,/id="csv-import"/);assert.match(site,/id="csv-import"/);assert.ok(site.indexOf('id="csv-import"')<site.indexOf('id="backup"')&&site.indexOf('id="settings"')<site.indexOf('id="cloud-connection"')&&site.indexOf('id="cloud-connection"')<site.indexOf('id="mcp-key"')&&site.indexOf('id="mcp-key"')<site.indexOf('audit-tabs'));
  assert.doesNotMatch(site,/begin_d1_export|get_ai_context|公開ヘルプ用/);
  assert.match(site,/id="cloud-connection">/);assert.match(site,/class="section-end-gap"/);assert.doesNotMatch(site,/id="image-storage"/);assert.match(site,/Cloudflare公開設定/);
 });

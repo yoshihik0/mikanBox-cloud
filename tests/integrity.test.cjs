@@ -128,10 +128,10 @@ test('unusual records: a new person and address range, or no person; none on a f
  assert.ok(!(await integrityPlan(env)).unusual.some(r=>r.actor==='old'));
 });
 
-test('the Site screen has the button above the version row, and the program check is said to be not applicable',async()=>{
+test('the Site screen has the button under the version row, and the program check is said to be not applicable',async()=>{
  const env=environment(),auth=await login(env);
  const html=await(await call(env,'/admin?view=site',undefined,auth.cookie)).text();
- assert.ok(html.indexOf('id="integrity-run"')>0&&html.indexOf('id="integrity-run"')<html.indexOf('id="cloud-version-row"'));
+ assert.ok(html.indexOf('id="cloud-version-row"')>0&&html.indexOf('id="cloud-version-row"')<html.indexOf('id="integrity-run"')&&html.indexOf('id="integrity-run"')<html.indexOf('id="language"'));
  assert.match(html,/cloud-integrity\.js/);assert.match(html,/integrity_found&quot;:&quot;[^&]*%s/,'the time placeholder reaches the browser');assert.match(html,/integrity_cloud_program_na/);
  const hostile=await call(env,'/admin',{save_action:'integrity_plan',csrf_token:'wrong',ajax_request:'1'},auth.cookie);
  assert.equal(hostile.status,403,'CSRF protected');

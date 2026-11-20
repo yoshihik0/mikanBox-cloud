@@ -1,6 +1,6 @@
 <style>.manual-version{font-size:.5em;font-weight:400;white-space:nowrap}</style>
 
-# 🍊mikanBox Cloudflare Manual <small class="manual-version">v0.19.1</small>
+# 🍊mikanBox Cloudflare Manual <small class="manual-version">v0.20.0</small>
 
 This manual covers installation and the Cloudflare edition’s differences. For shared operations, see the [operation manual](https://yoshihiko.com/mikanbox/help_en.html).
 
@@ -196,7 +196,7 @@ Site → Recent operations shows the records in three tabs (Important, Site edit
 
 “Important” holds MCP enabled/stopped and key issued, devices registered/stopped and codes issued, deleted users, recovery and data restores. The latest 50 important operations, the latest 50 failed sign-ins and the latest 500 site edits are kept, so a run of failed sign-ins or of edits never pushes out the important records. A fingerprint (SHA-256) of the content before and after each change is kept but not shown. IP addresses are partly hidden. Changes made to D1 directly in the Cloudflare dashboard or with wrangler are recorded with an empty actor, since who made them is unknown.
 
-“Check for tampering”, above the version display on the Site screen, looks for changes that are not in the history and shows the result under the button. It runs only when you press it, and page views are not affected. It checks two things.
+“Check for tampering”, under the version and update display on the Site screen, looks for changes that are not in the history and shows the result under the button. It runs only when you press it, and page views are not affected. It checks two things.
 
 - **Files of the public site**: the published text files (HTML and so on) and the media js, css, svg and html files are compared with the fingerprints recorded at publication. Your browser reads them from the public site and checks them, so a large site does not run into the limits of Cloudflare's free plan. Files that changed and files that disappeared are listed (unknown files added to the public site cannot be listed, so they are not found). Images, audio and video are not checked.
 - **Stored data**: the content of pages, components and site settings is compared with the last “after” fingerprint in the history. Changes made to D1 directly in the Cloudflare dashboard or with wrangler are found this way.
@@ -403,6 +403,7 @@ Differences from the PHP editions and unused parts tidied up, on the way to a su
 
 - **The full backup is now one ZIP.** It replaces the JSON backup (which held the images as text inside one JSON file): the data and the image files go into one ZIP as they are, and restoring means choosing that one ZIP. JSON backups from 0.13.1 and earlier cannot be restored; after updating, save a new full backup.
 - **Page history is optional.** It is left out unless you tick it.
+- **“Match the filtered lists” saves the pages, components and media as each list shows them now (the same as PHP 2.30.0).** A list that is not filtered is saved whole. The D1 SQL is not affected.
 - The data tool now lists: full backup, restore a backup file, export D1 as SQL, restore D1 to a past time, export the public site.
 - Export and backup results appear in the toast at the bottom right.
 
@@ -470,3 +471,9 @@ Differences from the PHP editions and unused parts tidied up, on the way to a su
 - **The MCP API key section now sits under “Devices and users”, and an issued key appears in the field under the connection URL (the same order as PHP 2.29.1).** The tables of the history and of the MCP API keys use the same text size as the devices and users tables.
 - **A key issued before this update (0.18.x) no longer works from 0.19.1.** After updating, issue a new key in “MCP API key” on the Site screen and change the setting of your AI tool.
 - The “Update on GitHub” note is reworded and uses the same quiet gray as the version line. The outer frames around “Cloudflare publication settings” and the memo are transparent.
+
+### Changes in 0.20.0
+
+- **Save in Data management has “Match the filtered lists” (the same as PHP 2.30.0).** Pages, components and media are saved as each list shows them (category, output format, search, type). The D1 SQL is not affected. The “Read” button is now blue.
+- **The Site screen is reordered.** “Check for tampering” sits under the version and update display, in a box like the other sections. Below Site settings the order is Cloudflare publication settings, Devices and users, MCP API key, then Recent operations.
+- **The MCP API key section is built like “Add a device”.** “Enable MCP” and its Save button form one box; the “Add an API key” box, once opened, holds the key name, “Issue key”, the connection URL and the API key; issued keys are in an “Issued API keys” table. Helper texts are gray.

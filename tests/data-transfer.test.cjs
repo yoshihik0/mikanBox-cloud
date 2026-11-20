@@ -45,6 +45,25 @@ async function site(){
  return {env,auth,cf};
 }
 
+test('Save with "Match the filtered lists": pages, components and media follow their own filters; without the box everything is saved',async()=>{
+ const {env,auth,cf}=await site();
+ try{
+  await savePage(env,'news/first',{title:'First',status:'draft',category:'news'});
+  await saveComponent(env,'footer',{html:'<p>f</p>'});
+  const filter=JSON.stringify({cat:'news',q:'',fmt:'',q_media:'',media_type:'',media_all:false,components:['header']});
+  const some=(await post(env,auth,{save_action:'transfer_export',match_filter:'1',filter_json:filter})).data;
+  assert.deepEqual(some.pages.map(p=>p.id),['news/first']);assert.deepEqual(some.components.map(c=>c.id),['header']);
+  const byFormat=(await post(env,auth,{save_action:'transfer_export',match_filter:'1',filter_json:JSON.stringify({fmt:'data',components:null})})).data;
+  assert.ok(byFormat.pages.length>0&&byFormat.pages.every(p=>['json','xml','csv','txt','js','css'].includes(p.data.output_format)),'only data-format pages');assert.ok(byFormat.components.some(c=>c.id==='footer')&&byFormat.components.some(c=>c.id==='header'),'no component filter saves them all');
+  const bySearch=(await post(env,auth,{save_action:'transfer_export',match_filter:'1',filter_json:JSON.stringify({q:'FIRST',components:null})})).data;
+  assert.deepEqual(bySearch.pages.map(p=>p.id),['news/first']);
+  const ignored=(await post(env,auth,{save_action:'transfer_export',filter_json:filter})).data;
+  assert.ok(ignored.pages.length>2&&ignored.pages.some(p=>p.id==='index'),'the filter is used only when the box is checked');
+  const nothing=(await post(env,auth,{save_action:'transfer_export',match_filter:'1',filter_json:'not json'})).data;
+  assert.equal(nothing.pages.length,ignored.pages.length,'an unusable filter saves everything');
+ }finally{cf.restore();}
+});
+
 test('Save: one ZIP of the data and the media read from the public site, in the PHP layout; history only when asked for',async()=>{
  const {env,auth,cf}=await site();
  try{

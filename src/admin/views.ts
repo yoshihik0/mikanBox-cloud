@@ -1361,13 +1361,6 @@ export function renderSiteView(opts: {
     </div>
 
         <div class="section-container section-tight">
-            <div class="integrity-box" id="integrity-box" data-labels="${h(JSON.stringify(Object.fromEntries(['integrity_ok','integrity_found','integrity_sec_public','integrity_sec_data','integrity_changed','integrity_missing','integrity_data_changed','integrity_data_missing','integrity_data_unrecorded','integrity_item_page','integrity_item_component','integrity_item_settings','integrity_unusual_head','integrity_unusual_hint','integrity_accept_btn','integrity_accept_hint','integrity_checking','integrity_cloud_program_na','integrity_cloud_not_published','integrity_cloud_unreachable','integrity_cloud_unverified','integrity_cloud_truncated','integrity_cloud_checked','err_network_error',...AUDIT_EVENTS.map(e=>'audit_event_'+e)].map(k=>[k,t(k,'%s','%s')]))))}">
-                <button type="button" class="btn btn-gray btn-small" id="integrity-run">${t('integrity_btn')}</button>
-                <small class="sub-text sub-text-block">${t('integrity_hint')}</small>
-                <div id="integrity-output" aria-live="polite"></div>
-            </div>
-        </div>
-        <div class="section-container section-tight">
             <div class="system-version-row" id="cloud-version-row">
                 <span>${t('version_current')}: ${h(CLOUD_VERSION)} (Cloud)</span>
                 <span>${t('version_latest')}: ${opts.release?.version?'v'+h(opts.release.version):opts.release?.status==='error'?t('version_check_failed'):(lang==='en'?'Cloud release information not published':'Cloud版のリリース情報は未公開')}</span>
@@ -1384,6 +1377,14 @@ export function renderSiteView(opts: {
                 <button type="submit" class="btn btn-gray btn-small">${t('btn_save')}</button>
               </form>
             </div></details>
+        </div>
+
+        <div class="section-container section-tight">
+            <div class="integrity-box panel-card" id="integrity-box" data-labels="${h(JSON.stringify(Object.fromEntries(['integrity_ok','integrity_found','integrity_sec_public','integrity_sec_data','integrity_changed','integrity_missing','integrity_data_changed','integrity_data_missing','integrity_data_unrecorded','integrity_item_page','integrity_item_component','integrity_item_settings','integrity_unusual_head','integrity_unusual_hint','integrity_accept_btn','integrity_accept_hint','integrity_checking','integrity_cloud_program_na','integrity_cloud_not_published','integrity_cloud_unreachable','integrity_cloud_unverified','integrity_cloud_truncated','integrity_cloud_checked','err_network_error',...AUDIT_EVENTS.map(e=>'audit_event_'+e)].map(k=>[k,t(k,'%s','%s')]))))}">
+                <button type="button" class="btn btn-gray btn-small" id="integrity-run">${t('integrity_btn')}</button>
+                <small class="sub-text sub-text-block">${t('integrity_hint')}</small>
+                <div id="integrity-output" aria-live="polite"></div>
+            </div>
         </div>
 
     <div id="language">
@@ -1416,16 +1417,6 @@ export function renderSiteView(opts: {
 
 
 
-    <div class="section-container section-tight"><details class="section-accordion"><summary class="header section-header accordion-summary"><h2 class="accordion-title">${t('audit_heading')} <span class="accordion-arrow">▼</span></h2></summary><div class="editor-container editor-container-sub">
-    ${(()=>{
-      type Row={at:string;event:string;actor:string;target:string;from_value:string;to_value:string;ip:string};
-      const rows=(settings._audit as Row[])||[],groups:Array<[string,Row[]]>=[['important',[]],['edit',[]],['login',[]]];
-      const unusual=new Set(auditUnusual([...rows].reverse(),String(settings._unusual_until||'')).map(i=>rows.length-1-i));   // rows are newest first
-      rows.forEach((e,i)=>{(e as Row&{unusual?:boolean}).unusual=unusual.has(i);groups.find(g=>g[0]===auditGroup(e.event))![1].push(e);});
-      const table=(list:Row[])=>list.length?`<table><thead><tr><th>${t('audit_time_local')}</th><th>${t('audit_action')}</th><th>${t('audit_actor')}</th><th>${t('audit_target')}</th><th>IP</th></tr></thead><tbody>${list.map(e=>`<tr${(e as Row&{unusual?:boolean}).unusual?` class="audit-unusual" title="${h(t('audit_unusual_title'))}"`:''}><td>${localTime(Date.parse(e.at),lang)}</td><td>${h(t('audit_event_'+e.event))}</td><td>${h(e.actor)}</td><td>${h(auditTargetText(e))}</td><td>${h(e.ip)}</td></tr>`).join('')}</tbody></table>`:`<p>${t('audit_empty')}</p>`;
-      return `<div class="audit-tabs">${groups.map((g,n)=>`<input type="radio" name="audit-tab" id="audit-tab-${n+1}"${n===0?' checked':''} aria-label="${h(t('audit_tab_'+g[0]))}">`).join('')}<div class="audit-tab-labels">${groups.map((g,n)=>`<label for="audit-tab-${n+1}">${t('audit_tab_'+g[0])} (${g[1].length})</label>`).join('')}</div>${groups.map(g=>`<div class="audit-panel">${table(g[1])}</div>`).join('')}</div>`;
-    })()}
-    </div></details></div>
 
     <div id="csv-import">
         <div class="section-container section-tight">
@@ -1546,19 +1537,6 @@ export function renderSiteView(opts: {
         </div>
     </div>
 
-    ${opts.accountsHtml||''}
-    <div id="mcp-key"><div class="section-container section-tight"><details class="section-accordion"><summary class="header section-header accordion-summary"><h2 class="accordion-title">${t('mcp_key_head')} <span class="accordion-arrow">▼</span></h2></summary><div class="editor-container editor-container-sub"><div class="panel-card">
-      <small class="sub-text sub-text-intro">${t('mcp_key_hint')}</small>
-      <form method="post" class="mt-10" data-ajax>${csrfField(csrf)}<input type="hidden" name="save_action" value="set_mcp_enabled"><label><input type="checkbox" name="mcp_enabled" value="1" ${settings.mcp_disabled?'':'checked'}> ${t('mcp_enable_label')}</label> <button type="submit" class="btn btn-gray btn-small">${t('btn_save')}</button></form>
-      <form method="post" class="mt-10" id="mcp-key-generate" data-ajax data-refresh="#mcp-key-list">${csrfField(csrf)}<input type="hidden" name="save_action" value="generate_api_key"><div class="form-group"><label for="mcp-key-name">${t('mcp_key_name_label')}</label><small class="sub-text sub-text-block">${t('mcp_key_split_hint')}</small><input type="text" id="mcp-key-name" name="mcp_key_name" maxlength="${MCP_KEY_NAME_MAX}" autocomplete="off" style="max-width:300px;"></div><button class="btn btn-blue btn-small">${getIcon('sparkles')} ${t('btn_generate_mcp_key')}</button></form>
-      <div class="form-group mt-10"><label for="mcp-url-display">${t('mcp_url_label')}</label><div class="copy-row"><input type="text" id="mcp-url-display" value="" readonly><button type="button" class="btn btn-gray btn-small" onclick="copyField('mcp-url-display')">${getIcon('copy')} ${t('btn_copy')}</button></div></div>
-      <div id="mcp-key-issued" class="form-group mt-10"><label for="mcp-key-display">${t('mcp_key_label')}</label><div class="copy-row"><input type="text" id="mcp-key-display" value="" placeholder="${h(t('mcp_key_issued_placeholder'))}" readonly><button type="button" class="btn btn-gray btn-small" onclick="copyField('mcp-key-display')">${getIcon('copy')} ${t('btn_copy')}</button></div><small class="sub-text" id="mcp-key-once" style="display:none;">${t('mcp_key_once_note')}</small></div>
-      <div id="mcp-key-list" class="mt-10">${(()=>{
-        const keys=mcpKeyList(settings.api_key),used=(settings._mcp_last_used||{}) as Record<string,number>;
-        if(!keys.length)return `<p class="sub-text">${t('mcp_key_none')}</p>`;
-        return `<table class="mcp-key-table"><thead><tr><th>${t('mcp_key_col_name')}</th><th>${t('mcp_key_col_created')}</th><th>${t('mcp_key_col_last_used')}</th><th></th></tr></thead><tbody>${keys.map(k=>{const name=k.name||t('mcp_key_unnamed');return `<tr><td>${h(name)}</td><td>${k.created?h(new Date(k.created*1000).toISOString().slice(0,10)):'—'}</td><td>${used[k.id]?localTime(used[k.id],lang):t('mcp_never_used')}</td><td><form method="post" data-ajax data-refresh="#mcp-key-list" data-confirm="${h(t('mcp_key_revoke_confirm',name))}">${csrfField(csrf)}<input type="hidden" name="save_action" value="revoke_mcp_key"><input type="hidden" name="mcp_key_id" value="${h(k.id)}"><button type="submit" class="btn btn-gray btn-small">${t('btn_revoke_mcp_key')}</button></form></td></tr>`;}).join('')}</tbody></table>`;
-      })()}</div>
-      </div></div></details></div></div>
     <div id="cloud-connection"><div class="section-container section-tight"><details class="section-accordion"><summary class="header section-header accordion-summary"><h2 class="accordion-title">${lang==='en'?'Cloudflare publication settings':'Cloudflare公開設定'} <span class="accordion-arrow">▼</span></h2></summary><div class="editor-container editor-container-sub">
                     <details class="section-accordion" style="${guideBoxStyle}"><summary class="header section-header accordion-summary" style="${guideSummaryStyle}"><h3 style="font-size: 0.95rem; margin: 0; color: var(--text); display: inline-flex; align-items: center; gap: 8px; pointer-events: none;">${lang==='en'?'How to get a Cloudflare API token':'Cloudflare APIトークンの取得方法'}</h3><span class="accordion-arrow" style="font-size: 0.75rem; opacity: 0.5;">▼</span></summary><div class="token-guide-body" style="${guideBodyStyle}">
                     ${lang==='en'?`<ol class="token-guide"><li>Sign in to Cloudflare with the account that hosts this site, and open <a href="https://dash.cloudflare.com/profile/api-tokens" target="_blank" rel="noopener">My Profile → API Tokens</a>.</li><li>Press <b>Create Token</b>, then <b>Get started</b> next to <b>Create Custom Token</b>.</li><li>Give it a name, such as “mikanBox publishing”.</li><li>Under <b>Permissions</b>, choose <b>Account</b> → <b>Workers Scripts</b> → <b>Edit</b>. To use the D1 backup and Time Travel features as well, add a second row: <b>Account</b> → <b>D1</b> → <b>Edit</b>.</li><li>Under <b>Account Resources</b>, choose <b>Include</b> → the account that hosts this site.</li><li>Press <b>Continue to summary</b>, then <b>Create Token</b>. Copy the long string that is shown. <b>It is shown only once.</b></li><li>Paste it into “Cloudflare API token” below and press Save. The account ID and Worker name are already filled in; leave them as they are.</li></ol><p class="sub-text">You create the token once. The site stores it encrypted and never shows it again. You only need a new one if it is deleted or revoked in Cloudflare, its permissions change, or the site’s secret key (JWT_SECRET) changes.</p>`:`<ol class="token-guide"><li>このサイトを置いているCloudflareのアカウントでログインし、<a href="https://dash.cloudflare.com/profile/api-tokens" target="_blank" rel="noopener">プロフィール → APIトークン</a>を開きます。</li><li>「トークンを作成する」を押し、「カスタムトークンを作成する」の「開始する」を押します。</li><li>トークン名を付けます。例：「mikanBox公開用」。</li><li>「権限」で、<b>アカウント</b> → <b>Workers スクリプト</b> → <b>編集</b> を選びます（英語表示では Account → Workers Scripts → Edit）。D1のバックアップとTime Travelも使う場合は、もう1行、<b>アカウント</b> → <b>D1</b> → <b>編集</b> を追加します。</li><li>「アカウントリソース」で、<b>含める</b> → このサイトを置いているアカウントを選びます。</li><li>「概要に進む」→「トークンを作成する」を押し、表示された長い文字列をコピーします。<b>表示されるのは1回だけです。</b></li><li>下の「Cloudflare APIトークン」欄に貼り付けて「保存」を押します。アカウントIDとWorker名は最初から入っているので、そのままにしてください。</li></ol><p class="sub-text">トークンは最初に1回作るだけです。サイトが暗号化して保存し、再表示しません。作り直すのは、Cloudflareで削除・失効させたとき、権限を変えたとき、サイトの秘密鍵（JWT_SECRET）を変えたときだけです。</p>`}
@@ -1567,6 +1545,32 @@ export function renderSiteView(opts: {
                     <form method="post" class="grid-2col" data-ajax data-refresh="#cloud-connection, #publish-box"><input type="hidden" name="save_action" value="save_cloud_connection">${csrfField(csrf)}<div class="form-group"><label>${lang==='en'?'Cloudflare account ID':'CloudflareアカウントID'}</label><input type="text" name="cloud_account_id" value="${h(settings.cloud_account_id||'')}" required></div><div class="form-group"><label>${lang==='en'?'Worker name':'Worker名'}</label><input type="text" name="cloud_worker_name" value="${h(settings.cloud_worker_name||'')}" required></div><div class="form-group"><label>${lang==='en'?'Cloudflare API token':'Cloudflare APIトークン'}</label><input type="password" name="cloud_api_token" autocomplete="new-password" ${settings.cloud_connection_ready?'placeholder="•••••••• (set)"':'required'}></div><div class="form-actions"><button class="btn btn-gray btn-small">${t('btn_save')}</button> <span role="status">${settings.cloud_connection_ready?(lang==='en'?'Connection configured':'接続設定済み'):(lang==='en'?'Not configured':'未設定')}</span></div></form>
                     </div>
     </div></details></div></div>
+    ${opts.accountsHtml||''}
+    <div id="mcp-key"><div class="section-container section-tight"><details class="section-accordion"><summary class="header section-header accordion-summary"><h2 class="accordion-title">${t('mcp_key_head')} <span class="accordion-arrow">▼</span></h2></summary><div class="editor-container editor-container-sub">
+      <small class="sub-text sub-text-intro">${t('mcp_key_hint')}</small>
+      <div class="panel-card"><form method="post" data-ajax>${csrfField(csrf)}<input type="hidden" name="save_action" value="set_mcp_enabled"><label><input type="checkbox" name="mcp_enabled" value="1" ${settings.mcp_disabled?'':'checked'}> ${t('mcp_enable_label')}</label> <button type="submit" class="btn btn-gray btn-small">${t('btn_save')}</button></form></div>
+      <details class="section-accordion" style="margin-top: 15px; margin-bottom: 15px; border: 1px solid #e2e8f0; border-radius: 8px; background: #fafafa;"><summary class="header section-header accordion-summary" style="${guideSummaryStyle}"><h3 style="font-size: 0.95rem; margin: 0; color: var(--text); display: inline-flex; align-items: center; gap: 8px; pointer-events: none;">${getIcon('add')} ${t('mcp_key_add_summary')}</h3><span class="accordion-arrow" style="font-size: 0.75rem; opacity: 0.5;">▼</span></summary><div style="${guideBodyStyle}">
+        <form method="post" id="mcp-key-generate" data-ajax data-refresh="#mcp-key-list">${csrfField(csrf)}<input type="hidden" name="save_action" value="generate_api_key"><div class="form-group"><label for="mcp-key-name">${t('mcp_key_name_label')}</label><input type="text" id="mcp-key-name" name="mcp_key_name" maxlength="${MCP_KEY_NAME_MAX}" autocomplete="off" style="max-width:300px;"></div><button class="btn btn-blue btn-small">${getIcon('sparkles')} ${t('btn_generate_mcp_key')}</button></form>
+      <div class="form-group mt-10"><label for="mcp-url-display">${t('mcp_url_label')}</label><div class="copy-row"><input type="text" id="mcp-url-display" value="" readonly><button type="button" class="btn btn-gray btn-small" onclick="copyField('mcp-url-display')">${getIcon('copy')} ${t('btn_copy')}</button></div></div>
+        <div id="mcp-key-issued" class="form-group mt-10"><label for="mcp-key-display">${t('mcp_key_label')}</label><div class="copy-row"><input type="text" id="mcp-key-display" value="" placeholder="${h(t('mcp_key_issued_placeholder'))}" readonly><button type="button" class="btn btn-gray btn-small" onclick="copyField('mcp-key-display')">${getIcon('copy')} ${t('btn_copy')}</button></div><small class="sub-text" id="mcp-key-once" style="display:none;">${t('mcp_key_once_note')}</small></div>
+      </div></details>
+      <div id="mcp-key-list"><h3 style="font-size: 0.95rem; margin: 18px 0 12px; color: var(--text); border-bottom: 1px solid #e2e8f0; padding-bottom: 5px;">${t('mcp_key_list_title')}</h3>${(()=>{
+        const keys=mcpKeyList(settings.api_key),used=(settings._mcp_last_used||{}) as Record<string,number>;
+        if(!keys.length)return `<p class="sub-text">${t('mcp_key_none')}</p>`;
+        return `<div class="account-user"><div class="account-table-wrap"><table class="account-table"><thead><tr><th>${t('mcp_key_col_name')}</th><th>${t('mcp_key_col_created')}</th><th>${t('mcp_key_col_last_used')}</th><th></th></tr></thead><tbody>${keys.map(k=>{const name=k.name||t('mcp_key_unnamed');return `<tr><td>${h(name)}</td><td>${k.created?h(new Date(k.created*1000).toISOString().slice(0,10)):'—'}</td><td>${used[k.id]?localTime(used[k.id],lang):t('mcp_never_used')}</td><td class="account-actions"><form method="post" data-ajax data-refresh="#mcp-key-list" data-confirm="${h(t('mcp_key_revoke_confirm',name))}">${csrfField(csrf)}<input type="hidden" name="save_action" value="revoke_mcp_key"><input type="hidden" name="mcp_key_id" value="${h(k.id)}"><button type="submit" class="btn btn-gray btn-small">${t('btn_revoke_mcp_key')}</button></form></td></tr>`;}).join('')}</tbody></table></div></div>`;
+      })()}</div>
+      </div></details></div></div>
+    <div class="section-container section-tight"><details class="section-accordion"><summary class="header section-header accordion-summary"><h2 class="accordion-title">${t('audit_heading')} <span class="accordion-arrow">▼</span></h2></summary><div class="editor-container editor-container-sub">
+    ${(()=>{
+      type Row={at:string;event:string;actor:string;target:string;from_value:string;to_value:string;ip:string};
+      const rows=(settings._audit as Row[])||[],groups:Array<[string,Row[]]>=[['important',[]],['edit',[]],['login',[]]];
+      const unusual=new Set(auditUnusual([...rows].reverse(),String(settings._unusual_until||'')).map(i=>rows.length-1-i));   // rows are newest first
+      rows.forEach((e,i)=>{(e as Row&{unusual?:boolean}).unusual=unusual.has(i);groups.find(g=>g[0]===auditGroup(e.event))![1].push(e);});
+      const table=(list:Row[])=>list.length?`<table><thead><tr><th>${t('audit_time_local')}</th><th>${t('audit_action')}</th><th>${t('audit_actor')}</th><th>${t('audit_target')}</th><th>IP</th></tr></thead><tbody>${list.map(e=>`<tr${(e as Row&{unusual?:boolean}).unusual?` class="audit-unusual" title="${h(t('audit_unusual_title'))}"`:''}><td>${localTime(Date.parse(e.at),lang)}</td><td>${h(t('audit_event_'+e.event))}</td><td>${h(e.actor)}</td><td>${h(auditTargetText(e))}</td><td>${h(e.ip)}</td></tr>`).join('')}</tbody></table>`:`<p>${t('audit_empty')}</p>`;
+      return `<div class="audit-tabs">${groups.map((g,n)=>`<input type="radio" name="audit-tab" id="audit-tab-${n+1}"${n===0?' checked':''} aria-label="${h(t('audit_tab_'+g[0]))}">`).join('')}<div class="audit-tab-labels">${groups.map((g,n)=>`<label for="audit-tab-${n+1}">${t('audit_tab_'+g[0])} (${g[1].length})</label>`).join('')}</div>${groups.map(g=>`<div class="audit-panel">${table(g[1])}</div>`).join('')}</div>`;
+    })()}
+    </div></details></div>
+
     <div class="section-end-gap" aria-hidden="true"></div>
 `;
 }
