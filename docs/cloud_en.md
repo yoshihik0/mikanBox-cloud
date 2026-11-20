@@ -1,6 +1,6 @@
 <style>.manual-version{font-size:.5em;font-weight:400;white-space:nowrap}</style>
 
-# 🍊mikanBox Cloudflare Manual <small class="manual-version">v0.15.2</small>
+# 🍊mikanBox Cloudflare Manual <small class="manual-version">v0.15.3</small>
 
 This manual covers installation and the Cloudflare edition’s differences. For shared operations, see the [operation manual](https://yoshihiko.com/mikanbox/help_en.html).
 
@@ -190,7 +190,7 @@ References: [D1 limits](https://developers.cloudflare.com/d1/platform/limits/), 
 
 ### Recent operations
 
-Site → Recent operations shows, newest first: MCP enabled/stopped and key issued, page public-state changes, devices registered/stopped and codes issued, failed sign-ins, deleted users and data restores (the same items and display as PHP). Records are kept in three groups, each holding only its latest 50 (150 in all) with the oldest removed: important operations, page public-state changes, and failed sign-ins, so a run of failed sign-ins never pushes out the important ones; IP addresses are partly hidden.
+Site → Recent operations shows, in three tabs (Important, Site edits, Failed sign-ins) and newest first: MCP enabled/stopped and key issued, page public-state changes, devices registered/stopped and codes issued, failed sign-ins, deleted users and data restores (the same items and display as PHP). Records are kept in three groups, each holding only its latest 50 (150 in all) with the oldest removed: important operations, page public-state changes, and failed sign-ins, so a run of failed sign-ins never pushes out the important ones; IP addresses are partly hidden.
 
 ### Save and Read
 
@@ -424,3 +424,7 @@ Differences from the PHP editions and unused parts tidied up, on the way to a su
 ### Changes in 0.15.2
 
 - **Recent operations are kept in three groups, each holding its latest 50: important operations, page public-state changes, and failed sign-ins.** A run of failed sign-ins can no longer push out records such as MCP key issuance, device registration or restores. Updating removes the records older than the 51st in each group.
+
+### Changes in 0.15.3
+
+- **Recent operations has three tabs: Important, Site edits and Failed sign-ins.**

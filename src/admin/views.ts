@@ -1418,9 +1418,14 @@ export function renderSiteView(opts: {
       </div></details></div></div>
 
     <div class="section-container section-tight"><details class="section-accordion"><summary class="header section-header accordion-summary"><h2 class="accordion-title">${t('audit_heading')} <span class="accordion-arrow">▼</span></h2></summary><div class="editor-container editor-container-sub">
-    <table><thead><tr><th>${t('audit_time_local')}</th><th>${t('audit_action')}</th><th>${t('audit_actor')}</th><th>${t('audit_target')}</th><th>IP</th></tr></thead><tbody>
-    ${((settings._audit as Array<{at:string;event:string;actor:string;target:string;from_value:string;to_value:string;ip:string}>)||[]).map(e=>`<tr><td>${localTime(Date.parse(e.at),lang)}</td><td>${h(t('audit_event_'+e.event))}</td><td>${h(e.actor)}</td><td>${h(e.target+(e.from_value||e.to_value?` (${e.from_value} → ${e.to_value})`:''))}</td><td>${h(e.ip)}</td></tr>`).join('')}
-    </tbody></table></div></details></div>
+    ${(()=>{
+      type Row={at:string;event:string;actor:string;target:string;from_value:string;to_value:string;ip:string};
+      const rows=(settings._audit as Row[])||[],groups:Array<[string,Row[]]>=[['important',[]],['edit',[]],['login',[]]];
+      for(const e of rows)groups.find(g=>g[0]===(e.event==='login_failed'?'login':e.event==='page_status'?'edit':'important'))![1].push(e);
+      const table=(list:Row[])=>list.length?`<table><thead><tr><th>${t('audit_time_local')}</th><th>${t('audit_action')}</th><th>${t('audit_actor')}</th><th>${t('audit_target')}</th><th>IP</th></tr></thead><tbody>${list.map(e=>`<tr><td>${localTime(Date.parse(e.at),lang)}</td><td>${h(t('audit_event_'+e.event))}</td><td>${h(e.actor)}</td><td>${h(e.target+(e.from_value||e.to_value?` (${e.from_value} → ${e.to_value})`:''))}</td><td>${h(e.ip)}</td></tr>`).join('')}</tbody></table>`:`<p>${t('audit_empty')}</p>`;
+      return `<div class="audit-tabs">${groups.map((g,n)=>`<input type="radio" name="audit-tab" id="audit-tab-${n+1}"${n===0?' checked':''} aria-label="${h(t('audit_tab_'+g[0]))}">`).join('')}<div class="audit-tab-labels">${groups.map((g,n)=>`<label for="audit-tab-${n+1}">${t('audit_tab_'+g[0])} (${g[1].length})</label>`).join('')}</div>${groups.map(g=>`<div class="audit-panel">${table(g[1])}</div>`).join('')}</div>`;
+    })()}
+    </div></details></div>
 
     <div id="csv-import">
         <div class="section-container section-tight">
