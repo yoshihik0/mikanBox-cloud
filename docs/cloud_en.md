@@ -1,6 +1,6 @@
 <style>.manual-version{font-size:.5em;font-weight:400;white-space:nowrap}</style>
 
-# 🍊mikanBox Cloudflare Manual <small class="manual-version">v0.15.0</small>
+# 🍊mikanBox Cloudflare Manual <small class="manual-version">v0.15.1</small>
 
 This manual covers installation and the Cloudflare edition’s differences. For shared operations, see the [operation manual](https://yoshihiko.com/mikanbox/help_en.html).
 
@@ -182,7 +182,7 @@ JPEG, PNG and WebP images can be resized and converted to WebP in the browser. U
 
 Pages, history and settings are kept in the D1 database; media files (images, and uploaded JS and CSS) are kept on the public site. D1 keeps only the information about each media file (name, size and so on). No payment method has to be registered with Cloudflare to stay within the free plan.
 
-- Site → Storage usage shows the D1 database size; a notice appears when it passes 450 MB.
+- The top of Site → Data management shows the D1 database size; a notice appears there when it passes 450 MB.
 - Media may hold files of up to 10 MB each and 10,000 files (Cloudflare's free plan allows 20,000 files of up to 25 MiB each on the public site). The media screen warns when the file count passes 90% of the limit.
 - The public site is the only place the media is kept. Save it regularly with "Save" (JSON and media) under Site → Data management.
 
@@ -190,7 +190,7 @@ References: [D1 limits](https://developers.cloudflare.com/d1/platform/limits/), 
 
 ### Recent operations
 
-Site → Recent operations shows the latest 50 of: MCP enabled/stopped and key issued, page public-state changes, devices registered/stopped and codes issued, failed sign-ins, deleted users and data restores (the same items and display as PHP). The oldest are removed beyond 200; IP addresses are partly hidden.
+Site → Recent operations shows the latest 50 of: MCP enabled/stopped and key issued, page public-state changes, devices registered/stopped and codes issued, failed sign-ins, deleted users and data restores (the same items and display as PHP). Only the latest 50 are kept, and the oldest are removed; IP addresses are partly hidden.
 
 ### Save and Read
 
@@ -398,7 +398,7 @@ Differences from the PHP editions and unused parts tidied up, on the way to a su
 - **The Data Migration & Import Tool now matches the PHP editions.** "Save" downloads the chosen contents (JSON and media / JSON only / Media only / Database). "Read" recognises what the chosen files hold and reads the JSON and media (ZIPs, WordPress XML, media files). When the same item exists, choose "Do not overwrite", "Overwrite items with the same ID" or "Replace everything". The saved ZIP has the same layout in all three editions.
 - "Download data (JSON)", "Download media", "Full backup", "Restore a backup file", "Content package (ZIP) import" and "WordPress migration" are gathered into these two. A full backup ZIP saved with 0.13.2 can be read with "Read".
 - Users are neither saved nor read (users and devices are managed under Devices and users).
-- **Export the public site** has "Use relative paths".
+- **Export the public site** has "Use relative paths" ("Convert to relative paths" from 0.15.1).
 - Reading a file no longer reloads the screen.
 
 ### Changes in 0.14.1
@@ -412,3 +412,11 @@ Differences from the PHP editions and unused parts tidied up, on the way to a su
 ### Changes in 0.15.0
 
 - **The Data Migration & Import Tool screen is gone; its contents are now under Site → Data management.** The top of the section shows the number of pages, components, users and media files, with the media total and the database size. Save, Read, Restore D1 to a past time and Export the public site work there as before (as in PHP 2.25.0).
+
+### Changes in 0.15.1
+
+- **Recent operations keeps only the latest 50** (200 before), the same number the screen shows. Updating removes the older records.
+- **The site settings show "Site URL" read-only.** It is the address shown as the destination in the page list (`PUBLIC_SITE_URL`).
+- Site → Storage usage was removed. The D1 database size is shown at the top of Data management, where the near-limit notice now appears too.
+- "How to get a Cloudflare API token" now opens and closes like "Add a device".
+- The site screen's helper texts were trimmed, and every section keeps the same gap between its heading and contents. Language, CSV import and site settings sit in one box each, like Data management (as in PHP 2.25.1).

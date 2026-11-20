@@ -51,7 +51,7 @@ test('the media screen shows no usage line, only a warning near the file limit, 
  env.sqlite.prepare('UPDATE media_usage SET files=? WHERE id=1').run(MEDIA_COUNT_LIMIT*0.9);
  body=await(await call(env,'/admin?view=media',undefined,auth.cookie)).text();assert.match(body,/id="media-usage-warning"/);
  const site=await(await call(env,'/admin?view=site',undefined,auth.cookie)).text();
- assert.match(site,/id="image-storage"/);assert.match(site,/公開サイトに保存|kept on the public site/);assert.doesNotMatch(site,/公開サイトのメディア|Media on the public site/);assert.doesNotMatch(site,/R2|data-media-migration|cleanup_media/);
+ assert.doesNotMatch(site,/id="image-storage"/);assert.doesNotMatch(site,/公開サイトのメディア|Media on the public site/);assert.doesNotMatch(site,/R2|data-media-migration|cleanup_media/);
 });
 
 test('page history keeps the newest 10 entries of each page, and the update trims older ones',async()=>{

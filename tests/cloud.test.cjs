@@ -563,7 +563,7 @@ test('save notification is dismissible and does not persist in navigation state'
 
 test('Data management reads its texts from the shared translations in both languages', async()=>{
   const env=environment(),auth=await login(env);
-  for (const [lang,label] of [['ja','同じIDのものを上書きする'],['en','Overwrite items with the same ID']]) {
+  for (const [lang,label] of [['ja','同じIDのデータがあるとき'],['en','When data with the same ID exists']]) {
     await saveSettings(env,{system_lang:lang});
     const body=await(await call(env,'/admin?view=site',undefined,auth.cookie)).text();
     assert.ok(body.includes(label),lang);

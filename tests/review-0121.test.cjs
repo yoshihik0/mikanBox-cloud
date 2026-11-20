@@ -68,5 +68,5 @@ test('recent operations: MCP, keys, page status, devices and failed sign-ins are
  const site=await(await call(env,'/admin?view=site',undefined,auth.cookie)).text();
  assert.match(site,/最近の操作記録|Recent operations/);assert.match(site,/p \(draft → public_static\)/);
  for(let i=0;i<210;i++)env.sqlite.prepare("INSERT INTO audit_events(at,event) VALUES('2026-01-01T00:00:00Z','login_failed')").run();
- assert.equal(env.sqlite.prepare('SELECT COUNT(*) n FROM audit_events').get().n,200);
+ assert.equal(env.sqlite.prepare("SELECT COUNT(*) n FROM audit_events").get().n,50);
 });

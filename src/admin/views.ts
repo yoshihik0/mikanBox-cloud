@@ -40,6 +40,10 @@ function csrfField(token: string): string {
 // The Cloud edition publishes statically only, so 'public_static' is simply "public".
 // The former "DB" status is now the output format "mikanBox DB" (2.18.0).
 const statuses = ['draft','pending','public_static'];
+// The token guide opens and closes like "Add a device" (accounts-view.ts).
+const guideBoxStyle='margin-top: 0; margin-bottom: 15px; border: 1px solid #e2e8f0; border-radius: 8px; background: #fafafa;';
+const guideSummaryStyle='padding: 10px 15px; cursor: pointer; display: flex; align-items: center; justify-content: space-between; border-bottom: none; background: transparent;';
+const guideBodyStyle='padding: 15px; border-top: 1px solid #e2e8f0; background: #fff; border-bottom-left-radius: 8px; border-bottom-right-radius: 8px;';
 /** A category list with structural "_" categories after the others, shown faded. */
 const categoryList = (cats: string[]) => sortCategories(cats).map(c => isStructuralCategory(c) ? `<span class="category-structural">${h(c)}</span>` : h(c)).join(', ');
 function statusClass(status: string) { return ({public_dynamic:'static',public:'static',public_static:'static'} as Record<string,string>)[status] || status; }
@@ -1382,6 +1386,7 @@ export function renderSiteView(opts: {
                     </h2>
                 </summary>
                 <div class="editor-container editor-container-sub">
+                <div class="panel-card">
                     <form method="post" data-ajax>
                         <input type="hidden" name="save_action" value="save_settings">
                         ${csrfField(csrf)}
@@ -1395,14 +1400,15 @@ export function renderSiteView(opts: {
                         <button type="submit" class="btn btn-blue btn-small">${getIcon('save')} ${t('btn_save')}</button>
                     </form>
                 </div>
+                </div>
             </details>
         </div>
     </div>
 
     <div id="mcp-key"><div class="section-container section-tight"><details class="section-accordion"><summary class="header section-header accordion-summary"><h2 class="accordion-title">${t('mcp_key_head')} <span class="accordion-arrow">▼</span></h2></summary><div class="editor-container editor-container-sub">
       <small class="sub-text sub-text-intro">${t('mcp_key_hint')}</small>
-      <form method="post" class="mt-10" data-ajax>${csrfField(csrf)}<input type="hidden" name="save_action" value="set_mcp_enabled"><label><input type="checkbox" name="mcp_enabled" value="1" ${settings.mcp_disabled?'':'checked'}> ${t('mcp_enable_label')}</label> <button type="submit" class="btn btn-gray btn-small">${t('btn_save')}</button><p class="sub-text">${t('mcp_enable_hint')}</p></form>
-      <p>${t('mcp_last_used_label')}: <span id="mcp-last-used">${Number(settings._mcp_last_used||0)?localTime(Number(settings._mcp_last_used),lang):t('mcp_never_used')}</span></p>
+      <form method="post" class="mt-10" data-ajax>${csrfField(csrf)}<input type="hidden" name="save_action" value="set_mcp_enabled"><label><input type="checkbox" name="mcp_enabled" value="1" ${settings.mcp_disabled?'':'checked'}> ${t('mcp_enable_label')}</label> <button type="submit" class="btn btn-gray btn-small">${t('btn_save')}</button></form>
+      <p class="sub-text">${t('mcp_last_used_label')}: <span id="mcp-last-used">${Number(settings._mcp_last_used||0)?localTime(Number(settings._mcp_last_used),lang):t('mcp_never_used')}</span></p>
       <div class="form-group mt-10"><label for="mcp-url-display">${t('mcp_url_label')}</label><div class="copy-row"><input type="text" id="mcp-url-display" value="" readonly><button type="button" class="btn btn-gray btn-small" onclick="copyField('mcp-url-display')">${getIcon('copy')} ${t('btn_copy')}</button></div></div>
       <div id="mcp-key-issued"${settings.api_key?'':' style="display:none;"'}>
         <div class="form-group mt-10"><label for="mcp-key-display">${t('mcp_key_label')}</label><div class="copy-row"><input type="text" id="mcp-key-display" value="${h(settings.api_key||'')}" readonly><button type="button" class="btn btn-gray btn-small" onclick="copyField('mcp-key-display')">${getIcon('copy')} ${t('btn_copy')}</button></div></div>
@@ -1412,7 +1418,6 @@ export function renderSiteView(opts: {
       </div></details></div></div>
 
     <div class="section-container section-tight"><details class="section-accordion"><summary class="header section-header accordion-summary"><h2 class="accordion-title">${t('audit_heading')} <span class="accordion-arrow">▼</span></h2></summary><div class="editor-container editor-container-sub">
-    <p class="sub-text">${t('audit_hint_cloud')}</p>
     <table><thead><tr><th>${t('audit_time_local')}</th><th>${t('audit_action')}</th><th>${t('audit_actor')}</th><th>${t('audit_target')}</th><th>IP</th></tr></thead><tbody>
     ${((settings._audit as Array<{at:string;event:string;actor:string;target:string;from_value:string;to_value:string;ip:string}>)||[]).map(e=>`<tr><td>${localTime(Date.parse(e.at),lang)}</td><td>${h(t('audit_event_'+e.event))}</td><td>${h(e.actor)}</td><td>${h(e.target+(e.from_value||e.to_value?` (${e.from_value} → ${e.to_value})`:''))}</td><td>${h(e.ip)}</td></tr>`).join('')}
     </tbody></table></div></details></div>
@@ -1426,6 +1431,7 @@ export function renderSiteView(opts: {
                     </h2>
                 </summary>
                 <div class="editor-container editor-container-sub">
+                <div class="panel-card">
                     <small class="sub-text sub-text-intro">${t('csv_hint')}</small>
                     <div class="mt-10">
                         <input type="file" id="csv-file-input" accept=".csv,text/csv">
@@ -1433,6 +1439,7 @@ export function renderSiteView(opts: {
                     <div class="mt-10">
                         <button type="button" class="btn btn-gray btn-small" onclick="csvConvertAndCopy()" id="csv-copy-btn">${getIcon('copy')} ${t('btn_csv_convert')}</button>
                     </div>
+                </div>
                 </div>
             </details>
         </div>
@@ -1447,8 +1454,8 @@ export function renderSiteView(opts: {
                     </h2>
                 </summary>
                 <div class="editor-container editor-container-sub">
-                    <small class="sub-text sub-text-intro">${t('backup_hint')}</small>
                     ${opts.dataHtml||''}
+                    ${settings.d1_bytes!==null&&Number(settings.d1_bytes)>=D1_WARNING_BYTES?`<p role="status"><strong>${lang==='en'?'The database is close to its limit.':'データベースが上限に近づいています。'}</strong></p>`:''}
                 </div>
             </details>
         </div>
@@ -1462,6 +1469,7 @@ export function renderSiteView(opts: {
                     </h2>
                 </summary>
                 <div class="editor-container editor-container-sub">
+                <div class="panel-card">
                     <form method="post" class="site-settings-form" data-ajax>
                         <input type="hidden" name="save_action" value="save_settings">
                         ${csrfField(csrf)}
@@ -1470,7 +1478,7 @@ export function renderSiteView(opts: {
                                 <div class="form-group"><label>${t('label_site_name')}</label><input type="text" name="site_name" value="${h(settings.site_name||'')}"></div>
                                 <div class="form-group"><label>${t('label_site_id')}</label><input type="text" readonly value="${h(settings.site_id||'')}"><small class="sub-text">${t('hint_site_id')}</small></div>
                             </div>
-                            
+                            <div class="form-group"><label>${t('label_site_url')}</label><input type="url" readonly value="${h(String(settings._public_url||''))}"></div>
                             <div class="form-group"><label>${t('label_site_environment')}</label><select name="site_environment">${['production','staging','development','local','unspecified'].map(e=>`<option value="${e}" ${(settings.site_environment||'unspecified')===e?'selected':''}>${t('site_environment_'+e)}</option>`).join('')}</select><small class="sub-text">${t('hint_site_environment')}</small></div>
                             <div class="form-group grid-span-2">
                                 <label>${t('label_site_desc')}</label>
@@ -1528,37 +1536,21 @@ export function renderSiteView(opts: {
                         <button type="submit" class="btn btn-blue mt-10">${getIcon('save')} ${t('btn_save')}</button>
                     </form>
                 </div>
+                </div>
             </details>
         </div>
     </div>
 
     ${opts.accountsHtml||''}
-    <div id="cloud-connection"><div class="section-container section-tight"><details class="section-accordion"><summary class="header section-header accordion-summary"><h2 class="accordion-title">${lang==='en'?'Cloudflare publication settings':'Cloudflare公開設定'} <span class="accordion-arrow">▼</span></h2></summary><div class="editor-container editor-container-sub">
-                    <p>${lang==='en'?'Configure the Cloudflare account and Worker used for publication. The token is stored securely and is never shown again.':'公開に使うCloudflareアカウントとWorkerを設定します。トークンは安全に保存され、再表示されません。'}</p>
-                    <div class="token-guide-box"><h3>${lang==='en'?'How to get a Cloudflare API token':'Cloudflare APIトークンの取得方法'}</h3>
+    <div id="cloud-connection" class="section-large-bottom"><div class="section-container section-tight"><details class="section-accordion"><summary class="header section-header accordion-summary"><h2 class="accordion-title">${lang==='en'?'Cloudflare publication settings':'Cloudflare公開設定'} <span class="accordion-arrow">▼</span></h2></summary><div class="editor-container editor-container-sub">
+                    <details class="section-accordion" style="${guideBoxStyle}"><summary class="header section-header accordion-summary" style="${guideSummaryStyle}"><h3 style="font-size: 0.95rem; margin: 0; color: var(--text); display: inline-flex; align-items: center; gap: 8px; pointer-events: none;">${lang==='en'?'How to get a Cloudflare API token':'Cloudflare APIトークンの取得方法'}</h3><span class="accordion-arrow" style="font-size: 0.75rem; opacity: 0.5;">▼</span></summary><div class="token-guide-body" style="${guideBodyStyle}">
                     ${lang==='en'?`<ol class="token-guide"><li>Sign in to Cloudflare with the account that hosts this site, and open <a href="https://dash.cloudflare.com/profile/api-tokens" target="_blank" rel="noopener">My Profile → API Tokens</a>.</li><li>Press <b>Create Token</b>, then <b>Get started</b> next to <b>Create Custom Token</b>.</li><li>Give it a name, such as “mikanBox publishing”.</li><li>Under <b>Permissions</b>, choose <b>Account</b> → <b>Workers Scripts</b> → <b>Edit</b>. To use the D1 backup and Time Travel features as well, add a second row: <b>Account</b> → <b>D1</b> → <b>Edit</b>.</li><li>Under <b>Account Resources</b>, choose <b>Include</b> → the account that hosts this site.</li><li>Press <b>Continue to summary</b>, then <b>Create Token</b>. Copy the long string that is shown. <b>It is shown only once.</b></li><li>Paste it into “Cloudflare API token” below and press Save. The account ID and Worker name are already filled in; leave them as they are.</li></ol><p class="sub-text">You create the token once. The site stores it encrypted and never shows it again. You only need a new one if it is deleted or revoked in Cloudflare, its permissions change, or the site’s secret key (JWT_SECRET) changes.</p>`:`<ol class="token-guide"><li>このサイトを置いているCloudflareのアカウントでログインし、<a href="https://dash.cloudflare.com/profile/api-tokens" target="_blank" rel="noopener">プロフィール → APIトークン</a>を開きます。</li><li>「トークンを作成する」を押し、「カスタムトークンを作成する」の「開始する」を押します。</li><li>トークン名を付けます。例：「mikanBox公開用」。</li><li>「権限」で、<b>アカウント</b> → <b>Workers スクリプト</b> → <b>編集</b> を選びます（英語表示では Account → Workers Scripts → Edit）。D1のバックアップとTime Travelも使う場合は、もう1行、<b>アカウント</b> → <b>D1</b> → <b>編集</b> を追加します。</li><li>「アカウントリソース」で、<b>含める</b> → このサイトを置いているアカウントを選びます。</li><li>「概要に進む」→「トークンを作成する」を押し、表示された長い文字列をコピーします。<b>表示されるのは1回だけです。</b></li><li>下の「Cloudflare APIトークン」欄に貼り付けて「保存」を押します。アカウントIDとWorker名は最初から入っているので、そのままにしてください。</li></ol><p class="sub-text">トークンは最初に1回作るだけです。サイトが暗号化して保存し、再表示しません。作り直すのは、Cloudflareで削除・失効させたとき、権限を変えたとき、サイトの秘密鍵（JWT_SECRET）を変えたときだけです。</p>`}
-                    </div>
+                    </div></details>
                     <form method="post" class="grid-2col" data-ajax data-refresh="#cloud-connection, #publish-box"><input type="hidden" name="save_action" value="save_cloud_connection">${csrfField(csrf)}<div class="form-group"><label>${lang==='en'?'Cloudflare account ID':'CloudflareアカウントID'}</label><input type="text" name="cloud_account_id" value="${h(settings.cloud_account_id||'')}" required></div><div class="form-group"><label>${lang==='en'?'Worker name':'Worker名'}</label><input type="text" name="cloud_worker_name" value="${h(settings.cloud_worker_name||'')}" required></div><div class="form-group"><label>${lang==='en'?'Cloudflare API token':'Cloudflare APIトークン'}</label><input type="password" name="cloud_api_token" autocomplete="new-password" ${settings.cloud_connection_ready?'placeholder="•••••••• (set)"':'required'}></div><div class="form-actions"><button class="btn btn-gray btn-small">${t('btn_save')}</button> <span role="status">${settings.cloud_connection_ready?(lang==='en'?'Connection configured':'接続設定済み'):(lang==='en'?'Not configured':'未設定')}</span></div></form>
     </div></details></div></div>
-    ${renderStorageView(settings,csrf,lang)}
 
 
 `;
-}
-
-function renderStorageView(settings:Settings,_csrf:string,lang:string):string {
- const en=lang==='en';
- const d1Bytes=settings.d1_bytes as number|null;
- const warning=d1Bytes!==null&&d1Bytes>=D1_WARNING_BYTES;
- return `<div id="image-storage" class="section-large-bottom"><div class="section-container section-tight"><details class="section-accordion">
- <summary class="header section-header accordion-summary"><h2 class="accordion-title">${en?'Storage usage':'保存容量'} <span class="accordion-arrow">▼</span></h2></summary>
- <div class="editor-container editor-container-sub">
- <p>${en?'Pages, history and settings are kept in the D1 database. Media files are kept on the public site.':'ページ・履歴・設定はD1データベースに、メディアのファイルは公開サイトに保存します。'}</p>
- <p>${en?'D1 database usage':'D1データベースの使用量'}: ${d1Bytes===null?(en?'Check in Cloudflare':'Cloudflareで確認'):`${(d1Bytes/1_000_000).toFixed(1)} MB`}<br>
- ${en?'The Cloudflare free plan allows 500 MB per database, and 20,000 files of up to 25 MiB each on the public site.':'Cloudflareの無料プランは、1データベース500 MBまで、公開サイトは1ファイル25 MiB・20,000ファイルまでです。'}</p>
- ${warning?`<p role="status"><strong>${en?'The database is close to its limit.':'データベースが上限に近づいています。'}</strong></p>`:''}
- <p><a href="https://dash.cloudflare.com/" target="_blank" rel="noopener">${en?'Check usage in Cloudflare':'Cloudflareで使用量を確認'}</a></p>
- </div></details></div></div>`;
 }
 
 // ===== タグガイド (admin.php::$renderTagGuide) =====
@@ -1658,7 +1650,7 @@ function cloudDataExtra(opts: {t:(key:string,...args:(string|number)[])=>string;
   const {t,csrf,lang}=opts,en=lang==='en';
   const needsToken=`<p>${en?'Configure Cloudflare publication settings with D1 edit permission.':'D1編集権限を持つトークンをCloudflare公開設定に登録してください。'}</p>`;
   // After Save and Read (data-section.ts), the Cloud edition's own: D1 to a past time, then the public site.
-  const extraHtml=`<section id="cloud-d1-restore" class="data-tool-card"><h2>${getIcon('history')} ${en?'Restore D1 to a past time':'D1の指定時刻への復元'}</h2><p>${en?'Returns the database to a time within Cloudflare’s retention period (the last 7 days on the free plan). The public site is not changed: to restore it, build the site.':'データベースを、Cloudflareが保持している期間内（無料プランは直近7日）の指定時刻に戻します。公開サイトは変わらないので、復元にはサイトをビルドしてください。'}</p>
+  const extraHtml=`<section id="cloud-d1-restore" class="data-tool-card"><h2>${getIcon('history')} ${en?'Restore D1 to a past time':'D1の指定時刻への復元'}</h2><p>${en?'Returns the database to a time within Cloudflare’s retention period (the last 7 days on the free plan). The public site is not changed: build the site after restoring.':'データベースを、Cloudflareが保持している期間内（無料プランは直近7日）の指定時刻に戻します。公開サイトは変わらないので、復元後はサイトをビルドしてください。'}</p>
     ${opts.cloudReady?`<form method="post" data-cloudbackup="d1-restore">${csrfField(csrf)}<input type="hidden" name="save_action" value="restore_d1_time"><label class="form-group backup-field">${en?'Restore to time':'復元する時刻'} <input type="datetime-local" name="restore_at" required></label><button class="btn btn-orange btn-small">${en?'Restore D1 to this time':'D1を指定時刻に戻す'}</button><span data-transfer-status role="status"></span></form>`:needsToken}</section>
     <section id="site-export" class="data-tool-card"><h2>${getIcon('download')} ${t('site_export_title')}</h2>
     <p>${t('site_export_hint')}</p>

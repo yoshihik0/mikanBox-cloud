@@ -11,7 +11,7 @@ test('Data management: the figures, Save and Read as in PHP, then D1 to a past t
  assert.match(html,/name="include_revisions" value="1"> transfer_include_revisions/);
  assert.match(html,/<form data-transfer="import"/);assert.match(html,/type="file" name="files" multiple/);
  assert.match(html,/name="mode" value="add" checked/);assert.match(html,/name="mode" value="overwrite"/);assert.match(html,/name="mode" value="replace"/);
- assert.match(html,/公開サイトは変わらないので、復元にはサイトをビルドしてください/);
+ assert.match(html,/公開サイトは変わらないので、復元後はサイトをビルドしてください/);
  assert.match(html,/site_export_hint/);assert.match(html,/name="relative" value="1"> site_export_relative/);
  assert.doesNotMatch(html,/cloud-json-backup|restore_backup_json|content_import|zip-import|wp-import|begin_d1_export/);
  assert.doesNotMatch(renderDataSection({t,csrf:'token',lang:'ja',cloudReady:false,stats}),/option value="database"/,'without the token, no database choice');
@@ -19,5 +19,5 @@ test('Data management: the figures, Save and Read as in PHP, then D1 to a past t
  const site=renderSiteView({t,csrf:'token',lang:'ja',settings:{},helpFile:'#',users:[],username:'admin'});
  assert.doesNotMatch(html,/id="csv-import"/);assert.match(site,/id="csv-import"/);assert.ok(site.indexOf('id="mcp-key"')<site.indexOf('id="csv-import"')&&site.indexOf('id="csv-import"')<site.indexOf('id="backup"'));
  assert.doesNotMatch(site,/begin_d1_export|get_ai_context|公開ヘルプ用/);
- assert.ok(site.indexOf('id="cloud-connection"')<site.indexOf('id="image-storage"'));assert.match(site,/Cloudflare公開設定/);
+ assert.match(site,/id="cloud-connection" class="section-large-bottom"/);assert.doesNotMatch(site,/id="image-storage"/);assert.match(site,/Cloudflare公開設定/);
 });

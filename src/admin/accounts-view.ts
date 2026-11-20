@@ -33,7 +33,7 @@ export function renderAccountsSection(opts:{t:Translator;lang:string;csrf:string
   const nameForm=self?`<form method="post" class="account-name-form" data-ajax data-refresh="#users-mgmt">${csrfField(csrf)}<input type="hidden" name="save_action" value="update_user"><input type="hidden" name="old_username" value="${h(u.username)}"><input type="hidden" name="username" value="${h(u.username)}"><label for="my-display-name">${h(t('device_display_name_label'))}</label><input type="text" id="my-display-name" name="display_name" required maxlength="120" value="${h(u.display_name)}"><button type="submit" class="btn btn-gray btn-small">${h(t('btn_save'))}</button></form>`:'';
   return `<div class="account-user">${head}${table}${nameForm}</div>`;
  };
- return `<div id="users-mgmt" class="section-large-bottom"><div class="section-container section-tight"><details class="section-accordion"><summary class="header section-header accordion-summary"><h2 class="accordion-title">${h(t('device_section_title'))} <span class="accordion-arrow">▼</span></h2></summary><div class="editor-container editor-container-sub">
+ return `<div id="users-mgmt"><div class="section-container section-tight"><details class="section-accordion"><summary class="header section-header accordion-summary"><h2 class="accordion-title">${h(t('device_section_title'))} <span class="accordion-arrow">▼</span></h2></summary><div class="editor-container editor-container-sub">
  <p class="sub-text sub-text-intro">${h(t('device_section_intro'))}</p>
  ${probation?`<p class="error" role="status">${h(t('device_probation_notice',PROBATION_DAYS))}</p>`:''}
  <div id="users-list-wrap"><h3 style="${headingStyle}">${h(t('device_users_devices_title'))}</h3>${opts.users.map(userBlock).join('')}</div>
