@@ -6,7 +6,8 @@ import {loadSettings,saveSettings} from './storage';
 // device and recovery) and one-time codes issued from an already trusted device.
 export const DEVICE_COOKIE='device_session';
 export const EXPIRY_CHOICES=[30,90,180] as const;
-export const CODE_HOURS=3;
+export const CODE_HOURS=3;      // a code for adding your own device
+export const INVITE_HOURS=6;    // an invitation code: the invited person may be far away
 // A device younger than this cannot stop other devices, so a stolen add code cannot
 // be used to lock the original owner out before they notice the new device.
 export const PROBATION_DAYS=3;
@@ -50,7 +51,7 @@ export async function issueCode(env:Env,creator:Device,invite=false){
  const bytes=crypto.getRandomValues(new Uint8Array(10));let code='';for(const b of bytes)code+=ALPHABET[b&31];
  const now=Date.now();
  await env.DB.prepare('INSERT INTO device_codes(code_hash,username,display_name,created_by,created_at,expires_at) VALUES(?,?,?,?,?,?)')
-  .bind(await sha256(code),invite?'':creator.username,'',creator.id,now,now+CODE_HOURS*3600_000).run();
+  .bind(await sha256(code),invite?'':creator.username,'',creator.id,now,now+(invite?INVITE_HOURS:CODE_HOURS)*3600_000).run();
  await audit(env,invite?'invite_issued':'code_issued',{actor:creator.username});
  return code.slice(0,5)+'-'+code.slice(5);
 }

@@ -1,6 +1,6 @@
 <style>.manual-version{font-size:.5em;font-weight:400;white-space:nowrap}</style>
 
-# 🍊mikanBox Cloudflare Manual <small class="manual-version">v0.20.0</small>
+# 🍊mikanBox Cloudflare Manual <small class="manual-version">v0.20.1</small>
 
 This manual covers installation and the Cloudflare edition’s differences. For shared operations, see the [operation manual](https://yoshihiko.com/mikanbox/help_en.html).
 
@@ -28,7 +28,7 @@ To change the public URL later, connect the new domain to the public Worker, upd
 There are no passwords. The Devices and users section is normally closed, and changing the device expiry shows the result in place. Only registered devices (browsers) can open the admin screen. Each device keeps a random token in a cookie; D1 stores only its hash.
 
 - **First device**: on the sign-in screen, enter `SETUP_TOKEN`, a username, a display name and a name for the device. A used `SETUP_TOKEN` never works again.
-- **Adding a device**: on a registered device, open Site → Devices and users → Add a device, issue a code, and enter it on the new device's sign-in screen. That device is registered as the same user as whoever issued the code. Codes are valid for 3 hours and work once. To invite someone, issue an invite code under Invite someone and hand it over; the invited person chooses their own user ID and display name on the sign-in screen. After five wrong codes, entry is blocked for 15 minutes.
+- **Adding a device**: on a registered device, open Site → Devices and users → Add a device, issue a code, and enter it on the new device's sign-in screen. That device is registered as the same user as whoever issued the code. Add codes are valid for 3 hours and work once. To invite someone, issue an invite code under Invite someone and hand it over (valid for 6 hours, so it can reach someone far away); the invited person chooses their own user ID and display name on the sign-in screen. After five wrong codes, entry is blocked for 15 minutes.
 - **Expiry**: devices expire 30 (default), 90 or 180 days after last use. Each use extends it.
 - **Stopping a device**: stop it from the list under Devices and users. For 3 days after being added with a code, a device cannot stop other devices, delete or change other users, restore users from a backup, or restore D1 to a point in time. Devices registered with `SETUP_TOKEN` have no such limit. Deleting a user also stops that user's devices and unused codes. When a new device is registered, other devices are told the next time they open the admin screen.
 - **Recovery**: if every device is lost, set a new value with `wrangler secret put SETUP_TOKEN` and use Recovery on the sign-in screen with an existing username. Every registered device stops, and unused codes and the MCP key are cleared.
@@ -477,3 +477,9 @@ Differences from the PHP editions and unused parts tidied up, on the way to a su
 - **Save in Data management has “Match the filtered lists” (the same as PHP 2.30.0).** Pages, components and media are saved as each list shows them (category, output format, search, type). The D1 SQL is not affected. The “Read” button is now blue.
 - **The Site screen is reordered.** “Check for tampering” sits under the version and update display, in a box like the other sections. Below Site settings the order is Cloudflare publication settings, Devices and users, MCP API key, then Recent operations.
 - **The MCP API key section is built like “Add a device”.** “Enable MCP” and its Save button form one box; the “Add an API key” box, once opened, holds the key name, “Issue key”, the connection URL and the API key; issued keys are in an “Issued API keys” table. Helper texts are gray.
+
+### Changes in 0.20.1
+
+- **Invitation codes are now valid for 6 hours (the same as PHP SQLite 2.30.1),** so they can reach someone far away. A code for adding your own device stays at 3 hours.
+- The connection note of “API key” moved into the “Add an API key” box, above “Key name”. The “Read” and “Restore D1 to a past time” buttons are gray.
+- In the page editor, when “Trailing components of the Markdown version” comes and goes with the output format, the thumbnail (OGP image) no longer moves.

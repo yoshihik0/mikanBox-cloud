@@ -39,7 +39,7 @@ export function renderTransferSections(opts: {t: Translator; csrf: string; cloud
               <label><input type="radio" name="mode" value="replace"> ${h(t('transfer_mode_replace'))}</label>
             </fieldset>
             <p class="sub-text">${h(t('transfer_import_note'))}</p>
-            <button type="submit" class="btn btn-blue btn-small">${icon('upload')} ${h(t('transfer_btn_import'))}</button>
+            <button type="submit" class="btn btn-gray btn-small">${icon('upload')} ${h(t('transfer_btn_import'))}</button>
             <span data-transfer-status role="status"></span>
           </form>
         </section>

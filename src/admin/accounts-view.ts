@@ -1,5 +1,5 @@
 import type {Device,DeviceCode} from '../devices';
-import {EXPIRY_CHOICES,PROBATION_DAYS,CODE_HOURS,onProbation} from '../devices';
+import {EXPIRY_CHOICES,PROBATION_DAYS,CODE_HOURS,INVITE_HOURS,onProbation} from '../devices';
 import type {User} from '../accounts';
 import {localTime} from './local-time';
 type Translator=(key:string,...args:(string|number)[])=>string;
@@ -20,7 +20,7 @@ const boxBodyStyle='padding: 15px; border-top: 1px solid #e2e8f0; background: #f
 export function renderAccountsSection(opts:{t:Translator;lang:string;csrf:string;users:User[];me:Device;devices:Device[];codes:DeviceCode[];expiryDays:number}):string {
  const {t,lang,csrf,me}=opts,names=new Map(opts.devices.map(d=>[d.id,d.name]));
  const probation=onProbation(me);
- const codeSlot=(invite:boolean)=>`<div data-issued-code-slot="${invite?'invite':'own'}" data-note="${h(t('device_code_panel_note',CODE_HOURS))}"></div>`;
+ const codeSlot=(invite:boolean)=>`<div data-issued-code-slot="${invite?'invite':'own'}" data-note="${h(t('device_code_panel_note',invite?INVITE_HOURS:CODE_HOURS))}"></div>`;
  const codeRows=opts.codes.map(c=>`<tr><td>${c.username===''?h(t('device_invite_mark')):`<code>${h(c.username)}</code>${c.display_name?` (${h(t('device_invite_mark'))})`:''}`}</td><td>${h(names.get(c.created_by)||'—')}</td><td>${when(c.expires_at,lang)}</td><td class="account-actions"><form method="post" class="inline" data-ajax data-refresh="#users-mgmt">${csrfField(csrf)}<input type="hidden" name="save_action" value="device_code_cancel"><input type="hidden" name="code_hash" value="${h(c.code_hash)}"><button type="submit" class="btn btn-gray btn-small">${h(t('device_btn_cancel_code'))}</button></form></td></tr>`).join('');
  const deviceRow=(d:Device)=>{
   const isMe=d.id===me.id;
