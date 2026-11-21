@@ -8,7 +8,7 @@ import {beginPublication,hashPublicationFiles,preparePublication,uploadPublicati
 import {inspectMedia,getMedia,addMedia,replaceMedia,deleteMedia} from '../media-store';
 import {trackingIdValid,trackingLegacyHtml,trackingSnippets} from '../tracking';
 import type { Env, PageData, ComponentData } from '../types';
-import { loadSettings, saveSettings, loadPage, getSortedPageIds, loadComponent, saveComponent, deleteComponent, listComponentIds, listPages, listComponents, listMediaFiles, mediaUsage } from '../storage';
+import { loadSettings, saveSettings, loadPage, getSortedPageIds, loadComponent, saveComponent, deleteComponent, listComponentIds, listPages, listComponents, listMediaFiles, mediaUsage, adminPageMatches } from '../storage';
 import { verifyCsrf } from '../auth';
 import { authenticatedUser, getUser, listUsers, addInitialUser, rateLimit } from '../accounts';
 import { onProbation, PROBATION_DAYS, createDevice, claimCode, codeKind, issueCode, cancelCode, revokeDevice, setExpiryDays, setupTokenUsable, consumeSetupToken, clearDeviceCookie, listDevices, listCodes, unseenDevices, expiryFrom } from '../devices';
@@ -410,9 +410,9 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
   const pageSort=pageSortParam(url.searchParams.get('sort')),pages=sortPagesForAdmin(await listPages(env),pageSort),components=await listComponents(env);
   const files=await listMediaFiles(env),cats=new Set((settings.category_candidates||'').split(',').map(x=>x.trim()).filter(Boolean));
   for(const p of pages)for(const c of(p.data.category||'').split(',').map(x=>x.trim()).filter(Boolean))cats.add(c);
-  const allCategories=[...cats].sort(),category=url.searchParams.get('cat')||'',query=url.searchParams.get('q')||'';
+  const allCategories=[...cats].sort(),category=url.searchParams.get('cat')||'',query=(url.searchParams.get('q')||'').trim();
   const formatFilter=(PAGE_FORMAT_FILTERS as readonly string[]).includes(url.searchParams.get('fmt')||'')?url.searchParams.get('fmt')||'':'';
-  const filtered=pages.filter(p=>(!formatFilter||(formatFilter==='data'?isDataFormat(pageOutputFormat(p.data)):pageOutputFormat(p.data)===formatFilter))&&(!category||(p.data.category||'').split(',').map(x=>x.trim()).includes(category))&&(!query||`${p.id} ${p.data.title} ${p.data.content_md||''}`.toLowerCase().includes(query.toLowerCase())));
+  const filtered=pages.filter(p=>(!formatFilter||(formatFilter==='data'?isDataFormat(pageOutputFormat(p.data)):pageOutputFormat(p.data)===formatFilter))&&(!category||(p.data.category||'').split(',').map(x=>x.trim()).includes(category))&&adminPageMatches(p.id,p.data,query));
   const perPage=Math.min(500,Math.max(1,Number(settings.pages_per_page)||30)),totalPages=Math.max(1,Math.ceil(filtered.length/perPage)),pageNumber=Math.min(totalPages,Math.max(1,Number(url.searchParams.get('p_pages'))||1));
   const hasNew=url.searchParams.has('new'),helpFile=help(lang),listQuery=pageListQuery({category,format:formatFilter,sort:pageSort,query,pageNumber:Number(url.searchParams.get('p_pages'))||1});
   const pageEditorHtml=view==='pages'&&(editId||hasNew)?renderPageEditor({t,editId,editData:editData as PageData|null,csrf,helpFile,wrapperComponents:components.filter(c=>c.data.is_wrapper),allCategories,publicBase:(env.PUBLIC_SITE_URL||url.origin).replace(/\/$/,''),settings:{...settings,_site_base:url.origin},revisions:pageRevisions,selectedRevision:pageRevisions.find(r=>r.id===Number(url.searchParams.get('rev'))),listQuery,listCategory:category}):'';

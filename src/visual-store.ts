@@ -5,6 +5,7 @@
 // Every write is one D1 batch that applies only while the page still holds the data it was read with,
 // so a concurrent save from the admin screen or MCP is never overwritten.
 import type { Env, PageData } from './types';
+import { applyPageDates } from './revisions';
 
 export const UNDO_MAX = 3;
 export const POINTS_MAX = 10;
@@ -55,6 +56,7 @@ export async function commit(env: Env, id: string, cur: PageRow, next: PageData,
   await assertNotLocked(env, id, editor);
   if (!validSid(sid)) sid = 'none';
   const fresh = cur.sid !== sid;
+  applyPageDates(next, cur.data);
   next.revision_tag = crypto.randomUUID();
   const guard = [id, cur.raw];
   const statements = [];
@@ -90,6 +92,9 @@ export async function move(env: Env, id: string, kind: 'undo' | 'redo', editor: 
   try { data = JSON.parse(snap.data) as PageData; } catch { return false; }
   if (!data || typeof data !== 'object') return false;
   await assertNotLocked(env, id, editor);
+  data.status = cur.data.status;
+  data.updated_at = cur.data.updated_at;
+  applyPageDates(data, cur.data);
   data.revision_tag = crypto.randomUUID();
   const guard = [id, cur.raw];
   const results = await env.DB.batch([
@@ -109,7 +114,7 @@ export async function restorePoint(env: Env, id: string, pointId: string, sid: s
   let data: PageData;
   try { data = JSON.parse(row.data) as PageData; } catch { return false; }
   data.status = cur.data.status ?? data.status ?? 'draft';
-  data.updated_at = new Date().toISOString().slice(0, 19).replace('T', ' ');
+  data.updated_at = cur.data.updated_at;
   await commit(env, id, cur, data, sid, editor);
   return true;
 }
@@ -117,6 +122,7 @@ export async function restorePoint(env: Env, id: string, pointId: string, sid: s
 /** A new page, always a draft. Fails (false) when the id is taken. */
 export async function createPage(env: Env, id: string, data: PageData): Promise<boolean> {
   data.revision_tag = crypto.randomUUID();
+  delete data.first_published_at;
   const r = await env.DB.prepare('INSERT INTO posts (id, data, status, sort_order, updated_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(id) DO NOTHING')
     .bind(id, JSON.stringify(data), data.status, data.sort_order || 0, data.updated_at || '').run();
   return !!r.meta.changes;

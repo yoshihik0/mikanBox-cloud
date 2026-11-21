@@ -98,29 +98,29 @@ export async function listPages(env:Env):Promise<Array<{id:string,data:PageData}
   const rows=await env.DB.prepare('SELECT id,data FROM posts ORDER BY sort_order,updated_at DESC,id').all<{id:string,data:string}>();
   return rows.results.flatMap(row=>{try{return [{id:row.id,data:normalizeLegacyPage(JSON.parse(row.data) as PageData)}];}catch{return [];}});
 }
-/** Orders of the admin page list (PHP 2.20.0): "" is the display order, which matches the public side. */
+/** Orders of the admin page list. An empty sort selects the default display order. */
 export const PAGE_SORTS = ['', 'updated_desc', 'updated_asc', 'id', 'title'] as const;
 export type PageSort = typeof PAGE_SORTS[number];
 export const pageSortParam = (value: unknown): PageSort => (PAGE_SORTS as readonly string[]).includes(String(value ?? '')) ? String(value ?? '') as PageSort : '';
 const idCompare = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 const titleCollator = new Intl.Collator('ja');
 const updatedAt = (data: PageData) => { const time = Date.parse(String(data.updated_at || '').replace(' ', 'T') + (/[zZ]|[+-]\d\d:?\d\d$/.test(String(data.updated_at || '')) ? '' : 'Z')); return Number.isFinite(time) ? time : 0; };
-/**
- * The admin page list order. The default ("display order") is the public side's: pending pages first (this
- * edition has the "pending" status), then index, then display order, then the newest update, then ID.
- * Other orders put index first, whatever the order, and are otherwise purely that order (pending pages
- * included), ties broken by ID. Sorting happens before the page split, so every page of the list follows it.
- */
+export function adminPageMatches(id:string,page:PageData,query:string):boolean {
+  const keyword=query.toLowerCase();
+  return !keyword||[id,page.title,page.content_md,page.description].some(field=>String(field??'').toLowerCase().includes(keyword));
+}
+
+/** In the default order, index and pending pages come first. Explicit orders use ID to break ties. */
 export function sortPagesForAdmin<T extends {id:string,data:PageData}>(pages:T[],sort:PageSort=''):T[] {
   const order=(page:T)=>Number(page.data.sort_order)||0;
   const title=(page:T)=>String(page.data.title||'').trim()||page.id;
   return [...pages].sort((a,b)=>{
     if(sort==='') {
+      if(a.id==='index'&&b.id!=='index')return -1;
+      if(b.id==='index'&&a.id!=='index')return 1;
       const pendingA=a.data.status==='pending',pendingB=b.data.status==='pending';
       if(pendingA!==pendingB)return pendingA?-1:1;
     }
-    if(a.id==='index'&&b.id!=='index')return -1;
-    if(b.id==='index'&&a.id!=='index')return 1;
     let result=0;
     if(sort==='')result=order(a)-order(b)||updatedAt(b.data)-updatedAt(a.data);
     else if(sort==='updated_desc')result=updatedAt(b.data)-updatedAt(a.data);

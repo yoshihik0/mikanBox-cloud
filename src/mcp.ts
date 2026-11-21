@@ -12,7 +12,6 @@ import { saveWithRevision, revisions } from './revisions';
 import { buildStatic } from './ssg';
 import { OUTPUT_FORMATS, pageFormatFields, withFormatFields, validatePageSave, pageOutputFormat, isDataFormat, pageExpandsTags } from './output-formats';
 import { createTranslator, getSystemLanguage } from './i18n';
-import { isPublicStatus } from './storage';
 const OUTPUT_FORMATS_GUIDE='mikanBox can publish a page in forms other than HTML. To make a page readable as Markdown, set its output_format with update_page to html_md (HTML plus /ID.md) or md (/ID.md only); there is no site-wide switch, it is chosen per page. Each page has an output_format: html (default) / html_md (HTML plus a Markdown version at /id.md) / md (Markdown version only, also answered at /id and /id/) / json / xml / csv / txt / js / css (data formats: the body as it is at /id.<extension>) / db (mikanBox DB: the DATA/DATAROW data as JSON at /api/ID.json, /api/ID is an alias; replaces the former status "db"). Page IDs never contain dots. Data formats and db are not listed in NAV lists, sitemap or RSS. Put site JS and CSS in js/css pages and load them with {{PAGE_URL:ID}} (data pages get ?v=<hash> automatically). Lists: {{NAV_LINKS:category:sort=new:limit=5}}; related pages: {{NAV_LINKS:@same}}. Categories starting with _ are structural (not used by @same or {{CATEGORY}}). A paged list is a catalogue JSON page ([{{NAV_CARDS:category:item_component:sort=new:sep=,}}]) plus a js page. EXT_MD is not available in the Cloud edition.';
 const BUILTIN_OUTPUT_FORMATS_DOC=[
   '## Output formats (pages can be published as more than HTML)','',
@@ -34,7 +33,7 @@ const tools=[
   tool('list_pages','List pages, including draft and pending pages.'),
   tool('get_page','Get an editable page.',{id:string},['id']),
   tool('create_page','Create a page. Pass fields directly, or in the legacy data object.',pageProperties,['id']),
-  tool('update_page','Update selected page fields; preserve unspecified fields. updated_at moves to now only when a page goes from not public to public; editing a published page keeps its date.',pageProperties,['id']),
+  tool('update_page','Update selected page fields; preserve unspecified fields. The first publication sets updated_at to the current time. Republishing or editing does not change it automatically.',pageProperties,['id']),
   tool('preview_page','Read-only. Render a page the way it is served in its output format (HTML, Markdown version, data format or mikanBox DB JSON) before saving or publishing. With only id it is the saved page; pass fields to preview them without saving, also for a new id (a title is then required).',pageProperties,['id']),
   tool('delete_page','Delete a page and its history.',{id:string},['id']),
   tool('list_components','List components.'),
@@ -212,10 +211,7 @@ export async function handleMcp(request:Request,env:Env,onKey?:(name:string)=>vo
         const lock=await env.DB.prepare('SELECT owner FROM edit_locks WHERE post_id=? AND expires_at>?').bind(pid,Date.now()).first();
         if(lock)throw new Error('Page is being edited.');
         const next=await mergePage(env,settings,pid,incoming,previous);
-        // Same rule as the admin screen and the PHP editions: the date moves to now only when a page
-        // goes from not public to public, so fixing an old notice does not bring it to the top of sort=new lists.
         next.preview_token||=crypto.randomUUID();
-        if(!('updated_at' in incoming)&&(!previous||(!isPublicStatus(previous.status)&&(previous.status as string)!=='db'&&isPublicStatus(next.status))||!next.updated_at))next.updated_at=new Date().toISOString();
         const expected=typeof args.expected_revision==='string'?args.expected_revision:previous?.revision_tag||'';
         await saveWithRevision(env,pid,previous?pid:'',next,'MCP',expected);data={success:true,id:pid,...next};break;
       }

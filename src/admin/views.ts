@@ -549,13 +549,7 @@ ${opts.mediaEnabled?`<div id="drop-zone">${getIcon('cloud')} ${t('hint_drop_uplo
             if (res.ok) {
                 const json = await res.json().catch(()=>({}));
                 showToast(json.message || ${JSON.stringify(opts.t('msg_update_success'))});
-                const selectEl = document.querySelector(\`select[onchange*="'\${id}'"]\`);
-                if (selectEl) {
-                    selectEl.classList.remove('static', 'dynamic', 'draft', 'pending', 'db');
-                    if (newStatus === 'public_static') selectEl.classList.add('static');
-                    else if (newStatus === 'pending') selectEl.classList.add('pending');
-                    else selectEl.classList.add('draft');
-                }
+                await refreshPageList();
             } else {
                 showToast(${JSON.stringify(opts.t('err_save_failed'))}, true);
             }

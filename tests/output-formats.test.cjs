@@ -155,10 +155,10 @@ test('admin page list puts index first, labels formats, greys out visual editing
   const value=env();await sample(value);const auth=await login(value);
   await savePage(value,'aaa',{title:'AAA',status:'draft',sort_order:-5,category:'_hidden, x'});
   await savePage(value,'waiting',{title:'Waiting',status:'pending',sort_order:9});
-  assert.deepEqual(sortPagesForAdmin(await listPages(value)).slice(0,3).map(p=>p.id),['waiting','index','aaa']);
+  assert.deepEqual(sortPagesForAdmin(await listPages(value)).slice(0,3).map(p=>p.id),['index','waiting','aaa']);
   const html=await(await call(value,'/admin?view=pages',undefined,auth.cookie)).text();
-  const order=['waiting','index','aaa'].map(id=>html.indexOf(`<code>${id}</code>`));
-  assert.ok(order[0]>0&&order[0]<order[1]&&order[1]<order[2],'pending, index, display order');
+  const order=['index','waiting','aaa'].map(id=>html.indexOf(`<code>${id}</code>`));
+  assert.ok(order[0]>0&&order[0]<order[1]&&order[1]<order[2],'index, pending, display order');
   assert.match(html,/class="format-badge format-md"[^>]*>\+MD</);assert.match(html,/class="format-badge format-md"[^>]*>MD</);
   assert.match(html,/class="format-badge format-data"[^>]*>JSON</);assert.match(html,/class="format-badge format-data"[^>]*>DB</);
   assert.match(html,/<span class="btn btn-sm btn-gray btn-disabled" aria-disabled="true"/);

@@ -2,7 +2,7 @@ import type { PageData, ComponentData } from './types';
 import { OUTPUT_FORMATS, isDataFormat, type OutputFormat } from './output-formats';
 
 const allowedStatuses = new Set(['draft','pending','public','public_dynamic','public_static','db']);
-const PAGE_STRINGS = ['title','category','memo','js','description','keywords','ogp_image','content_md','css','custom_css','wrapper_comp','updated_at'] as const;
+const PAGE_STRINGS = ['title','category','memo','js','description','keywords','ogp_image','content_md','css','custom_css','wrapper_comp','updated_at','first_published_at'] as const;
 const COMPONENT_STRINGS = ['html','css','memo','js'] as const;
 
 function record(value: unknown): value is Record<string, unknown> {

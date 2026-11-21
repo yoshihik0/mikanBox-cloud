@@ -1,6 +1,6 @@
 import type {Env,PageData,ComponentData,Settings} from './types';
 import {validId,reservedPageId} from './validation';
-import {loadSettings,saveSettings} from './storage';
+import {loadSettings,saveSettings,adminPageMatches} from './storage';
 import {inspectMedia,publishedHash} from './media-store';
 import {MEDIA_COUNT_LIMIT,validMediaName,isCodeMedia} from './media-policy';
 import {pageOutputFormat,isDataFormat,normalizeFooterComponents} from './output-formats';
@@ -44,7 +44,7 @@ function keepPage(id:string,page:PageData,f:TransferFilter|null):boolean{
  if(!f||(!f.cat&&!f.q&&!f.fmt))return true;
  if(f.fmt){const format=pageOutputFormat(page);if(f.fmt==='data'?!isDataFormat(format):format!==f.fmt)return false;}
  if(f.cat&&!(page.category||'').split(',').map(x=>x.trim()).includes(f.cat))return false;
- return !f.q||`${id} ${page.title} ${page.content_md||''}`.toLowerCase().includes(f.q.toLowerCase());
+ return adminPageMatches(id,page,f.q);
 }
 /** The media the media list shows with these filters. */
 function keepMedia(key:string,f:TransferFilter|null):boolean{

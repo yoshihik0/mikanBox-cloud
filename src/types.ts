@@ -20,6 +20,7 @@ export interface PageData {
   exclude_tracking?: boolean;
   sort_order?: number;
   updated_at?: string;
+  first_published_at?: string;
   /** Output format (2.17.0): html (default), html_md, md, json, xml, csv, txt, js, css, db. */
   output_format?: 'html' | 'html_md' | 'md' | 'json' | 'xml' | 'csv' | 'txt' | 'js' | 'css' | 'db';
   /** Components appended to the Markdown version, in order. */
