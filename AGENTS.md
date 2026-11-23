@@ -13,7 +13,8 @@ publishing a partial snapshot.
   Verify differences from the PHP editions rather than assuming full parity.
 - Do not add a Cloud site connection to the workspace root `.mcp.json`, and do
   not copy credentials, runtime configuration, database files, or user data.
-- Use local D1 for development tests. Media is stored in D1 only, and the admin and
+- Use local D1 for development tests. Media files are stored on the public site only (D1 keeps
+  only their metadata), and the admin and
   public Workers are always separate (there is no single-Worker mode, in development either). Check account identity and configured
   resources before remote operations. Deployment follows the user's current
   request and must never be reported as complete if authentication fails.
