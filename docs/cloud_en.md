@@ -1,11 +1,12 @@
 <style>.manual-version{font-size:.5em;font-weight:400;white-space:nowrap}</style>
 
-# 🍊mikanBox Cloudflare Manual <small class="manual-version">v0.21.1</small>
+# 🍊mikanBox Cloudflare Manual <small class="manual-version">v0.21.2</small>
 
 This manual covers installation and the Cloudflare edition’s differences. For shared operations, see the [operation manual](https://yoshihiko.com/mikanbox/help_en.html).
 
 ## Setup and distribution
 
+<a id="cloud-install-commands"></a>
 ### New installation and publication
 
 Use separate management and public Workers. With `workers.dev`, for example, an account subdomain `mikanbox-cloud` can produce management URL `https://admin.mikanbox-cloud.workers.dev/admin` and public URL `https://mikan.mikanbox-cloud.workers.dev/`. The management and public names `admin` and `mikan` are chosen separately; the account subdomain `mikanbox-cloud` is shared. A newly registered account subdomain must be available. Because the subdomain is public, avoid email usernames, login IDs, and other private personal information; choose a site-related name instead.
@@ -68,6 +69,7 @@ See [Pages](https://yoshihiko.com/mikanbox/help_en.html#page-mgmt) and [Page edi
 
 Usage is the same as in the PHP editions; see [Visual Editing](https://yoshihiko.com/mikanbox/help_en.html#visual-edit). Open it from the visual-edit button in the page list (between the pencil and the preview), from the button at the top right of the page editor, or at `/admin/visual` (a page chooser), next to the management screen. What differs in the Cloud edition:
 
+- **Following links within the site** — Links to the public site can open the linked page in the visual editor, including draft HTML pages. Clicking a link in the device-width preview switches the page being edited, too.
 - **The public site**: a save changes the page on the management side. A published page is a static file, so the public site does not change until you publish it again (see Delivery and withdrawal). Saving a published page shows a note saying so.
 - **History**: the time from opening the page to closing it counts as one editing session, and only the state before it is kept, once, in the page's history (small, frequent saves do not push older history out). Undo and redo cover the last three steps and are discarded when the session changes.
 - **Conflicts and edit locks**: a save is refused unless the page is still as it was read. If another device or the management screen changed it, reload. A page another user is editing (edit lock) cannot be saved. After a visual save, a page editor that is still open holds stale content and cannot save it until reloaded.
@@ -80,6 +82,8 @@ Page and component JavaScript fields are embedded in the HTML of the pages that 
 Draft/pending data cannot be read through public POST_MD embeds, navigation, feeds, or the data API.
 
 The page editor's preview opens the content **being edited** (unsaved changes and new pages included) in a new tab through the admin screen; the note "Shows the content being edited (it is not saved)." sits beside the button. Nothing is saved, and the display stays isolated (scripts do not run on the admin origin). The edited content is kept on the server for 30 minutes only (at most four per user, readable only by that user). The page list has the globe icon to the public site instead of a preview (as in the PHP editions). HTML pages open at `/preview/ID`; Markdown-only, data-format and mikanBox DB pages open at `/admin?page_preview=ID`, which shows the actual output as UTF-8 plain text.
+
+When you save with an ID that is already in use, a confirmation appears. Choose “Change ID” to return to the ID field and keep your edits. Choose “Overwrite” to replace the page at that ID with your edits. If you changed an existing page’s ID, the page at its original ID is removed.
 
 ### Output formats (Cloud delivery)
 
@@ -175,7 +179,7 @@ The Media screen withdraws deleted images automatically. Renamed or converted im
 Setting `CLOUDFLARE_PUBLIC_WORKER_NAME` (the public Worker's name) and `PUBLIC_SITE_URL` (the public site's URL) publishes pages to a separate Worker. The public Worker holds static files only and runs no code. The admin screen and MCP stay on the current Worker. New installations use this split configuration. Verify the destination before migrating an older installation. The public site URL appears next to the build controls on the page list and links to the public site.
 
 <a id="public-worker"></a>
-From v0.10.3, without a public Worker (with a name different from the management Worker), building, publishing and automatic image publication deploy nothing, because pages published to the management Worker would run their JavaScript on the admin address. The build button then shows "Set a public Worker". Set the public Worker with the management Worker's variables `CLOUDFLARE_PUBLIC_WORKER_NAME` (the public Worker's name) and `PUBLIC_SITE_URL` (the public site's URL): write them under `vars` in the installation's `wrangler.production.json` and deploy the management Worker again. See the [detailed reference (installation)](https://github.com/yoshihik0/mikanBox-cloud/blob/HEAD/docs/reference_ja.md#インストール手順). Sites installed and updated with the official steps already have them.
+From v0.10.3, without a public Worker (with a name different from the management Worker), building, publishing and automatic image publication deploy nothing, because pages published to the management Worker would run their JavaScript on the admin address. The build button then shows "Set a public Worker". Set the public Worker with the management Worker's variables `CLOUDFLARE_PUBLIC_WORKER_NAME` (the public Worker's name) and `PUBLIC_SITE_URL` (the public site's URL): write them under `vars` in the installation's `wrangler.production.json` and deploy the management Worker again. For the configuration values, see the [installation steps](#cloud-install-commands). Sites installed and updated with the official steps already have them.
 
 From v0.12.0 a local `wrangler dev` uses the same arrangement (the former publication to a single Worker is gone, for development too). Without a public Worker the management Worker still returns only the admin screen, MCP and previews, and no site content to anyone who is not signed in.
 
@@ -186,7 +190,7 @@ From v0.12.0 a local `wrangler dev` uses the same arrangement (the former public
 - Publication sends only changed files. Page hashes are stored at build time.
 - The globe icon in the page list opens the page on the public site (the same role as in the PHP editions; check the content being edited with the page editor's preview). Blue means the public site shows the current content; grey means changes are not published yet. Drafts, pending pages and pages never published show it grey and unclickable. Parts that change because of other pages (a page list component, for instance) only update when you build.
 - There is no sign-out button at the top. To stop using a device, stop it under Devices and users.
-- The AI question box does not work on the public site. Site search uses Google, as described under Delivery and withdrawal.
+- You can add an [AI question box](#cloud-ai-question) to a public page. Site search uses Google, as described under Delivery and withdrawal.
 - As in the PHP editions, the 404 page is never listed in sitemaps or RSS, split or not.
 
 ### Admin operations
@@ -257,11 +261,16 @@ Check the Cloud site's identity with `get_site_info` before writing. Its `versio
 
 ### Public help and WebMCP
 
-`/public-mcp` is anonymous and read-only, exposing only `search_help`, `get_help_section`, `get_product_info`, and `get_agent_instructions`. `/mcp` remains the authenticated administration endpoint. `/mikanBox/public-mcp.php` aliases the public endpoint.
+The management Worker serves the anonymous, read-only `/public-mcp` endpoint with four tools: `search_help`, `get_help_section`, `get_product_info`, and `get_agent_instructions`. `/mcp` remains the authenticated administration endpoint. `/mikanBox/public-mcp.php` aliases the public endpoint.
 
-Only the exact published `help_ja`/`help_en` pages are read. If unavailable, the bundled Cloud-specific manual is used. Draft, pending, DB, AI instructions, other pages and administrator data are excluded. After changing the Cloud manuals, run `node scripts/sync-cloud-help.mjs`; check/test/build also run it automatically. Human-readable help is `/public-help.html?language=ja` or `en`.
+Only the exact published `help_ja`/`help_en` pages are read. If unavailable, the bundled Cloud-specific manual is used. Draft, pending, DB, AI instructions, other pages and administrator data are excluded. After changing the Cloud manuals, run `node scripts/sync-cloud-help.mjs`; check/test/build also run it automatically. Read the manual at `/public-help.html?language=en` or `ja` on the management Worker.
 
-Public pages and the administration screen load the script that registers four help tools in a compatible browser/agent. Unsupported browsers skip registration while ordinary pages and AI question controls remain usable. This uses the [Chrome WebMCP API](https://developer.chrome.com/docs/ai/webmcp/imperative-api); availability depends on the browser and agent. AI question controls reference Cloud help and public MCP without transmitting API keys or administration URLs.
+Compatible browsers can access the four help tools from the management screen. On the static public site, WebMCP can register the tools, but calls fail because the public site serves static files only. Registration depends on support for the [Chrome WebMCP API](https://developer.chrome.com/docs/ai/webmcp/imperative-api).
+
+<a id="cloud-ai-question"></a>
+### AI question box on public pages
+
+Add `{{COMPONENT:_ai_question}}` to the page body and publish it. Visitors can enter a question and open GPT or Claude in a new tab. For Claude to consult the manual, add the official site's public MCP URL shown in the box as a custom connector. GPT receives the public site's `/public-help.html` URL. In the standard setup, the management Worker serves that page, so GPT cannot read the manual at the supplied address.
 
 ## Design
 

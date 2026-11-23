@@ -62,6 +62,7 @@ test('the page: markers, globals, CSP and scripts',async()=>{
   assert.ok(html.includes(`<script nonce="${nonce}" src="/mikanbox/visual-live.js`)&&html.indexOf('visual-live.js')<html.indexOf('/mikanbox/visual.js'),'the converter loads before the screen');
   assert.match(html,/window\.__VISUAL_PAGE="about"/);assert.match(html,/window\.__VISUAL_DOC=false/);
   assert.match(html,/window\.__VISUAL_CSRF="[\w-]+"/);assert.match(html,/__VISUAL_ADMIN=\{"api":"\/admin\/visual"/);
+  assert.match(html,/"publicPage":"https:\/\/[^"/]+\/about\/"/);
   assert.ok(html.includes('<!--fv:0-0-->')&&html.includes('<!--fv:4-4-->')&&html.includes('<!--/fv-->'),'blocks are marked');
   assert.ok(html.includes('.fv-css-start')&&html.includes('.fv-css-end'),'CSS range marker');
   assert.ok(!/<p>\s*<!--\/?fv/.test(html),'markers are not wrapped in paragraphs');

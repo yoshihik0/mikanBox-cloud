@@ -1,6 +1,6 @@
 <style>.manual-version{font-size:.5em;font-weight:400;white-space:nowrap}</style>
 
-# 🍊mikanBox Cloudflare版 マニュアル <small class="manual-version">v0.21.1</small>
+# 🍊mikanBox Cloudflare版 マニュアル <small class="manual-version">v0.21.2</small>
 
 このマニュアルはCloudflare版の導入と、PHP版との違いを説明します。共通の操作は[操作マニュアル](https://yoshihiko.com/mikanbox/help_ja.html)も参照してください。flat版・SQLite版との使い分けは、[README](https://github.com/yoshihik0/mikanBox-cloud#readme)を参照してください。
 
@@ -23,7 +23,7 @@
 1. **Cloudflareにログインしておく。** アカウントがなければ作成します。設置するアカウントでログインしてください。
 2. **Cloudflareの認可画面で、設置先のアカウントを確認して「Authorize」を押す。**
 3. **サイトのアドレスを決める。** 管理画面と公開サイトの名前を別々に選びます。`workers.dev` のアドレスは公開されるため、メールアドレスやログインIDは使わないでください。公開サイトに独自ドメインを使うこともでき、あとから設定もできます。
-4. **普段使うブラウザで管理画面（`/admin`）を開き、端末を登録する。** AIが案内するファイルの `SETUP_TOKEN` を入力します。トークンはチャットに貼らず、管理画面に直接入力します。詳しくは[端末認証](#端末認証)を参照してください。
+4. **普段使うブラウザで管理画面（`/admin`）を開き、端末を登録する。** AIが案内するファイルの `SETUP_TOKEN` を入力します。トークンはチャットに貼らず、管理画面に直接入力します。詳しくは[端末認証](#cloud-device-auth)を参照してください。
 5. **公開の設定をする。** 管理画面の「サイト」→「Cloudflare公開設定」に、Workers Scripts Edit 権限のAPIトークンを保存し、ページ一覧の「静的サイトをビルド」で公開します。ビルドが終わるまで画面を開いておきます。
 
 #### 注意
@@ -33,9 +33,51 @@
 - Cloudflareの画面や料金・無料枠は変更されることがあります。
 - 管理側のAPIトークンは、Wranglerのログインとは別のものです。D1の書き出し・復元も使う場合は、D1編集権限も必要です。
 
+<a id="cloud-install-commands"></a>
 #### 自分でコマンドを実行する場合
 
-Node.js（22以上）とnpm、ターミナルが必要です。コマンドと設定ファイルの詳細は[詳細リファレンス（インストール手順）](https://github.com/yoshihik0/mikanBox-cloud/blob/HEAD/docs/reference_ja.md#インストール手順)を参照してください。公開URLをあとから変更する手順も、同じリファレンスにあります。
+CloudflareとGitHubのアカウント、インターネット接続、Node.js（22以上）、npm、ターミナルが必要です。
+
+管理用と公開用に別々のWorkerを使います。たとえばCloudflareアカウントのサブドメインが `example-sub` なら、管理画面を `https://admin.example-sub.workers.dev/admin`、公開サイトを `https://mikan.example-sub.workers.dev/` のようにできます。新しく登録するサブドメインは、ほかで使われていないものを選びます。アドレスにメールアドレスやログインIDの一部が入らないようにしてください。公開サイトに独自ドメインを使う場合は、Cloudflareでそのドメインを接続する準備をします。
+
+1. [Cloud版のリリース一覧](https://github.com/yoshihik0/mikanBox-cloud/releases)から、使用する公開リリースまたはプレリリースの **Source code (zip)** をダウンロードして展開します。ターミナルで展開したフォルダへ移動します。
+2. `npm ci` を実行し、`package-lock.json` に従って必要なツールを入れます。
+3. `npx wrangler login` でCloudflareにログインします。認可画面で設置先のアカウントを確認し、**Authorize** を押します。「Authorization granted to Wrangler」と表示されたらターミナルに戻り、`npx wrangler whoami` で設置先のアカウントを確認します。
+4. `npx wrangler d1 create mikanbox-cloud` でD1データベースを作り、表示されたIDを控えます。
+5. `wrangler.production.example.json` を `wrangler.production.json`（管理用）に、`wrangler.public.example.json` を `wrangler.public.json`（公開用）にコピーし、[設定ファイルの値](#cloud-install-config)を書き換えます。
+6. 公開先を確認し、`npx wrangler deploy --config wrangler.public.json` で公開用Workerに仮のページを配置します。**新規設置時の1回だけ実行します。** 既存サイトで実行すると、仮のページに置き換わります。
+7. 新しいサイト専用の `JWT_SECRET` と `SETUP_TOKEN` を暗号学的に安全な乱数で作り、`.env.production.secrets` に保存します。[秘密ファイルを作るコマンド](#cloud-install-secrets)を使えます。
+8. `npx wrangler d1 migrations apply DB --remote --config wrangler.production.json` でD1のマイグレーションを適用します。
+9. `npm run deploy:cloud` で管理用Workerを配備します。
+10. 普段使うブラウザで管理用の `/admin` を開き、`SETUP_TOKEN` を入力して[最初の端末を登録](#cloud-device-auth)します。
+11. 対象アカウントに限定した Workers Scripts Edit 権限のAPIトークンを「サイト」→「Cloudflare公開設定」に保存します。
+12. 「静的サイトをビルド」を押し、完了まで画面を開いておきます。公開サイトを開き、ページと画像が表示されること、非公開ページは開けないことを確かめます。
+
+管理用・公開用Workerの名前、アカウントID、D1のIDは、後で更新するときのために控えます。設定ファイルと秘密ファイルは安全に保管します。
+
+<a id="cloud-install-config"></a>
+##### 設定ファイルの値
+
+| 書き換える場所 | 入れる値 |
+|---|---|
+| 両方の `account_id`、管理用の `vars.CLOUDFLARE_ACCOUNT_ID` | `whoami` に表示されたアカウントID |
+| 管理用の `name` と `vars.CLOUDFLARE_WORKER_NAME` | 管理用Workerの名前 |
+| 公開用の `name` と管理用の `vars.CLOUDFLARE_PUBLIC_WORKER_NAME` | 公開用Workerの名前。管理用とは別の名前を使います |
+| 管理用の `vars.CLOUDFLARE_D1_ID` と `d1_databases[0].database_id` | 控えたD1のID |
+| 管理用の `vars.PUBLIC_SITE_URL` | 公開サイトのHTTPSアドレス。パスは付けません |
+
+<a id="cloud-install-secrets"></a>
+##### 秘密ファイルを作るコマンド
+
+次のコマンドは、ファイルがすでにあると上書きせずに停止します。
+
+```sh
+node -e "const fs=require('node:fs'),c=require('node:crypto'); fs.writeFileSync('.env.production.secrets', 'JWT_SECRET='+c.randomBytes(32).toString('hex')+'\nSETUP_TOKEN='+c.randomBytes(32).toString('hex')+'\n', {flag:'wx',mode:0o600})"
+```
+
+##### 公開サイトのURLを変更する
+
+新しいドメインを公開用Workerに接続し、管理用の `wrangler.production.json` で `PUBLIC_SITE_URL` を変更します。`npm run deploy:cloud` で管理用Workerを配備し直し、管理画面で「静的サイトをビルド」を実行します。新しいURLでページ、画像、サイトマップ、RSSを確認します。必要に応じて外部リンクや検索結果も移行します。管理画面のURLも変更する場合は、端末の再認証が必要になることがあります。
 
 <a id="manual-update"></a>
 ### アップデート
@@ -122,6 +164,7 @@ AIに頼む場合は、展開したフォルダでAIの新しい会話を開き�
 
 Cloudflareダッシュボードのデプロイ履歴で、直前に配信していたWorker版のIDを確認します。新しい版で管理画面が開けない場合も、ダッシュボードから確認できます。D1の構造とその版に互換性があることを確認したうえで、その版を選んでロールバックします。WorkerのロールバックでD1の構造やデータは戻りません。互換性がない場合は、更新前のD1への復元とWorkerの切り替えを合わせて計画してください。D1の復元では、その時点以降の編集も取り消されます。[D1の復元手順](https://github.com/yoshihik0/mikanBox-cloud/blob/HEAD/docs/reference_ja.md#d1自体のバックアップ)
 
+<a id="cloud-device-auth"></a>
 ### 端末認証
 
 パスワードはありません。管理画面に入れるのは、登録した端末（ブラウザ）だけです。
@@ -176,7 +219,7 @@ Cloudflareダッシュボードのデプロイ履歴で、直前に配信して�
 Cloud版では、管理画面と公開サイトが別々のWorkerで動きます。公開サイトは静的ファイルだけで、閲覧されてもWorkerやD1の利用枠を使いません。
 
 <a id="public-worker"></a>
-v0.10.3から、公開用のWorker（管理用とは別の名前）が設定されていないときは、ビルド・公開・画像の自動公開のどれでも配信を行いません。管理用のWorkerへ公開ページを出すと、ページのJavaScriptが管理画面と同じアドレスで動いてしまうためです。この状態では、ビルドボタンの下に「公開用のWorkerを設定してください」という案内が出ます。公開用のWorkerは、管理用Workerの変数 `CLOUDFLARE_PUBLIC_WORKER_NAME`（公開用Workerの名前）と `PUBLIC_SITE_URL`（公開サイトのURL）で指定します。設置時の `wrangler.production.json` の `vars` に書き、管理用Workerを配置し直します。手順は[詳細リファレンス（インストール手順）](https://github.com/yoshihik0/mikanBox-cloud/blob/HEAD/docs/reference_ja.md#インストール手順)を参照してください。公式の手順でインストール・アップデートしたサイトは設定済みです。
+v0.10.3から、公開用のWorker（管理用とは別の名前）が設定されていないときは、ビルド・公開・画像の自動公開のどれでも配信を行いません。管理用のWorkerへ公開ページを出すと、ページのJavaScriptが管理画面と同じアドレスで動いてしまうためです。この状態では、ビルドボタンの下に「公開用のWorkerを設定してください」という案内が出ます。公開用のWorkerは、管理用Workerの変数 `CLOUDFLARE_PUBLIC_WORKER_NAME`（公開用Workerの名前）と `PUBLIC_SITE_URL`（公開サイトのURL）で指定します。設置時の `wrangler.production.json` の `vars` に書き、管理用Workerを配置し直します。設定値は[コマンドでの設置手順](#cloud-install-commands)を参照してください。公式の手順でインストール・アップデートしたサイトは設定済みです。
 
 v0.12.0から、手元の `wrangler dev` も同じ構成です（1つのWorkerへ公開する以前の動作は、開発用にも残していません）。公開用のWorkerを設定していないときも、管理用のWorkerは管理画面・MCP・プレビューだけを返し、ログインしていない相手にはサイトの内容を返しません。
 
@@ -223,7 +266,7 @@ v0.12.0から、手元の `wrangler dev` も同じ構成です（1つのWorker�
 - 公開ページ、サイトマップ、RSSには公開サイトのURLを使います。サイトマップ・RSS・DBページのJSONは、公開側にファイルとして出します。
 - 404ページは、PHP版と同じくサイトマップとRSSに載せません。
 - 画面上部のログアウトボタンはありません。この端末を使わなくなるときは、「端末とユーザー」で止めます。
-- AIの質問ボックスは、公開側では動きません。
+- 公開ページに[AI質問ボックス](#cloud-ai-question)を置けます。
 
 仕組みの詳細は[詳細リファレンス（公開と配信）](https://github.com/yoshihik0/mikanBox-cloud/blob/HEAD/docs/reference_ja.md#公開と配信)を参照してください。
 
@@ -246,6 +289,7 @@ v0.12.0から、手元の `wrangler dev` も同じ構成です（1つのWorker�
 
 使い方は、PHP版と同じです。[ビジュアル編集](https://yoshihiko.com/mikanbox/help_ja.html#visual-edit)を参照してください。ページ一覧の ビジュアル編集ボタン（鉛筆とプレビューの間）、ページ編集画面の右上のボタン、または管理画面と同じ場所の `/admin/visual`（ページを選ぶ画面）から開きます。Cloud版の違いは次のとおりです。
 
+- **サイト内を移動する** — 公開サイトのアドレスで書いたリンクからも、リンク先のビジュアル編集を開けます。下書きのHTMLページにも移動できます。画面幅の確認中にリンクを押すと、編集対象もリンク先のページに切り替わります。
 - **公開サイトへの反映**: 保存は、管理側のページに反映されます。公開済みのページは静的ファイルなので、[ビルドして公開](#ビルドして公開する)し直すまで、公開サイトは変わりません。公開済みのページを保存すると、画面にその旨が表示されます。
 - **履歴**: ページを開いてから閉じるまでを1回の作業として、保存前の状態を1件だけ、ページの履歴に残します（こまめに保存しても、履歴が押し流されません）。元に戻す・やり直しは、直近3回分です。作業が変わると、元に戻す履歴は破棄します。
 - **競合と編集ロック**: 保存時に、ページが取得したときのままでなければ、保存しません。ほかの端末や管理画面で変更されていたら、再読み込みしてください。ほかのユーザーが編集中（編集ロック）のページは、保存できません。ビジュアル編集で保存すると、開いたままのページ編集画面は古い内容になり、そのままでは保存できません（再読み込みが必要です）。
@@ -258,6 +302,8 @@ v0.12.0から、手元の `wrangler dev` も同じ構成です（1つのWorker�
 - ページ編集画面のプレビューは、**編集中の内容**（保存していない内容も、新規ページも）を管理画面で新しいタブに開きます。ボタンの横に「編集中の内容を表示します（保存はされません）。」と出ます。保存はされず、表示は今までどおり隔離されます（管理画面のオリジンでスクリプトは動きません）。編集中の内容は、30分だけサーバーに一時保存され（1人4件まで、本人だけが開けます）、その後に消えます。ページ一覧には、プレビューの代わりに公開サイトを開く地球のアイコンがあります（PHP版と同じ）。
 - HTMLを出すページ（HTML、HTML + Markdown）は `/preview/ID` で開きます。Markdownだけのページ・データ形式・mikanBox DBは `/admin?page_preview=ID` で、実際に出る中身を文字コードUTF-8のテキストとして表示します。
 - 下書き・承認待ちのページは非公開で、ログインした編集者だけがプレビューできます。公開前の画像もプレビューで表示できます。
+
+ページのIDが使用済みの場合は、保存時に確認が出ます。「IDを変更する」を選ぶと、入力した内容を残したままID欄に戻ります。「上書きする」を選ぶと、そのIDのページが編集中の内容に置き換わります。既存ページのIDを変更した場合は、変更前のIDのページがなくなります。
 
 ### ページのURL
 
@@ -358,9 +404,14 @@ APIキーはサイトの管理操作権限を持つため、公開しないで�
 
 ### Cloud版のヘルプをAIに読ませる
 
-公開の `/public-mcp` は、APIキー不要・読み取り専用です。AIがこのヘルプを検索して読めるようにします（`search_help`、`get_help_section`、`get_product_info`、`get_agent_instructions`）。人向けのヘルプは `/public-help.html?language=ja` で読めます。
+管理用Workerの公開窓口 `/public-mcp` は、APIキー不要・読み取り専用です。AIがこのヘルプを検索して読めるようにします（`search_help`、`get_help_section`、`get_product_info`、`get_agent_instructions`）。人向けのヘルプは、同じWorkerの `/public-help.html?language=ja` で読めます。
 
-対応するブラウザやAIでは、公開ページと管理画面からヘルプを使えます。すべてのブラウザ・AIクライアントで使えるとは限りません。
+WebMCP に対応するブラウザ・AIでは、管理画面からこの4ツールを使えます。公開サイトは静的ファイルだけを配信するため、公開ページ上で WebMCP が登録されても、ツールの呼び出しは失敗します。
+
+<a id="cloud-ai-question"></a>
+### 公開ページのAI質問ボックス
+
+ページ本文に `{{COMPONENT:_ai_question}}` を書いて公開すると、質問を入力し、GPT または Claude を別タブで開けます。Claude で公開ヘルプを参照するには、表示された公式サイトの公開 MCP URL をカスタムコネクタに登録します。GPT に渡る参照先は公開サイトの `/public-help.html` ですが、標準の構成ではそのページは管理用Workerから配信されるため、GPT は案内されたURLからヘルプを読めません。
 
 ## データ管理
 

@@ -17,7 +17,7 @@ export function applyPageDates(data: PageData, previous: PageData | null): void 
   else if (isPublicStatus(data.status)) data.first_published_at = data.updated_at = now;
 }
 
-export async function saveWithRevision(env: Env, id: string, oldId: string, data: PageData, editor: string, expected: string) {
+export async function saveWithRevision(env: Env, id: string, oldId: string, data: PageData, editor: string, expected: string, overwrite?: string) {
   const current = oldId ? await env.DB.prepare('SELECT data FROM posts WHERE id = ?').bind(oldId).first<{data: string}>() : null;
   if (oldId && !current) throw new Error('Page no longer exists.');
   const previous: PageData | null = current ? JSON.parse(current.data) : null;
@@ -26,9 +26,35 @@ export async function saveWithRevision(env: Env, id: string, oldId: string, data
   // The former "DB" status is stored as the output format "mikanBox DB" of a public page.
   if ((data.status as string) === 'db') { data.status = 'public_static'; data.output_format = 'db'; delete data.expand_tags; }
   if (['public', 'public_dynamic'].includes(data.status)) data.status = 'public_static';
-  applyPageDates(data, previous);
+  applyPageDates(data, previous ?? (overwrite === undefined ? null : JSON.parse(overwrite)));
   data.revision_tag = crypto.randomUUID();
   const args = [id, JSON.stringify(data), data.status, data.sort_order || 0, data.updated_at || ''];
+  if (overwrite !== undefined) {
+    const sourceMatches = oldId ? ' AND EXISTS (SELECT 1 FROM posts WHERE id = ? AND data = ?)' : '';
+    const sourceArgs = current ? [oldId, current.data] : [];
+    const targetArgs = [id, overwrite, ...sourceArgs];
+    const saved = 'EXISTS (SELECT 1 FROM posts WHERE id = ? AND data = ?)';
+    const savedArgs = [id, args[1]];
+    const now = new Date().toISOString();
+    const [, updated] = await env.DB.batch([
+      env.DB.prepare(`INSERT INTO post_revisions (post_id,data,created_at,editor_id)
+        SELECT id,data,?,? FROM posts WHERE id = ? AND data = ?${sourceMatches}`).bind(now, editor, ...targetArgs),
+      env.DB.prepare(`UPDATE posts SET id=?,data=?,status=?,sort_order=?,updated_at=?
+        WHERE id = ? AND data = ?${sourceMatches}`).bind(...args, ...targetArgs),
+      env.DB.prepare(`DELETE FROM visual_history WHERE post_id = ? AND ${saved}`).bind(id, ...savedArgs),
+      env.DB.prepare(`DELETE FROM visual_sessions WHERE post_id = ? AND ${saved}`).bind(id, ...savedArgs),
+      ...(current ? [
+        env.DB.prepare(`UPDATE post_revisions SET post_id = ? WHERE post_id = ? AND ${saved}`).bind(id, oldId, ...savedArgs),
+        env.DB.prepare(`INSERT INTO post_revisions (post_id,data,created_at,editor_id)
+          SELECT ?,data,?,? FROM posts WHERE id = ? AND ${saved}`).bind(id, now, editor, oldId, ...savedArgs),
+        env.DB.prepare(`UPDATE visual_history SET post_id = ? WHERE post_id = ? AND ${saved}`).bind(id, oldId, ...savedArgs),
+        env.DB.prepare(`UPDATE visual_sessions SET post_id = ? WHERE post_id = ? AND ${saved}`).bind(id, oldId, ...savedArgs),
+        env.DB.prepare(`DELETE FROM posts WHERE id = ? AND ${saved}`).bind(oldId, ...savedArgs)
+      ] : [])
+    ]);
+    if (!updated.meta.changes) throw new Error('Concurrent update detected.');
+    return;
+  }
   if (!current) {
     await env.DB.prepare('INSERT INTO posts (id,data,status,sort_order,updated_at) VALUES (?,?,?,?,?)').bind(...args).run();
     return;

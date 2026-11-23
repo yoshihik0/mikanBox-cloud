@@ -106,7 +106,7 @@ test('page saves retain HTML mode, JS, memo, pending and preview token',async()=
   assert.equal((await call(env,`/news/item?preview=${stored.preview_token}`)).status,404);
   const response=await call(env,'/preview/news/item',null,auth.cookie);assert.equal(response.status,200);assert.match(await response.text(),/<h2>Pending<\/h2>/);
 });
-test('update makes history, stale edits fail, rename collisions roll back',async()=>{
+test('page ID collisions require approval of the current target and preserve revisions',async()=>{
   const env=environment(),auth=await login(env);
   const base={save_action:'save_page',id:'first',title:'First',status:'draft',content_md:'one'};
   assert.equal((await post(env,auth,base)).data.success,true);const initial=await loadPage(env,'first');
@@ -114,9 +114,32 @@ test('update makes history, stale edits fail, rename collisions roll back',async
   assert.equal((await post(env,auth,update)).data.success,true);
   assert.equal(env.sqlite.prepare('SELECT COUNT(*) n FROM post_revisions').get().n,1);
   assert.equal((await post(env,auth,update)).data.success,false);
-  await savePage(env,'occupied',page());const current=await loadPage(env,'first');
-  assert.equal((await post(env,auth,{...update,id:'occupied',expected_revision:current.revision_tag})).data.success,false);
+  await savePage(env,'occupied',page('draft','original target'));const current=await loadPage(env,'first');
+  const rename={...update,id:'occupied',expected_revision:current.revision_tag,content_md:'renamed content'};
+  const conflict=await post(env,auth,rename);
+  assert.equal(conflict.response.status,409);
+  assert.equal(conflict.data.success,false);
+  assert.ok(conflict.data.page_id_conflict.token);
   assert.equal((await loadPage(env,'first')).content_md,'two');assert.equal(env.sqlite.prepare('SELECT COUNT(*) n FROM post_revisions').get().n,1);
+  await savePage(env,'occupied',page('pending','new target'));
+  const stale=await post(env,auth,{...rename,overwrite_page:conflict.data.page_id_conflict.token});
+  assert.equal(stale.response.status,409);
+  assert.notEqual(stale.data.page_id_conflict.token,conflict.data.page_id_conflict.token);
+  assert.equal((await loadPage(env,'occupied')).content_md,'new target');
+  const overwrite=await post(env,auth,{...rename,overwrite_page:stale.data.page_id_conflict.token});
+  assert.equal(overwrite.data.success,true);
+  assert.equal(overwrite.data.editId,'occupied');
+  assert.equal(await loadPage(env,'first'),null);
+  assert.equal((await loadPage(env,'occupied')).content_md,'renamed content');
+  const revisions=env.sqlite.prepare('SELECT post_id,data FROM post_revisions ORDER BY id').all();
+  assert.deepEqual(revisions.map(row=>[row.post_id,JSON.parse(row.data).content_md]),[
+    ['occupied','one'],['occupied','new target'],['occupied','two']
+  ]);
+  const create={...base,id:'occupied',content_md:'new page content'};
+  const createConflict=await post(env,auth,create);
+  assert.equal(createConflict.response.status,409);
+  assert.equal((await post(env,auth,{...create,overwrite_page:createConflict.data.page_id_conflict.token})).data.success,true);
+  assert.equal((await loadPage(env,'occupied')).content_md,'new page content');
 });
 test('unsafe and reserved IDs are rejected without rewriting into another record',async()=>{
   const env=environment(),auth=await login(env);

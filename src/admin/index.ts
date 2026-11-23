@@ -236,12 +236,32 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
           const id=pageId(val(form,'id').trim()||`page_${Date.now()}`),oldId=val(form,'old_id');
           if(oldId) pageId(oldId);
           const current=oldId?await loadPage(env,oldId):null;
-          const lock=await env.DB.prepare('SELECT owner FROM edit_locks WHERE post_id=? AND expires_at>?').bind(oldId||id,Date.now()).first<{owner:string}>();
+          const lock=await env.DB.prepare('SELECT owner FROM edit_locks WHERE post_id IN (?,?) AND expires_at>? AND owner<>?').bind(oldId||id,id,Date.now(),auth.user.username).first<{owner:string}>();
           if(lock&&lock.owner!==auth.user.username) throw new Error('他のユーザーが編集中です。 / Another user is editing this page.');
           const data:PageData=await editorPageWithFormat(env,form,current);data.preview_token||=crypto.randomUUID();
           if(!Number.isFinite(data.sort_order)||Math.abs(data.sort_order||0)>2147483647) throw new Error('Invalid sort order.');
           const formatError=validatePageSave(id,oldId,data,t);if(formatError)throw new Error(formatError);
-          await saveWithRevision(env,id,oldId,data,auth.user.username,val(form,'expected_revision')); editId=id;message=t('msg_page_saved',id);
+          const getTarget=()=>id===oldId?null:env.DB.prepare('SELECT data FROM posts WHERE id = ?').bind(id).first<{data:string}>();
+          const conflictToken=async (target:string)=>{
+            const bytes=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify([id,oldId,target])));
+            return Array.from(new Uint8Array(bytes),byte=>byte.toString(16).padStart(2,'0')).join('');
+          };
+          const conflict=(token:string)=>{
+            const message=t(oldId?'page_id_conflict_rename':'page_id_conflict_message',id,oldId);
+            if(!form.has('ajax_request')) throw new Error(message);
+            return json({success:false,message,page_id_conflict:{id,token,title:t('page_id_conflict_title'),overwrite:t('transfer_mode_overwrite'),change_id:t('page_id_conflict_change')}},409);
+          };
+          const target=await getTarget();
+          const token=target?await conflictToken(target.data):'';
+          if(target&&val(form,'overwrite_page')!==token) return conflict(token);
+          try {
+            await saveWithRevision(env,id,oldId,data,auth.user.username,val(form,'expected_revision'),target?.data);
+          } catch(error) {
+            const changed=await getTarget();
+            if(changed&&changed.data!==target?.data) return conflict(await conflictToken(changed.data));
+            throw error;
+          }
+          editId=id;message=t('msg_page_saved',id);
           if(form.has('save_and_preview')) return redirect(`/preview/${id}`);
           break;
         }

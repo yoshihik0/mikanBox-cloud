@@ -283,6 +283,7 @@ export async function handleVisual(request: Request, env: Env): Promise<Response
   const info = {
     api: SELF, list: `${ADMIN}?view=pages`, page: `${ADMIN}?view=pages&edit=${encodeURIComponent(id)}#page-editor`, pick: SELF,
     view: `${SELF}?id=`, site: '/', edit: `${ADMIN}?view=pages#`, editBase: `${ADMIN}?view=pages&edit=`,
+    publicPage: (publicOrigin || url.origin) + (id === 'index' ? '/' : '/' + encodeURIComponent(id).replace(/%2F/gi, '/') + '/'),
   };
   const globals = `window.__VISUAL_PAGE=${jsonForScript(id)};window.__VISUAL_ADMIN=${jsonForScript(info)};window.__VISUAL_PAGES=${jsonForScript(await pageList(env))};`
     + `window.CSRF_TOKEN=${jsonForScript(csrf)};window.PUBLIC_SITE_URL=${jsonForScript(env.PUBLIC_SITE_URL||'')};`

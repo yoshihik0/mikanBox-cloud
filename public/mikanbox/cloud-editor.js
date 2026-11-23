@@ -126,7 +126,7 @@
         const original = { modal: save.innerHTML, button: button.innerHTML };
         save.innerHTML = button.innerHTML = savingHtml; save.disabled = button.disabled = true;
         try {
-          if (await saveEditor(type, form, button)) close(true);  // a failed save keeps the prompt open, with the message in the toast
+          if (await saveEditor(type, form, button, () => close(false))) close(true);
         } finally {
           save.innerHTML = original.modal; button.innerHTML = original.button; save.disabled = button.disabled = false;
         }
@@ -285,15 +285,19 @@
   // ---- Saving and deleting inside an editor -----------------------------------------------------
   // Saving keeps the editor open: the result goes to the toast, and only the parts that change
   // with a save (the page's ID and revision stamp, the revision list) are taken from the server.
-  async function afterSave(type, form, wasNew) {
+  async function afterSave(type, form, previousId, savedId) {
     markClean(type);
-    const editId = form.querySelector('input[name="id"]')?.value.trim() || '';
+    const idInput = form.elements.namedItem('id');
+    const editId = savedId || idInput?.value.trim() || '';
     if (!editId) return;
+    if (type === 'page' && savedId) {
+      idInput.value = savedId;
+      form.elements.namedItem('old_id').value = savedId;
+    }
     try {
       const view = viewOf(type);
-      if (wasNew) {
-        // The first save of a new page or component: the editor becomes the editor of an existing one
-        // (Delete, the revision list, the lock), swapped in place without moving the screen.
+      if (!previousId || (type === 'page' && previousId !== editId)) {
+        // The saved ID becomes the editor's ID, including its links, revisions, and lock.
         const params = listUrlParams(view); params.set('edit', editId);
         const fetchParams = new URLSearchParams(params); fetchParams.set('ajax_editor', '1');
         const html = await (await fetch('/admin?' + fetchParams.toString(), { credentials: 'same-origin' })).text();
@@ -349,15 +353,18 @@
   });
 
   // Saves an editor in place (toast, stamps refreshed). Resolves true when the save succeeded.
-  async function saveEditor(type, form, submitter) {
-    const wasNew = !form.querySelector('input[name="old_id"]')?.value;
+  async function saveEditor(type, form, submitter, returnToEditor) {
+    const previousId = form.querySelector('input[name="old_id"]')?.value;
     const formId = form.getAttribute('id');
     const buttons = [...document.querySelectorAll('button[form="' + formId + '"], #' + formId + ' button')];
     buttons.forEach((b) => { b.disabled = true; });
     try {
-      const { ok, json } = await ui().post(form, submitter);
+      const { ok, json, cancelled } = type === 'page'
+        ? await ui().postPage(form, submitter, returnToEditor)
+        : await ui().post(form, submitter);
+      if (cancelled) return false;
       ui().toast(json.message || (ok ? C.done : C.saveFailed) || '', !ok);
-      if (ok) await afterSave(type, form, wasNew);
+      if (ok) await afterSave(type, form, previousId, json.editId);
       return ok;
     } catch (_) { ui().toast(C.networkError || '', true); return false; }
     finally { buttons.forEach((b) => { if (b.isConnected) b.disabled = false; }); }

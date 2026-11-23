@@ -157,7 +157,7 @@ To change the data directory name, create `local-config.php` inside the admin/co
 
 From v2.21.2, opening the admin screen (`admin.php`) or visual editing with `http://` moves to the same address on `https://` (only when a page is opened, never in the middle of a submission). PHP's built-in server (`php -S`) and addresses opened as `localhost`, `127.0.0.1` or `[::1]` are not moved. Where a front server (proxy) handles HTTPS without telling PHP, the move happens only once, so you are never locked out (the address ends with `https=1`). On a server without HTTPS, add `?https=1` to the address to open the screen as before, or write `define('MIKANBOX_HTTPS_REDIRECT', false);` in `local-config.php` to turn the move off.
 
-Right after installation (before any page or component data exists), the first visit will automatically load sample content matching the visitor's browser language (Japanese or English).
+Right after installation (before any page or component data exists), the first visit will automatically load sample content matching the visitor's browser language (Japanese or English). The home page and most sample pages are public. In Pages, edit the home page (ID `index`) and switch unused samples to draft or delete them.
 
 #### Separate administration, public pages, and media {#php-media-location}
 
@@ -298,7 +298,7 @@ If your sign-in expires while you are editing, pressing Save or a similar button
 
 #### Saved Passwords [flat Edition only]{.type-badge .badge-flat}
 
-Browser-saved passwords and server login state are separate. Editing a saved password in your browser does not change the server password. Submitting a password change in the admin panel changes that site's password. The current password is verified and the new password needs at least four characters.
+Browser-saved passwords and server login state are separate. Editing a saved password in your browser does not change the server password. Submitting a password change in the admin panel changes that site's password. The current password is verified and the new password needs at least seven characters.
 
 Setup, login and password-change forms show a read-only “Site ID for password saving”, using the admin URL path (for example, `/shiro/mikanBox/admin.php`). This is a hint to help password managers distinguish saved entries, not an additional credential. Check that this ID matches the intended site when saving or updating a password. Review saved entries if you move the site URL.
 
@@ -525,7 +525,9 @@ A private note visible only to admins. Free-form space for anything you want to 
 
 #### ID
 
-The identifying slug that becomes part of the page's URL. Letters, digits, hyphens and underscores are allowed. A dot (`.`) is not allowed; the extension comes from the [output format](#output-formats). Other characters and a leading, trailing or doubled "/" are not allowed either (from v2.21.2 the save is refused instead of silently removing them). IDs starting with the admin folder, the data folder, `media`, `api` or `setup-token` (in any letter case) overlap system locations and cannot be used. Saved pages stay viewable, editable and deletable as long as their ID is not changed. The page's URL takes the form `siteURL/ID`. Note that saving with an ID matching an existing page will overwrite it. The index page's ID cannot be changed. You can also use "/" within an ID. On a static site, any "/" in the ID is treated as a directory boundary; on a dynamic site, a pseudo directory structure is created the same way. For example, an ID of `news/2024` produces a URL like `siteURL/news/2024`.
+The identifying slug that becomes part of the page's URL. Letters, digits, hyphens and underscores are allowed. A dot (`.`) is not allowed; the extension comes from the [output format](#output-formats). Other characters and a leading, trailing or doubled "/" are not allowed either (from v2.21.2 the save is refused instead of silently removing them). IDs starting with the admin folder, the data folder, `media`, `api` or `setup-token` (in any letter case) overlap system locations and cannot be used. Saved pages stay viewable, editable and deletable as long as their ID is not changed. The page's URL takes the form `siteURL/ID`. The home page uses the ID `index`. To switch home pages, change the current page’s ID first, then assign `index` to the new page. You can also use "/" within an ID. On a static site, any "/" in the ID is treated as a directory boundary; on a dynamic site, a pseudo directory structure is created the same way. For example, an ID of `news/2024` produces a URL like `siteURL/news/2024`.
+
+When you save with an ID that is already in use, a confirmation appears. Choose “Change ID” to return to the ID field and keep your edits. Choose “Overwrite” to replace the page at that ID with your edits. If you changed an existing page’s ID, the page at its original ID is removed.
 
 #### Output format
 
