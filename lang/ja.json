@@ -4,7 +4,6 @@
     "admin_password": "パスワード",
     "admin_new_password": "新しいパスワード",
     "admin_forgot_password": "アカウント情報やパスワードを忘れた場合：",
-    "admin_forgot_password_hint": "FTP等でサーバーの <code>mikanData/reset_password.txt</code> という空ファイルを作成してください（データフォルダ名を変更している場合はその中に作成）。ファイルは自動的に削除され、次回アクセス時に初期管理者登録画面が表示されます。",
     "admin_help": "ヘルプ",
     "admin_logout": "ログアウト",
     "admin_view_site": "プレビュー",

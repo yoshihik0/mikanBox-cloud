@@ -4,7 +4,6 @@
     "admin_password": "Password",
     "admin_new_password": "New Password",
     "admin_forgot_password": "If you forgot your login details or password:",
-    "admin_forgot_password_hint": "Create an empty file named <code>mikanData/reset_password.txt</code> on the server (inside your configured data directory if renamed). It will be deleted automatically, and the initial setup screen will appear on your next access.",
     "admin_help": "Help",
     "admin_logout": "Logout",
     "admin_view_site": "Preview",
