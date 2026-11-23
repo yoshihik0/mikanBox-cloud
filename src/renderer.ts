@@ -333,7 +333,8 @@ export class MikanBoxRenderer {
     html = await this.replaceBasicTags(html, pageData, pageTitle, pageDesc, pageKeywords, ogpImage);
 
     // 6. ナビゲーション・特殊タグを展開
-    html = await this.replaceSpecialTags(html);
+    const publicPageUrl = responseStatus === 200 && isPublicStatus(pageData.status) ? this.buildPageUrl(pageId) : '';
+    html = await this.replaceSpecialTags(html, publicPageUrl);
 
     // 7. パス補完
     html = await this.applyPathCompletion(html);
@@ -374,9 +375,10 @@ export class MikanBoxRenderer {
     const jsTags = [...this.javascriptBuffer.values()].map(js=>`<script>${js.replace(/<\/script/gi, '<\\/script')}</script>`).join('\n');
     if (/\{\{\s*HEAD_JS\s*\}\}/i.test(html)) html=html.replace(/\{\{\s*HEAD_JS\s*\}\}/gi,()=>jsTags);
     else if (jsTags) html=html.includes('</body>')?html.replace('</body>',jsTags+'</body>'):html+jsTags;
-    const origin=new URL(this.request.url).origin;
-    const aiScript=`<script src="/mikanbox/ai-question.js" data-mcp-endpoint="/public-mcp" data-public-mcp="${escapeHtml(origin)}/public-mcp" data-help-ja="${escapeHtml(origin)}/public-help.html?language=ja" data-help-en="${escapeHtml(origin)}/public-help.html?language=en" defer></script>`;
-    html=html.includes('</body>')?html.replace('</body>',()=>aiScript+'</body>'):html+aiScript;
+    if (html.includes('data-mikanbox-ai-question')) {
+      const aiScript = '<script src="/mikanbox/ai-question.js" data-webmcp="off" defer></script>';
+      html = html.includes('</body>') ? html.replace('</body>', () => aiScript + '</body>') : html + aiScript;
+    }
     html = html.replace(/\x04COMMENT(\d+)\x04/g,(_,index)=>comments[Number(index)] || '');
     html = await this.applyImageSizes(html);
     return { html, status: responseStatus };
@@ -607,8 +609,15 @@ export class MikanBoxRenderer {
   }
 
   // ---- replaceSpecialTags (非同期) ----
-  private async replaceSpecialTags(html: string): Promise<string> {
-    html=html.replace(/\{\{\s*AI_QUESTION\s*(?::\s*([A-Za-z0-9_-]+)\s*)?\}\}/g,(_,section)=>`<div data-mikanbox-ai-question data-section="${escapeHtml(section||'')}" data-context="${escapeHtml(this.currentPageId)}"></div>`);
+  private async replaceSpecialTags(html: string, publicPageUrl: string): Promise<string> {
+    const aiQuestion = /\{\{\s*AI_QUESTION\s*(?::\s*(?:sources\s*=([^{}\r\n]*)|([A-Za-z0-9_-]+))\s*)?\}\}/g;
+    html = html.replace(aiQuestion, (_, sources, section) => {
+      let attributes = '';
+      if (section) attributes = ` data-section="${escapeHtml(section)}"`;
+      else if (sources !== undefined) attributes = ` data-sources="${escapeHtml(sources.trim())}"`;
+      else if (publicPageUrl) attributes = ` data-page-url="${escapeHtml(publicPageUrl)}"`;
+      return `<div data-mikanbox-ai-question${attributes}></div>`;
+    });
     const searchResults=new Map<string,string>();
     for(const tag of html.matchAll(/\{\{\s*SEARCH_RESULTS\s*(?::\s*([A-Za-z0-9_-]+)\s*)?\}\}/g)) {
       const id=tag[1]||'_search_result_item';

@@ -30,11 +30,18 @@ test('publication manifest includes current built public pages and every stored 
   const media=manifest.entries.find(e=>e.path==='/media/unused-private-context.png');assert.match(media.hash,/^[0-9a-f]{32}$/);assert.equal(media.source,'/media/unused-private-context.png');
   assert.equal(await readPublicationEntry(value,request,'/media/unused-private-context.png'),null);
 });
-test('publication uses distinct exact HTML paths and preserves same-origin WebMCP, media and component URLs',async()=>{
-  const value=env(),html='<img src="/media/a.png"><a href="/test/">Exact</a><script src="/mikanbox/ai-question.js" data-mcp-endpoint="/public-mcp"></script><div data-mikanbox-ai-question></div>';
-  await snapshot(value,'index',html);await snapshot(value,'test','Exact');await snapshot(value,'test/index','Directory');
+test('publication uses distinct HTML paths and delivers AI question boxes without WebMCP',async()=>{
+  const value=env();value.PUBLIC_SITE_URL='https://public.test';
+  await savePage(value,'index',{title:'Home',status:'public_static',content_md:'{{AI_QUESTION}}\n\n{{AI_QUESTION:sources=https://public.test/faq.md}}'});
+  await savePage(value,'faq',{title:'FAQ',status:'public_static',output_format:'md',content_md:'Answer'});
+  await buildStatic(value,request);
+  await snapshot(value,'test','Exact');await snapshot(value,'test/index','Directory');
   const assets=await buildPublicationAssets(value,request);
-  assert.equal(decode.decode(assets.get('/index.html').body),html);assert.equal(decode.decode(assets.get('/test.html').body),'Exact');assert.equal(decode.decode(assets.get('/test/index.html').body),'Directory');
+  const html=decode.decode(assets.get('/index.html').body);
+  assert.match(html,/data-webmcp="off"/);assert.doesNotMatch(html,/data-mcp-endpoint/);
+  assert.match(html,/data-page-url="https:\/\/public.test\/"/);assert.match(html,/data-sources="https:\/\/public.test\/faq.md"/);
+  assert.match(decode.decode(assets.get('/faq.md').body),/Answer/);
+  assert.equal(decode.decode(assets.get('/test.html').body),'Exact');assert.equal(decode.decode(assets.get('/test/index.html').body),'Directory');
   assert.ok(assets.has('/mikanbox/ai-question.js'));assert.match(decode.decode(assets.get('/_headers').body),/X-Mikanbox-Delivery: static/);
   assert.match(decode.decode(assets.get('/_headers').body),/X-Content-Type-Options: nosniff/);assert.match(decode.decode(assets.get('/_headers').body),/\/media\/\*\n  Content-Security-Policy: sandbox/);
 });

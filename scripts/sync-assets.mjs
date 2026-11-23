@@ -1,4 +1,4 @@
-import { copyFile, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir } from 'node:fs/promises';
 const pairs = [
   ['../shared/admin.css', 'public/mikanbox/admin.css'],
   ['../shared/ai-question.js', 'public/mikanbox/ai-question.js'],
@@ -13,6 +13,3 @@ for (const [source, destination] of pairs) {
   await copyFile(new URL(`../${source}`, import.meta.url), target);
 }
 console.log('Copied six canonical files into Cloud only.');
-const scriptFile=new URL('../public/mikanbox/ai-question.js',import.meta.url);
-const script=await readFile(scriptFile,'utf8');
-await writeFile(scriptFile,script.replace("const officialPublicMcpUrl = 'https://yoshihiko.com/mikanbox/mcp';","const officialPublicMcpUrl = new URL((script && script.dataset.publicMcp) || 'https://yoshihiko.com/mikanbox/mcp', document.baseURI).href;").replace('new URL(publicHelpUrls[language])','new URL(publicHelpUrls[language], document.baseURI)'));

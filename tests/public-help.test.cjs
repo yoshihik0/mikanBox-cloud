@@ -22,9 +22,22 @@ test('public help has only four read-only tools and never exposes private data',
 test('help headings in fenced examples do not become sections',()=>{
  const sections=helpSections('## One {#one}\n```md\n## Fake\n```\n## Two');assert.deepEqual(sections.map(s=>s.id),['one','section-2']);
 });
-test('AI question tag and WebMCP script are rendered once with Cloud endpoints',async()=>{
- const env=environment();await savePage(env,'question',{title:'AI',status:'public_dynamic',content_md:'{{AI_QUESTION:section-1}}\n{{AI_QUESTION}}\n\n```\n{{AI_QUESTION}}\n```'});
- const h=await(await publicView(env,'/question')).text();assert.equal((h.match(/data-mikanbox-ai-question/g)||[]).length,2);assert.equal((h.match(/src="\/mikanbox\/ai-question.js"/g)||[]).length,1);assert.match(h,/data-mcp-endpoint="\/public-mcp"/);assert.match(h,/data-section="section-1"/);assert.match(h,/<code>[\s\S]*\{\{AI_QUESTION\}\}/);
+test('Cloud question boxes render public sources without registering WebMCP',async()=>{
+ const env=environment();env.PUBLIC_SITE_URL='https://public.test';
+ await savePage(env,'question',{title:'AI',status:'public_dynamic',content_md:[
+  '{{AI_QUESTION:section-1}}','{{AI_QUESTION}}',
+  '{{AI_QUESTION:sources=https://public.test/faq.md?x=1&y=2 | https://docs.test/guide/}}',
+  '```\n{{AI_QUESTION}}\n```',
+ ].join('\n\n')});
+ const h=await(await publicView(env,'/question')).text();
+ assert.equal((h.match(/data-mikanbox-ai-question/g)||[]).length,3);
+ assert.equal((h.match(/src="\/mikanbox\/ai-question.js"/g)||[]).length,1);
+ assert.match(h,/data-webmcp="off"/);
+ assert.doesNotMatch(h,/data-mcp-endpoint/);
+ assert.match(h,/data-section="section-1"/);
+ assert.match(h,/data-page-url="https:\/\/public.test\/question\/"/);
+ assert.match(h,/data-sources="https:\/\/public.test\/faq.md\?x=1&amp;y=2 \| https:\/\/docs.test\/guide\/"/);
+ assert.match(h,/<code>[\s\S]*\{\{AI_QUESTION\}\}/);
 });
 test('browser script registers and executes four WebMCP tools with no admin key',async()=>{
  const tools=[],requests=[],callbacks=[];
@@ -32,6 +45,9 @@ test('browser script registers and executes four WebMCP tools with no admin key'
  const ctx={window:{},document:doc,URL,Promise,MutationObserver:class{observe(){}},fetch:async(url,options)=>{requests.push({url,options});return {ok:true,json:async()=>({product:'Cloud'})};}};
  vm.runInNewContext(fs.readFileSync('public/mikanbox/ai-question.js','utf8'),ctx);callbacks[0]();assert.equal(tools.length,4);assert.ok(tools.every(t=>t.annotations.readOnlyHint));
  const result=await tools.find(t=>t.name==='get_product_info').execute({});assert.equal(result.structuredContent.product,'Cloud');assert.match(requests[0].url,/^https:\/\/cloud.test\/public-mcp\?action=get_product_info/);assert.equal(requests[0].options.headers.Authorization,undefined);
+ tools.length=0;requests.length=0;ctx.window={};doc.currentScript.dataset.webmcp='off';
+ vm.runInNewContext(fs.readFileSync('public/mikanbox/ai-question.js','utf8'),ctx);callbacks[1]();
+ assert.deepEqual(tools,[]);assert.deepEqual(requests,[]);
 });
 test('admin list acquisition has constant query count as content grows',async()=>{
  const env=environment();const auth=await login(env);
@@ -51,6 +67,6 @@ test('navigation, search, feeds and static builds stay within Free D1 query limi
 
 test('public help uses a fresh nonce only for the bundled script',async()=>{
  const {environment,call}=require('./fixtures.cjs');const env=environment();const a=await call(env,'/public-help.html'),b=await call(env,'/public-help.html');const csp=a.headers.get('content-security-policy'),csp2=b.headers.get('content-security-policy');
- const nonce=csp.match(/script-src 'nonce-([^']+)'/)[1];assert.notEqual(csp,csp2);assert.match(await a.text(),new RegExp('<script nonce="'+nonce+'" src="/mikanbox/ai-question.js"'));assert.doesNotMatch(csp,/script-src 'self'/);
+ const nonce=csp.match(/script-src 'nonce-([^']+)'/)[1];assert.notEqual(csp,csp2);assert.match(await a.text(),new RegExp('<script nonce="'+nonce+'" src="/mikanbox/ai-question.js" data-webmcp="off"'));assert.doesNotMatch(csp,/script-src 'self'/);
  assert.match(csp,/form-action 'none'/);assert.match(csp,/frame-src 'none'/);assert.match(csp,/object-src 'none'/);
 });

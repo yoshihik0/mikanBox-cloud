@@ -205,7 +205,7 @@
         "is_global": true,
         "is_wrapper": false,
         "is_ai_doc": false,
-        "memo": "公開ページにAI質問ボックスを配置するパーツです。ページ本文へ {{COMPONENT:_ai_question}} と記述して使います。質問、現在のページ、公式公開マニュアルだけを外部AIへ渡し、APIキーや非公開情報は扱いません。"
+        "memo": "公開ページにAI質問ボックスを置くパーツです。{{COMPONENT:_ai_question}} を配置すると、表示中の公開ページを参照します。別の公開資料を指定するには {{AI_QUESTION:sources=https://example.com/faq.md|https://example.com/guide/}} を使います。訪問者は質問と参照先を含むプロンプトを確認し、外部AIに貼り付けます。"
       },
       "_footer": {
         "html": "<footer>\r\n  <p>\r\n    &copy; <script>document.write(new Date().getFullYear())</script>, {{SITE_NAME}}\r\n  </p>\r\n</footer>",
@@ -496,7 +496,7 @@
         "is_global": true,
         "is_wrapper": false,
         "is_ai_doc": false,
-        "memo": "Places the public AI question box. Add {{COMPONENT:_ai_question}} to a page body. It sends only the question, current page, and official public manual reference to the external AI; it does not handle API keys or private information."
+        "memo": "Add this part to a public page with {{COMPONENT:_ai_question}} to use that page as the reference. To specify other public sources, use {{AI_QUESTION:sources=https://example.com/faq.md|https://example.com/guide/}}. Visitors review and copy the prompt before pasting it into an external AI service."
       },
       "_footer": {
         "html": "<footer>\n  <p>\n    &copy; <script>document.write(new Date().getFullYear())</script>, {{SITE_NAME}}\n  </p>\n</footer>",
