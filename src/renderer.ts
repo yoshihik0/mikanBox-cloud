@@ -37,6 +37,9 @@ function escapeHtml(str: string): string {
 function escapeQuotes(str: string): string {
   return escapeHtml(str).replace(/'/g, '&#039;');
 }
+function hasAiQuestionWidget(html: string): boolean {
+  return /<[A-Za-z][^<>]*\sdata-mikanbox-ai-question(?=[\s=>])/i.test(html);
+}
 /** First 8 hex digits of SHA-256 (PHP: substr(hash('sha256', $v), 0, 8)). */
 async function hash8(text: string): Promise<string> {
   const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text)));
@@ -334,7 +337,8 @@ export class MikanBoxRenderer {
 
     // 6. ナビゲーション・特殊タグを展開
     const publicPageUrl = responseStatus === 200 && isPublicStatus(pageData.status) ? this.buildPageUrl(pageId) : '';
-    html = await this.replaceSpecialTags(html, publicPageUrl);
+    html = await this.replaceSpecialTags(html);
+    const hasAiQuestion = hasAiQuestionWidget(html);
 
     // 7. パス補完
     html = await this.applyPathCompletion(html);
@@ -375,8 +379,9 @@ export class MikanBoxRenderer {
     const jsTags = [...this.javascriptBuffer.values()].map(js=>`<script>${js.replace(/<\/script/gi, '<\\/script')}</script>`).join('\n');
     if (/\{\{\s*HEAD_JS\s*\}\}/i.test(html)) html=html.replace(/\{\{\s*HEAD_JS\s*\}\}/gi,()=>jsTags);
     else if (jsTags) html=html.includes('</body>')?html.replace('</body>',jsTags+'</body>'):html+jsTags;
-    if (html.includes('data-mikanbox-ai-question')) {
-      const aiScript = '<script src="/mikanbox/ai-question.js" data-webmcp="off" defer></script>';
+    if (hasAiQuestion) {
+      const pageAttribute = publicPageUrl ? ` data-page-url="${escapeHtml(publicPageUrl)}"` : '';
+      const aiScript = `<script src="/mikanbox/ai-question.js" data-webmcp="off"${pageAttribute} defer></script>`;
       html = html.includes('</body>') ? html.replace('</body>', () => aiScript + '</body>') : html + aiScript;
     }
     html = html.replace(/\x04COMMENT(\d+)\x04/g,(_,index)=>comments[Number(index)] || '');
@@ -609,13 +614,12 @@ export class MikanBoxRenderer {
   }
 
   // ---- replaceSpecialTags (非同期) ----
-  private async replaceSpecialTags(html: string, publicPageUrl: string): Promise<string> {
+  private async replaceSpecialTags(html: string): Promise<string> {
     const aiQuestion = /\{\{\s*AI_QUESTION\s*(?::\s*(?:sources\s*=([^{}\r\n]*)|([A-Za-z0-9_-]+))\s*)?\}\}/g;
     html = html.replace(aiQuestion, (_, sources, section) => {
       let attributes = '';
       if (section) attributes = ` data-section="${escapeHtml(section)}"`;
       else if (sources !== undefined) attributes = ` data-sources="${escapeHtml(sources.trim())}"`;
-      else if (publicPageUrl) attributes = ` data-page-url="${escapeHtml(publicPageUrl)}"`;
       return `<div data-mikanbox-ai-question${attributes}></div>`;
     });
     const searchResults=new Map<string,string>();
@@ -1221,7 +1225,9 @@ if(q)location.replace('https://www.google.com/search?'+new URLSearchParams({q:q,
       const footers: string[] = [];
       for (const componentId of await normalizeFooterComponents(pageData.md_footer_comps ?? [], id => this.readComponent(id))) {
         const component = await this.readComponent(componentId);
-        const footer = (await this.markdownText(String(component?.html ?? ''), pageData)).trim();
+        const html = String(component?.html ?? '');
+        if (hasAiQuestionWidget(html)) continue;
+        const footer = (await this.markdownText(html, pageData)).trim();
         if (footer !== '') footers.push(footer);
       }
       const quote = (v: unknown) => '"' + String(v ?? '').replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\r\n|\r|\n/g, '\\n') + '"';
@@ -1302,7 +1308,9 @@ if(q)location.replace('https://www.google.com/search?'+new URLSearchParams({q:q,
       if (visited.includes(id) || visited.length > 32) return '';
       const component = await this.readComponent(id);
       if (!component || component.is_ai_doc) return '';
-      return this.includeComponentsAsText(String(component.html ?? ''), [...visited, id]);
+      const html = String(component.html ?? '');
+      if (hasAiQuestionWidget(html)) return '';
+      return this.includeComponentsAsText(html, [...visited, id]);
     });
   }
 

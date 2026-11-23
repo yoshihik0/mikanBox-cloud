@@ -1,7 +1,8 @@
 const {test}=require('node:test');const assert=require('node:assert/strict');const vm=require('node:vm');const fs=require('node:fs');
 const {environment,call,login,publicView}=require('./fixtures.cjs');
-const {savePage,saveSettings,saveComponent,listPages,listComponents}=require('../.test-build/src/storage.js');
+const {savePage,saveSettings,saveComponent,loadComponent,listPages,listComponents}=require('../.test-build/src/storage.js');
 const {helpSections}=require('../.test-build/src/public-help.js');
+const {standardDefaults}=require('../.test-build/src/defaults.js');
 const worker=require('../.test-build/src/index.js').default;
 test('public help has only four read-only tools and never exposes private data',async()=>{
  const env=environment();await saveSettings(env,{api_key:'secret-key',memo:'PRIVATE_TEST_PAYLOAD_9d3b_SETTING'});
@@ -38,6 +39,39 @@ test('Cloud question boxes render public sources without registering WebMCP',asy
  assert.match(h,/data-page-url="https:\/\/public.test\/question\/"/);
  assert.match(h,/data-sources="https:\/\/public.test\/faq.md\?x=1&amp;y=2 \| https:\/\/docs.test\/guide\/"/);
  assert.match(h,/<code>[\s\S]*\{\{AI_QUESTION\}\}/);
+});
+test('editable question component is initialized in HTML and omitted from Markdown and data',async()=>{
+ const env=environment();env.PUBLIC_SITE_URL='https://public.test';
+ const request=new Request('https://public.test/');
+ await saveComponent(env,'_ai_question',standardDefaults('ja').components._ai_question);
+ await savePage(env,'question',{title:'Question',status:'public_static',output_format:'html_md',
+  content_md:'{{COMPONENT:_ai_question}}',md_footer_comps:['_ai_question']});
+ await savePage(env,'question-data',{title:'Data',status:'public_static',output_format:'txt',expand_tags:true,
+  content_md:'Before{{COMPONENT:_ai_question}}After'});
+ await require('../.test-build/src/ssg.js').buildStatic(env,request);
+ const {readPublicationEntry}=require('../.test-build/src/static-publication.js');
+ const read=async path=>new TextDecoder().decode((await readPublicationEntry(env,request,path)).body);
+ const html=await read('/question.html');
+ assert.match(html,/<template data-ai-prompt-template>[\s\S]*%QUESTION%[\s\S]*%SOURCE_URLS%/);
+ assert.match(html,/data-page-url="https:\/\/public.test\/question\/"/);
+ assert.match(html,/ai-question\.js" data-webmcp="off"/);
+ const markdown=await read('/question.md');
+ assert.match(markdown,/title: "Question"/);
+ assert.doesNotMatch(markdown,/data-ai-input|%QUESTION%/);
+ assert.equal(await read('/question-data.txt'),'BeforeAfter');
+});
+test('question box migration changes only the old stock component',async()=>{
+ const stock={html:'{{AI_QUESTION}}',css:'',is_global:true,is_wrapper:false,is_ai_doc:false,
+  memo:'公開ページにAI質問ボックスを配置するパーツです。ページ本文へ {{COMPONENT:_ai_question}} と記述して使います。質問、現在のページ、公式公開マニュアルだけを外部AIへ渡し、APIキーや非公開情報は扱いません。'};
+ const migration=fs.readFileSync('migrations/0031_editable_ai_question.sql','utf8');
+ const env=environment();
+ await saveComponent(env,'_ai_question',{...stock,css:'.question { color: red; }'});
+ const authored=await loadComponent(env,'_ai_question');
+ env.sqlite.exec(migration);
+ assert.deepEqual(await loadComponent(env,'_ai_question'),authored);
+ await saveComponent(env,'_ai_question',stock);
+ env.sqlite.exec(migration);
+ assert.deepEqual(await loadComponent(env,'_ai_question'),standardDefaults('ja').components._ai_question);
 });
 test('browser script registers and executes four WebMCP tools with no admin key',async()=>{
  const tools=[],requests=[],callbacks=[];
