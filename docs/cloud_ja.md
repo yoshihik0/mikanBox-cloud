@@ -1,6 +1,6 @@
 <style>.manual-version{font-size:.5em;font-weight:400;white-space:nowrap}</style>
 
-# 🍊mikanBox Cloudflare版 マニュアル <small class="manual-version">v0.21.0</small>
+# 🍊mikanBox Cloudflare版 マニュアル <small class="manual-version">v0.21.1</small>
 
 このマニュアルはCloudflare版の導入と、PHP版との違いを説明します。共通の操作は[操作マニュアル](https://yoshihiko.com/mikanbox/help_ja.html)も参照してください。flat版・SQLite版との使い分けは、[README](https://github.com/yoshihik0/mikanBox-cloud#readme)を参照してください。
 
@@ -65,7 +65,7 @@ Node.js（22以上）とnpm、ターミナルが必要です。コマンドと�
 
 ##### 更新のしかた
 
-1. 管理画面「サイト」で新しいバージョンを確認し、**GitHubでアップデート**を押します。
+1. 自分のGitHubリポジトリで **Actions → Update mikanBox Cloud** を開きます。
 2. GitHubで **Run workflow** → 表示された **Run workflow** を押します。
 3. 実行履歴で **Success** を確認し、管理画面を再読み込みします。現在のバージョンと記事・画像を確認します。**Failure** の場合は、失敗した工程を開いて内容を確認します。
 
@@ -88,9 +88,9 @@ Node.js（22以上）とnpm、ターミナルが必要です。コマンドと�
 - Name：`CLOUDFLARE_API_TOKEN`。Secret：既存サイトのCloudflareアカウントを対象に、**Workers Scripts Edit** と **D1 Edit** の両方の権限を持つAPIトークン。管理画面の公開設定で使ったトークンに両方の権限があれば再利用でき、別のトークンでも構いません。公開設定に保存した値は再表示できません。独自ドメインやルートの操作には追加のゾーン権限が必要になる場合があります。トークンをチャットや公開ファイルに貼らないでください。
 - Name：`MIKANBOX_UPDATE_CONFIG`。Secret：現在のサイト用 `wrangler.production.json` の**全文**。設置時のファイルを使い、アカウント、管理Worker、DB、ルート・独自ドメインなどが現在の構成と一致することを確認します。JSONにはJWT_SECRET、SETUP_TOKEN、APIトークンを入れません。ファイルがない場合はCloudflareのWorker設定・バインディング・ルートを確認して構成を復元する必要があります。不明な設定のまま実行しないでください。
 
-###### 初回3：実行してリンクを設定する
+###### 初回3：更新を実行する
 
-自分のリポジトリの **Actions → Update mikanBox Cloud → Run workflow** を開き、表示された **Run workflow** を押します。実行履歴を開き、**Success** になるまで待ちます。成功後、管理画面を再読み込みすると「GitHubでアップデート」が自分のリポジトリを開きます。管理画面に「GitHubと接続したアップデートの設定」がすでにある場合は、自分のリポジトリを `所有者/リポジトリ名` の形式で保存してリンクを設定することもできます。
+自分のリポジトリの **Actions → Update mikanBox Cloud → Run workflow** を開き、表示された **Run workflow** を押します。実行履歴を開き、**Success** になるまで待ちます。成功後、管理画面を再読み込みしてバージョンを確認します。
 
 以上で設定は完了です。次回からは「更新のしかた」の3ステップだけです。
 

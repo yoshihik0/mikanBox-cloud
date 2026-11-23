@@ -1,7 +1,7 @@
 import {audit,recentAudit} from '../audit';
 import {integrityPlan,integrityAccept,unusualAcceptedUntil} from '../integrity';
 import {mcpLastUsed,mcpKeyAdd,mcpKeyRevoke,mcpKeyList,MCP_KEY_LIMIT} from '../mcp';
-import {latestCloudRelease,cloudUpdateUrl} from '../cloud-release';
+import {latestCloudRelease} from '../cloud-release';
 import {CloudUpdateError,runCloudUpdateStep} from '../cloud-update';
 import {transferExport,transferFilter,transferImportData,transferImportMedia,transferRecordMedia,transferFinish,transferMode,TRANSFER_PART_LIMIT} from '../data-transfer';
 import {cloudConfigured,saveCloudToken,cloudTarget,beginD1Export,pollD1Export,prepareD1Download,openD1Download,d1Restore,cloudToken} from '../cloudflare-api';
@@ -269,12 +269,6 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
           editId=id;message=t('msg_comp_saved',id);break;
         }
         case 'delete_comp': {const id=componentId(val(form,'old_id')||val(form,'id'));if(!await deleteComponent(env,id)) throw new Error(t('err_save_failed'));editId=null;deletedId=id;message=t('msg_comp_deleted',id);break;}
-        case 'save_cloud_update_repository': {
-          const repository=val(form,'cloud_update_repository').trim();
-          if(repository&&!cloudUpdateUrl(repository))throw new Error('GitHub repository must be owner/repository.');
-          settings.cloud_update_repository=repository;
-          if(!await saveSettings(env,settings))throw new Error(t('err_save_failed'));break;
-        }
         case 'save_settings': {
           if(form.has('tracking_id')||form.has('tracking_head_code')||form.has('tracking_body_code')){
             const id=val(form,'tracking_id').trim().toUpperCase();
@@ -458,7 +452,7 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
   const databaseProbe=await env.DB.prepare('SELECT 1').run();
   const d1Bytes=typeof databaseProbe.meta.size_after==='number'?databaseProbe.meta.size_after:null;
   const target=cloudTarget(env),displaySettings={...settings,_audit:await recentAudit(env),_unusual_until:await unusualAcceptedUntil(env),_mcp_last_used:await mcpLastUsed(env),d1_bytes:d1Bytes,cloud_connection_ready:cloudReady,cloud_account_id:target.account,cloud_worker_name:target.worker,_public_url:publicWorkerMissing(env)?'':env.PUBLIC_SITE_URL||''};
-  const siteHtml=renderSiteView({t,trackingLegacy:(()=>{const id=String(settings.tracking_component||''),data=components.find(c=>c.id===id)?.data;return{id,html:trackingLegacyHtml(data),exists:!!data&&!data.is_ai_doc&&!data.is_wrapper};})(),settings:displaySettings,csrf,helpFile,users,username:auth.user.username,accountsHtml:renderAccountsSection({t,lang,csrf,users,me:auth.device,devices:await listDevices(env),codes:await listCodes(env),expiryDays:expiryFrom(settings)}),lang,updateRepository:String(settings.cloud_update_repository||env.CLOUD_UPDATE_REPOSITORY||''),release:await latestCloudRelease(env,url.searchParams.has('refresh_updates')),updateDeviceAllowed:!onProbation(auth.device),dataHtml:renderDataSection({t,csrf,lang,cloudReady,stats:{pages:pages.length,components:components.length,users:users.length,media:files.length,mediaBytes:files.reduce((sum,file)=>sum+file.size,0),databaseBytes:d1Bytes}})});
+  const siteHtml=renderSiteView({t,trackingLegacy:(()=>{const id=String(settings.tracking_component||''),data=components.find(c=>c.id===id)?.data;return{id,html:trackingLegacyHtml(data),exists:!!data&&!data.is_ai_doc&&!data.is_wrapper};})(),settings:displaySettings,csrf,helpFile,users,username:auth.user.username,accountsHtml:renderAccountsSection({t,lang,csrf,users,me:auth.device,devices:await listDevices(env),codes:await listCodes(env),expiryDays:expiryFrom(settings)}),lang,release:await latestCloudRelease(env,url.searchParams.has('refresh_updates')),updateDeviceAllowed:!onProbation(auth.device),dataHtml:renderDataSection({t,csrf,lang,cloudReady,stats:{pages:pages.length,components:components.length,users:users.length,media:files.length,mediaBytes:files.reduce((sum,file)=>sum+file.size,0),databaseBytes:d1Bytes}})});
   const unseen=await unseenDevices(env,auth.device);
   if(unseen.length)message=(message?message+' ':'')+(lang==='ja'?'新しい端末が登録されました: ':'New device registered: ')+unseen.map(d=>`${d.name} (${d.username})`).join(', ')+(lang==='ja'?'。心当たりがなければ「端末とユーザー」で止めてください。':'. If you do not recognise it, stop it under Devices and users.');
   return html(renderAdminShell({lang,t,view,editId,hasNew,helpFile,message,csrf,settings:{...settings,_public_url:publicWorkerMissing(env)?'':env.PUBLIC_SITE_URL||''},pagesHtml,pageEditorHtml,siteHtml,designHtml,designEditorHtml,mediaHtml,

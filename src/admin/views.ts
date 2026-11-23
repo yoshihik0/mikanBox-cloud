@@ -14,7 +14,7 @@ import {MEDIA_COUNT_LIMIT,D1_WARNING_BYTES} from '../media-policy';
 import {localTime,isoInstant,utcFallback,localTimeScript} from './local-time';
 import {trackingConfigured} from '../tracking';
 import type {PublicationStatus,PublicState} from '../publish-status';
-import {cloudUpdateUrl,type CloudRelease} from '../cloud-release';
+import {type CloudRelease} from '../cloud-release';
 import {pageOutputFormat,formatHasHtml,isDataFormat,isApiFormat,formatBadge,adminPreviewUrl,isStructuralCategory,sortCategories,pageExpandsTags,expandTagsDefault,DATA_FORMATS} from '../output-formats';
 
 // PHP版と同じMaterial Iconsマッピング
@@ -1325,7 +1325,6 @@ export function renderSiteView(opts: {
   trackingLegacy?: {id:string;html:string|null;exists:boolean};
   users?: User[]; username?:string;
   release?:CloudRelease;
-  updateRepository?:string;
   updateDeviceAllowed?:boolean;
   lang?:string;
   dataHtml?:string;
@@ -1398,15 +1397,6 @@ export function renderSiteView(opts: {
                 <a href="${h(helpFile)}#cloud-update-recovery" data-cloud-update-recovery hidden>${en?'Recovery instructions':'復旧手順'}</a>
             </form>`:''}
           </div>
-            <details class="section-accordion mt-10" style="${guideBoxStyle}"><summary class="header section-header accordion-summary" style="${guideSummaryStyle}"><h3 style="font-size: 0.95rem; margin: 0; color: var(--text); display: inline-flex; align-items: center; gap: 8px; pointer-events: none;">${lang==='en'?'Set up updates connected to GitHub':'GitHubと接続したアップデートの設定'}</h3><span class="accordion-arrow" style="font-size: 0.75rem; opacity: 0.5;">▼</span></summary><div class="token-guide-body" style="${guideBodyStyle}">
-              <p><a href="${h(helpFile)}#manual-update" target="_blank" rel="noopener noreferrer">${lang==='en'?'First-time GitHub setup instructions':'GitHubでの初回設定手順'}</a></p>
-              ${cloudUpdateUrl(opts.updateRepository)?`<p><a class="btn btn-small btn-gray" href="${h(cloudUpdateUrl(opts.updateRepository))}" target="_blank" rel="noopener noreferrer">${en?'Update on GitHub':'GitHubでアップデート'}</a></p>
-                <small class="system-version-note">${en?'Press “Run workflow” on GitHub. After it succeeds, reload this screen.':'GitHubで「Run workflow」を押します。成功後、この画面を再読み込みしてください。'}</small>`:''}
-              <form method="post" data-ajax>${csrfField(csrf)}<input type="hidden" name="save_action" value="save_cloud_update_repository">
-                <label>${lang==='en'?'Your GitHub repository (owner/repository)':'自分のGitHubリポジトリ（所有者/リポジトリ名）'} <input name="cloud_update_repository" value="${h(opts.updateRepository||'')}" placeholder="owner/repository" maxlength="200"></label>
-                <button type="submit" class="btn btn-gray btn-small">${t('btn_save')}</button>
-              </form>
-            </div></details>
         </div>
 
         <div class="section-container section-tight">

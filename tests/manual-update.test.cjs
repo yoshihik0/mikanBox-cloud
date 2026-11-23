@@ -1,6 +1,5 @@
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
-const {cloudUpdateUrl}=require('../.test-build/src/cloud-release.js');
 const {renderSiteView}=require('../.test-build/src/admin/views.js');
 const account='a'.repeat(32),id='12345678-1234-1234-1234-123456789abc';
 const config=()=>({account_id:account,name:'my-admin',d1_databases:[{binding:'DB',database_id:id}]});
@@ -37,17 +36,13 @@ test('the updater runs only the release commit the workflow resolved',async()=>{
  assert.match(workflow,/MIKANBOX_UPDATE_COMMIT: \$\{\{ steps\.release\.outputs\.sha \}\}/);
 });
 test('update links stay on GitHub and newer versions are visible in both languages',()=>{
- assert.equal(cloudUpdateUrl('user/site'),'https://github.com/user/site/actions/workflows/update-cloud.yml');
- for(const value of ['https://evil.test','user/site?x=1','../site','user/..','user/site/extra','<script>'])assert.equal(cloudUpdateUrl(value),'');
- const base={t:x=>x,csrf:'csrf',settings:{},helpFile:'/public-help.html',users:[],username:'admin',updateRepository:'user/site'};
+ const base={t:x=>x,csrf:'csrf',settings:{},helpFile:'/public-help.html',users:[],username:'admin'};
  for(const lang of ['ja','en']) {
   const html=renderSiteView({...base,lang,release:{status:'available',version:'99.0.0',outdated:true}});
-  assert.match(html,/https:\/\/github.com\/user\/site\/actions\/workflows\/update-cloud.yml/);
-  assert.match(html,/Run workflow/);
+  assert.doesNotMatch(html,/Run workflow|save_cloud_update_repository/);
   assert.match(html,lang==='ja'?/新しいバージョンがあります/:/A new version is available/);
   assert.doesNotMatch(renderSiteView({...base,lang,release:{status:'available',outdated:false}}),/新しいバージョンがあります|A new version is available/);
  }
- assert.doesNotMatch(renderSiteView({...base,lang:'en',updateRepository:'bad'}),/href="https:\/\/github.com/);
 });
 
 test('Cloud update previews escaped release notes and requires a configured trusted device',()=>{

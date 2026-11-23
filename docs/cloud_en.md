@@ -1,6 +1,6 @@
 <style>.manual-version{font-size:.5em;font-weight:400;white-space:nowrap}</style>
 
-# 🍊mikanBox Cloudflare Manual <small class="manual-version">v0.21.0</small>
+# 🍊mikanBox Cloudflare Manual <small class="manual-version">v0.21.1</small>
 
 This manual covers installation and the Cloudflare edition’s differences. For shared operations, see the [operation manual](https://yoshihiko.com/mikanbox/help_en.html).
 
@@ -130,7 +130,7 @@ Versions before 0.21.0 have no admin update button. Update once by downloading t
 <a id="github-actions"></a>
 #### GitHub Actions
 
-Select **Update on GitHub** in Site settings, run the workflow on GitHub, wait for success, then reload the admin screen. Each run fetches the latest published release from `yoshihik0/mikanBox-cloud`, including published prereleases. From v0.10.3 the workflow resolves the release tag to a commit, checks out that commit and verifies it before deployment. The GitHub actions it uses are pinned to commits from their official releases. To update your copy of the workflow, select **Sync fork** or replace `.github/workflows/update-cloud.yml`. An older workflow still updates without the commit check.
+Open **Actions → Update mikanBox Cloud** in your GitHub repository, run the workflow, wait for success, then reload the admin screen. Each run fetches the latest published release from `yoshihik0/mikanBox-cloud`, including published prereleases. From v0.10.3 the workflow resolves the release tag to a commit, checks out that commit and verifies it before deployment. The GitHub actions it uses are pinned to commits from their official releases. To update your copy of the workflow, select **Sync fork** or replace `.github/workflows/update-cloud.yml`. An older workflow still updates without the commit check.
 
 #### One-time setup
 
@@ -138,7 +138,7 @@ Select **Update on GitHub** in Site settings, run the workflow on GitHub, wait f
 2. In Settings → Secrets and variables → Actions → Repository secrets, add:
    - `CLOUDFLARE_API_TOKEN`: a Cloudflare token scoped to the target account with Workers Scripts Edit and D1 Edit permissions.
    - `MIKANBOX_UPDATE_CONFIG`: the complete installation `wrangler.production.json` as JSON. Use current management Worker, account, D1, routes and custom-domain settings. Do not use a sample or another site's configuration. Do not add JWT_SECRET, SETUP_TOKEN or API tokens to this JSON.
-3. Open GitHub Actions → Update mikanBox Cloud → Run workflow. If the admin screen already has "Set up updates connected to GitHub", save your repository as `owner/repository` there. Updates through Actions configure the link automatically.
+3. Open GitHub Actions → Update mikanBox Cloud → Run workflow.
 
 If Cloudflare Workers Builds or another system already deploys on GitHub pushes, disable that automatic deployment separately to keep updates manual. This workflow has no push or scheduled trigger.
 

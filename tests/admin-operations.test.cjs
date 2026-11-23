@@ -45,7 +45,7 @@ test('operations run in place: delete, save and device forms are marked for admi
   assert.match(editor,/<button type="submit" form="page-form" name="save_action" value="delete_page" class="btn btn-red" formnovalidate>/);
   assert.match(editor,/<tr data-page-id="about">/,'rows carry the id the close motion returns to');
   const site=await(await call(env,'/admin?view=site',undefined,auth.cookie)).text();
-  for(const action of ['save_memo','save_settings','save_cloud_update_repository'])assert.match(site,new RegExp(`<form method="post"[^>]*data-ajax[^>]*>[\\s\\S]{0,200}value="${action}"`),action);
+  for(const action of ['save_memo','save_settings'])assert.match(site,new RegExp(`<form method="post"[^>]*data-ajax[^>]*>[\\s\\S]{0,200}value="${action}"`),action);
   assert.match(site,/data-confirm="[^"]+" data-confirm-ok="[^"]*">/);
   // The code goes under the button that issued it: one slot for the own device, one for invites.
   assert.match(site,/value="device_code_create"><button[^]{0,200}<\/form><div data-issued-code-slot="own" data-note="/);assert.match(site,/value="1"><button[^]{0,200}<\/form><div data-issued-code-slot="invite" data-note="/);
