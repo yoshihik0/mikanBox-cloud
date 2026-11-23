@@ -2,7 +2,7 @@ import type {Env} from './types';
 /** Site edits: every change to pages, components, media and settings (recorded by the database, migration 0027). */
 export const AUDIT_EDIT_EVENTS=['page_status','page_created','page_updated','page_deleted','component_created','component_updated','component_deleted','media_uploaded','media_changed','media_deleted','settings_changed','data_imported'] as const;
 /** The events PHP records (lib/security.php mikanBoxAudit), those the Cloud edition has, plus data restores. */
-export const AUDIT_EVENTS=['mcp_enabled','mcp_disabled','mcp_key_issued','mcp_key_rotated','mcp_key_revoked','login_failed','device_registered','device_revoked','code_issued','invite_issued','recovery','user_deleted','data_restored','integrity_accepted','system_updated',...AUDIT_EDIT_EVENTS] as const;
+export const AUDIT_EVENTS=['mcp_enabled','mcp_disabled','mcp_key_issued','mcp_key_rotated','mcp_key_revoked','login_failed','device_registered','device_revoked','code_issued','invite_issued','recovery','user_deleted','data_restored','integrity_accepted','system_update_started','system_update_failed','system_updated',...AUDIT_EDIT_EVENTS] as const;
 export type AuditEvent=typeof AUDIT_EVENTS[number];
 export interface AuditRow {at:string;event:string;actor:string;target:string;from_value:string;to_value:string;ip:string}
 /** The three groups of the site screen: important, site edits, failed sign-ins (as PHP's mikanBoxAuditGroup). */

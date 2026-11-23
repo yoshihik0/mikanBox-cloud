@@ -415,12 +415,13 @@ test('image upload checks authentication, content and duplicates; deletion withd
     assert.notEqual((await prepare({})).headers.get('content-type'),'application/json; charset=utf-8','no session: the sign-in page');
     assert.equal((await uploadThroughAdmin(env,auth,'actual.png',new TextEncoder().encode('<html>not an image</html>'))).success,false);
     assert.equal((await uploadThroughAdmin(env,auth,'actual.png',image)).success,true);
-    assert.equal((await uploadThroughAdmin(env,auth,'actual.png',image)).success,false);
-    assert.equal(env.sqlite.prepare('SELECT bytes FROM media_usage').get().bytes,image.length);
+    const second=await uploadThroughAdmin(env,auth,'actual.png',image);assert.equal(second.success,true,second.message);assert.equal(second.media.name,'actual_1.png','a taken name gets _1 as in PHP');
+    assert.equal(env.sqlite.prepare('SELECT bytes FROM media_usage').get().bytes,image.length*2);
     // A published image is withdrawn by a build before it can be deleted.
     assert.equal((await post(env,auth,{save_action:'delete_media',file:'actual.png'})).data.success,false);
-    await require('./fixtures.cjs').browserPublish(env,auth,{rebuild:true,excluded:['/media/actual.png']});
+    await require('./fixtures.cjs').browserPublish(env,auth,{rebuild:true,excluded:['/media/actual.png','/media/actual_1.png']});
     assert.equal((await post(env,auth,{save_action:'delete_media',file:'actual.png'})).data.success,true);
+    assert.equal((await post(env,auth,{save_action:'delete_media',file:'actual_1.png'})).data.success,true);
     assert.equal(env.sqlite.prepare('SELECT bytes FROM media_usage').get().bytes,0);
   }finally{cf.restore();}
 });

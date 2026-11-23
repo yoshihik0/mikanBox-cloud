@@ -19,8 +19,10 @@ test('an upload is published first and recorded only once the public site has ex
   // Later uploads publish just that file next to what is there.
   assert.equal((await uploadThroughAdmin(env,auth,'b.png',png(10,10))).success,true);
   assert.ok(cf.site.has('/media/news_photo.png')&&cf.site.has('/media/b.png'));
-  // The same name is refused before anything is published.
-  const again=await uploadThroughAdmin(env,auth,'b.png',png(20,20));assert.equal(again.success,false);
+  // The same name is not refused: it gets _1, _2, ... as in the PHP editions.
+  const again=await uploadThroughAdmin(env,auth,'b.png',png(20,20));assert.equal(again.success,true,again.message);assert.equal(again.media.name,'b_1.png');
+  const third=await uploadThroughAdmin(env,auth,'b.png',png(30,30));assert.equal(third.success,true,third.message);assert.equal(third.media.name,'b_2.png');
+  assert.ok(cf.site.has('/media/b.png')&&cf.site.has('/media/b_1.png')&&cf.site.has('/media/b_2.png'));
   // Recording a file the public site does not carry is refused.
   const form=new FormData();form.set('save_action','upload_media');form.set('media_name','ghost.png');form.set('image',new File([png(5,5)],'ghost.png'));form.set('csrf_token',auth.csrf_token);form.set('ajax_request','1');
   const ghost=await(await worker.fetch(new Request('https://cloud.test/admin',{method:'POST',headers:{Cookie:auth.cookie},body:form}),env)).json();
@@ -80,7 +82,7 @@ test('MCP publishes an uploaded file from the server, and says what to do when i
   await browserPublish(env,auth,{rebuild:true});
   const done=await tool('upload_media',{filename:'a.png',content_base64:image,category:'news'});assert.equal(done.error,false,done.text);
   assert.ok(cf.site.has('/media/news_a.png'));assert.ok(await getMedia(env,'news_a.png'));assert.match(done.text,/https:\/\/www\.cloud\.test\/media\/news_a\.png/);
-  assert.equal((await tool('upload_media',{filename:'a.png',content_base64:image,category:'news'})).error,true,'existing names are never overwritten');
+  const renamed=await tool('upload_media',{filename:'a.png',content_base64:image,category:'news'});assert.equal(renamed.error,false,renamed.text);assert.match(renamed.text,/news_a_1\.png/,'a taken name gets _1 and existing files are never overwritten');
   cf.forget();
   const resend=await tool('upload_media',{filename:'b.png',content_base64:image});assert.equal(resend.error,true);assert.match(resend.text,/ビルド|Build/);assert.equal(await getMedia(env,'b.png'),null);
  }finally{cf.restore();}

@@ -1,4 +1,4 @@
-import {inspectMedia,getMedia,addMedia} from './media-store';
+import {inspectMedia,freeMediaName,addMedia} from './media-store';
 import {publishMediaFromServer} from './publication-service';
 import {assertNotPublished,checkPublicationLock} from './publication-state';
 import type { Env, PageData, ComponentData, Settings } from './types';
@@ -260,15 +260,17 @@ export async function handleMcp(request:Request,env:Env,onKey?:(name:string)=>vo
       case 'upload_media': {
         const filename=String(args.filename).replace(/\.[^.]+$/,ext=>ext.toLowerCase()),category=String(args.category||'');
         if(category&&!/^[A-Za-z0-9_-]+$/.test(category))throw new Error('Invalid category.');
-        const key=(!isCodeMedia(filename)&&category&&!/^[A-Za-z0-9]+_/.test(filename)?category+'_':'')+filename;
-        if(!validMediaName(key))throw new Error('Invalid filename.');
+        const wanted=(!isCodeMedia(filename)&&category&&!/^[A-Za-z0-9]+_/.test(filename)?category+'_':'')+filename;
+        if(!validMediaName(wanted))throw new Error('Invalid filename.');
         const encoded=String(args.content_base64);
         if(!encoded||encoded.length>4*Math.ceil(MEDIA_FILE_LIMIT/3))throw new Error('Invalid or oversized Base64 image.');
-        const bytes=decodeImage(encoded),contentType=mediaType(bytes,key.split('.').pop()!.toLowerCase());
+        const bytes=decodeImage(encoded),contentType=mediaType(bytes,wanted.split('.').pop()!.toLowerCase());
         if(!contentType||!bytes.length||bytes.length>MEDIA_FILE_LIMIT)throw new Error('Invalid or oversized image.');
         if(!contentType)throw new Error('Invalid image.');
         // The file goes to the public site first, then it is recorded (media live only on the public site).
-        if(await getMedia(env,key))throw new Error('Upload failed: name already exists.');
+        // A taken name gets _1, _2, ... as in the PHP editions; the answer carries the name that was used.
+        const key=await freeMediaName(env,wanted);
+        if(!validMediaName(key))throw new Error('Invalid filename.');
         const inspected=await inspectMedia(key,bytes);
         await publishMediaFromServer(env,request,{name:key,hash:inspected.hash,size:inspected.size,content_type:inspected.content_type},encoded);
         await addMedia(env,key,inspected);

@@ -1,6 +1,6 @@
 import type {Env} from './types';
 import {CLOUD_VERSION} from './version';
-export interface CloudRelease {status:'unconfigured'|'available'|'error';version?:string;url?:string;outdated?:boolean}
+export interface CloudRelease {status:'unconfigured'|'available'|'error';version?:string;url?:string;notes?:string;outdated?:boolean}
 let cached:{source:string;at:number;value:CloudRelease}|undefined;
 // Published releases only: GitHub's release feed lists releases (pre-releases included, drafts never),
 // so a push to a branch alone cannot change what the admin screen announces. The update workflow
@@ -8,16 +8,20 @@ let cached:{source:string;at:number;value:CloudRelease}|undefined;
 const RELEASE_FEED='https://github.com/yoshihik0/mikanBox-cloud/releases.atom';
 const RELEASE_TAG_URL=/https:\/\/github\.com\/yoshihik0\/mikanBox-cloud\/releases\/tag\/(v?\d+\.\d+\.\d+)(?=["'<\s])/i;
 const LIMIT=512*1024;
-function releaseInfo(text:string):{version:string;url?:string}{
+function releaseInfo(text:string):{version:string;url?:string;notes?:string}{
  if(text.trimStart().startsWith('{')){
   const info=JSON.parse(text);
   if(info.edition!=='cloud'||typeof info.version!=='string'||!/^v?\d+\.\d+\.\d+$/.test(info.version))throw new Error();
   if(info.url&&new URL(info.url).protocol!=='https:')throw new Error();
-  return {version:info.version,url:info.url||undefined};
+  return {version:info.version,url:info.url||undefined,notes:typeof info.notes==='string'?info.notes.slice(0,8000):undefined};
  }
  // The newest entry comes first in the feed.
  const match=text.match(RELEASE_TAG_URL);if(!match)throw new Error();
- return {version:match[1],url:match[0]};
+ const entry=text.slice(text.lastIndexOf('<entry',match.index),text.indexOf('</entry>',match.index));
+ const content=entry.match(/<content\b[^>]*>([\s\S]*?)<\/content>/)?.[1]||'';
+ // Atom carries HTML as escaped text. The admin view HTML-escapes the resulting plain text.
+ const notes=content.replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/<\/(?:p|li|div|h[1-6])>|<br\s*\/?>/gi,'\n').replace(/<[^>]+>/g,'').replace(/&quot;/g,'"').replace(/&#39;|&apos;/g,"'").replace(/&amp;/g,'&').trim().slice(0,8000);
+ return {version:match[1],url:match[0],notes};
 }
 export async function latestCloudRelease(env:Env,refresh=false):Promise<CloudRelease>{
  const source=env.CLOUD_RELEASE_MANIFEST_URL || RELEASE_FEED;
@@ -33,7 +37,7 @@ export async function latestCloudRelease(env:Env,refresh=false):Promise<CloudRel
   const info=releaseInfo(new TextDecoder().decode(bytes));
   const version=info.version.replace(/^v/,''),next=version.split('.').map(Number),current=CLOUD_VERSION.split('.').map(Number);
   let outdated=false;for(let i=0;i<3;i++){if(next[i]!==current[i]){outdated=next[i]>current[i];break;}}
-  value={status:'available',version,url:info.url,outdated};
+  value={status:'available',version,url:info.url,notes:info.notes,outdated};
  }catch{value={status:'error'};}
  cached={source,at:Date.now(),value};return value;
 }

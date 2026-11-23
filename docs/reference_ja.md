@@ -50,8 +50,18 @@ node -e "const fs=require('node:fs'),c=require('node:crypto'); fs.writeFileSync(
 
 `npm run deploy:cloud` は管理用Workerだけを更新します。公開用Workerは管理画面のビルドで更新します。
 
+<a id="manual-update"></a>
 ## アップデート手順
 
+### 管理画面からのアップデート
+
+普段の更新は、[管理画面からアップデートする手順](cloud_ja.md#manual-update)を参照してください。0.21.0より前の版からの初回移行は、以下のダウンロード手順か、[GitHub Actions](cloud_ja.md#github-actions)を使います。
+
+管理用Workerの `DB` と `ASSETS`、別の公開用Worker、保存済みのCloudflare公開用トークンを使います。管理用Workerの配信版と接続設定を確認し、公式リリースのタグとコミット、管理用Worker・静的ファイル・SQLを含む配布物のSHA-256を照合します。アップロードした版を配信する前に、D1バインディング経由で未適用のマイグレーションを順に実行します。適用結果はWranglerと同じ `d1_migrations` に記録します。管理用Workerの配信開始後に、配信中の版を照合します。
+
+更新には対象アカウントの Workers Scripts Edit が必要です。管理画面からのマイグレーションには、トークンのD1 Editは不要です。D1の書き出しや復元にはD1 Editが必要です。更新と他のデプロイを同時に実行しないでください。更新が中断した場合は、[復旧手順](cloud_ja.md#cloud-update-recovery)で配信中の版とD1との互換性を確認してください。
+
+<a id="cloud-download-update"></a>
 ### ダウンロードして更新する（コマンド）
 
 自分でコマンドを実行する場合は、最新版の[リリースページ](https://github.com/yoshihik0/mikanBox-cloud/releases)から **Source code (zip)** をダウンロードして展開し、そのフォルダで `npm ci`、`npx wrangler login`、`npx wrangler whoami` を実行します。Cloudflareのアカウントが既存サイトと一致していることを確認します。これは新規インストールではありません。既存のD1、管理Worker、公開Workerを使います。
@@ -75,7 +85,7 @@ Actionsは既存の管理WorkerとD1の接続を照合し、ビルド、未適�
 
 公開用ファイルの取得はダウンロードとして扱い、管理画面の権限でコードを実行しません。公開ヘルプでは製品側のスクリプトだけを許可します。削除したページが配信先に残っている間は未反映として表示します。端末停止では、その端末が発行した未使用コードも取り消します。初期設定・復旧トークンは同時要求でも一度だけ使用できます。
 
-管理画面はGitHubのCloud版リリース情報を確認し、現在と最新のバージョン、新版の有無を表示します。「再確認」は最新情報だけを取得します。現在のバージョンを更新後に確認するには画面を再読み込みしてください。手動更新の初回設定は下記を参照してください。`CLOUD_RELEASE_MANIFEST_URL` でHTTPSのCloud専用JSONを指定することもできます。
+管理画面はGitHubのCloud版リリース情報を確認し、現在と最新のバージョン、新版の有無を表示します。「再確認」は最新情報だけを取得します。現在のバージョンを更新後に確認するには画面を再読み込みしてください。`CLOUD_RELEASE_MANIFEST_URL` でバージョン表示用のHTTPSのCloud専用JSONを指定できます。管理画面から適用する配布物は公式リリースから取得します。
 
 ## 公開と配信
 

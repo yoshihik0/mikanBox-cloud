@@ -2,10 +2,11 @@ import {audit,recentAudit} from '../audit';
 import {integrityPlan,integrityAccept,unusualAcceptedUntil} from '../integrity';
 import {mcpLastUsed,mcpKeyAdd,mcpKeyRevoke,mcpKeyList,MCP_KEY_LIMIT} from '../mcp';
 import {latestCloudRelease,cloudUpdateUrl} from '../cloud-release';
+import {CloudUpdateError,runCloudUpdateStep} from '../cloud-update';
 import {transferExport,transferFilter,transferImportData,transferImportMedia,transferRecordMedia,transferFinish,transferMode,TRANSFER_PART_LIMIT} from '../data-transfer';
 import {cloudConfigured,saveCloudToken,cloudTarget,beginD1Export,pollD1Export,prepareD1Download,openD1Download,d1Restore,cloudToken} from '../cloudflare-api';
 import {beginPublication,hashPublicationFiles,preparePublication,uploadPublicationFile,finishPublication,cancelPublication} from '../publication-service';
-import {inspectMedia,getMedia,addMedia,replaceMedia,deleteMedia} from '../media-store';
+import {inspectMedia,getMedia,addMedia,replaceMedia,deleteMedia,freeMediaName} from '../media-store';
 import {trackingIdValid,trackingLegacyHtml,trackingSnippets} from '../tracking';
 import type { Env, PageData, ComponentData } from '../types';
 import { loadSettings, saveSettings, loadPage, getSortedPageIds, loadComponent, saveComponent, deleteComponent, listComponentIds, listPages, listComponents, listMediaFiles, mediaUsage, adminPageMatches } from '../storage';
@@ -107,7 +108,12 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
     } catch(e) {error=e instanceof Error && !/D1_|SQLITE_|constraint|UNIQUE/.test(e.message)?e.message:t('err_save_failed');}
     return loginResponse(error,400,inviteStep);
   }
-  if (!auth) return loginResponse();
+  if (!auth) {
+    if(form&&val(form,'save_action')==='cloud_update_step')return json({success:false,message:lang==='ja'
+      ? '管理画面にサインインしてから更新を再開してください。'
+      : 'Sign in to the admin screen to resume the update.'},401);
+    return loginResponse();
+  }
   const csrf=auth.session.csrf;
   if(request.method==='GET'&&url.searchParams.has('media_preview')) {
     const key=url.searchParams.get('media_preview')||'';if(!validMediaName(key))return new Response('Not Found',{status:404});
@@ -144,6 +150,23 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
   if(form) {
     if(!verifyCsrf(val(form,'csrf_token'),csrf)) return json({success:false,message:t('err_csrf')},403);
     const action=val(form,'save_action');
+    if(action==='cloud_update_step') {
+      if(onProbation(auth.device))return json({success:false,message:lang==='ja'
+        ? `追加から${PROBATION_DAYS}日間の端末ではアップデートできません。`
+        : `A device added within the past ${PROBATION_DAYS} days cannot update the site.`},403);
+      try {await checkPublicationLock(env);}
+      catch {return json({success:false,message:lang==='ja'?'配信更新中です。少し待って再試行してください。':'Publication is in progress. Try again shortly.'},409);}
+      try {
+        if(!await cloudConfigured(env))return json({success:false,message:lang==='ja'
+          ? '「Cloudflare公開設定」でCloudflare APIトークンを設定してください。'
+          : 'Set a Cloudflare API token under Cloudflare publication settings.'},400);
+        return json({success:true,...await runCloudUpdateStep(env,auth.user.username,val(form,'target_version'),val(form,'job_id'))});
+      } catch(error) {
+        return json({success:false,message:error instanceof CloudUpdateError?error.message:(lang==='ja'
+          ? 'アップデートを続行できませんでした。'
+          : 'The update could not continue.')},400);
+      }
+    }
     if(action==='preview_page' && url.searchParams.has('editor_preview')) {
       try {
         const id=pageId(val(form,'id').trim()||'preview');
@@ -331,6 +354,7 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
           if(!old){
             name=file.name.replace(/[^A-Za-z0-9_.-]/g,'_').replace(/\.[^.]+$/,ext=>ext.toLowerCase());const category=(val(form,'cat')||url.searchParams.get('cat')||'').replace(/[^A-Za-z0-9_-]/g,'_');
             if(!isCodeMedia(name)&&category&&!/^[A-Za-z0-9]+_/.test(name))name=category+'_'+name;
+            name=await freeMediaName(env,name);   // a taken name gets _1, _2, ... as in the PHP editions
           } else if(!await getMedia(env,old))throw new Error('Image not found.');
           const inspected=await inspectMedia(name,new Uint8Array(await file.arrayBuffer()));
           if(name!==old){
@@ -434,7 +458,7 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
   const databaseProbe=await env.DB.prepare('SELECT 1').run();
   const d1Bytes=typeof databaseProbe.meta.size_after==='number'?databaseProbe.meta.size_after:null;
   const target=cloudTarget(env),displaySettings={...settings,_audit:await recentAudit(env),_unusual_until:await unusualAcceptedUntil(env),_mcp_last_used:await mcpLastUsed(env),d1_bytes:d1Bytes,cloud_connection_ready:cloudReady,cloud_account_id:target.account,cloud_worker_name:target.worker,_public_url:publicWorkerMissing(env)?'':env.PUBLIC_SITE_URL||''};
-  const siteHtml=renderSiteView({t,trackingLegacy:(()=>{const id=String(settings.tracking_component||''),data=components.find(c=>c.id===id)?.data;return{id,html:trackingLegacyHtml(data),exists:!!data&&!data.is_ai_doc&&!data.is_wrapper};})(),settings:displaySettings,csrf,helpFile,users,username:auth.user.username,accountsHtml:renderAccountsSection({t,lang,csrf,users,me:auth.device,devices:await listDevices(env),codes:await listCodes(env),expiryDays:expiryFrom(settings)}),lang,updateRepository:String(settings.cloud_update_repository||env.CLOUD_UPDATE_REPOSITORY||''),release:await latestCloudRelease(env,url.searchParams.has('refresh_updates')),dataHtml:renderDataSection({t,csrf,lang,cloudReady,stats:{pages:pages.length,components:components.length,users:users.length,media:files.length,mediaBytes:files.reduce((sum,file)=>sum+file.size,0),databaseBytes:d1Bytes}})});
+  const siteHtml=renderSiteView({t,trackingLegacy:(()=>{const id=String(settings.tracking_component||''),data=components.find(c=>c.id===id)?.data;return{id,html:trackingLegacyHtml(data),exists:!!data&&!data.is_ai_doc&&!data.is_wrapper};})(),settings:displaySettings,csrf,helpFile,users,username:auth.user.username,accountsHtml:renderAccountsSection({t,lang,csrf,users,me:auth.device,devices:await listDevices(env),codes:await listCodes(env),expiryDays:expiryFrom(settings)}),lang,updateRepository:String(settings.cloud_update_repository||env.CLOUD_UPDATE_REPOSITORY||''),release:await latestCloudRelease(env,url.searchParams.has('refresh_updates')),updateDeviceAllowed:!onProbation(auth.device),dataHtml:renderDataSection({t,csrf,lang,cloudReady,stats:{pages:pages.length,components:components.length,users:users.length,media:files.length,mediaBytes:files.reduce((sum,file)=>sum+file.size,0),databaseBytes:d1Bytes}})});
   const unseen=await unseenDevices(env,auth.device);
   if(unseen.length)message=(message?message+' ':'')+(lang==='ja'?'新しい端末が登録されました: ':'New device registered: ')+unseen.map(d=>`${d.name} (${d.username})`).join(', ')+(lang==='ja'?'。心当たりがなければ「端末とユーザー」で止めてください。':'. If you do not recognise it, stop it under Devices and users.');
   return html(renderAdminShell({lang,t,view,editId,hasNew,helpFile,message,csrf,settings:{...settings,_public_url:publicWorkerMissing(env)?'':env.PUBLIC_SITE_URL||''},pagesHtml,pageEditorHtml,siteHtml,designHtml,designEditorHtml,mediaHtml,

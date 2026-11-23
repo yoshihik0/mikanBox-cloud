@@ -1,4 +1,6 @@
 {
+  "audit_event_system_update_started": "Program update started",
+  "audit_event_system_update_failed": "Program update failed",
     "cloud_globe_not_published": "Not published yet (publish to open it)",
     "cloud_globe_stale": "Open the public page (changes not published yet)",
     "cloud_publish_needs_token": "Publishing needs a Cloudflare API token.",

@@ -19,7 +19,8 @@ test('code files are published at once like images, keep their bytes and name, a
    const r=await uploadThroughAdmin(env,auth,name,encoder.encode(text),{cat:'news'});assert.equal(r.success,true,r.message);assert.equal(r.media.name,name,'no category prefix for code');assert.equal(r.media.content_type.split(';')[0],mime);
    assert.equal(Buffer.from(cf.known.get(cf.site.get('/media/'+name))).toString(),text);
    const preview=await call(env,'/admin?media_preview='+name,undefined,auth.cookie);assert.equal(preview.status,302);
-   assert.equal((await uploadThroughAdmin(env,auth,name,encoder.encode('changed'))).success,false);
+   const again=await uploadThroughAdmin(env,auth,name,encoder.encode('changed'));assert.equal(again.success,true,again.message);assert.equal(again.media.name,name.replace(/\.(js|css)$/,'_1.$1'),'a taken name gets _1 before the extension');
+   assert.equal(Buffer.from(cf.known.get(cf.site.get('/media/'+name))).toString(),text,'the first file keeps its bytes');
   }
   for(const [name,text] of [['evil.php.js','x'],['binary.js',new Uint8Array([255])],['bad.php','<?php x']])assert.equal((await uploadThroughAdmin(env,auth,name,text)).success,false);
   const html=await(await call(env,'/admin?view=media&cat=news&media_type=js',undefined,auth.cookie)).text();assert.match(html,/library-1.2.min.js/);assert.doesNotMatch(html,/class="media-card-title[^>]*>\s*library-1.2.min.css/);assert.match(html,/Copy embed tag|読み込みタグをコピー/);assert.doesNotMatch(html,/<script src="(?:https:\/\/cloud.test)?\/media\/library/);

@@ -1,6 +1,6 @@
 <style>.manual-version{font-size:.5em;font-weight:400;white-space:nowrap}</style>
 
-# 🍊mikanBox Cloudflare Manual <small class="manual-version">v0.20.3</small>
+# 🍊mikanBox Cloudflare Manual <small class="manual-version">v0.21.0</small>
 
 This manual covers installation and the Cloudflare edition’s differences. For shared operations, see the [operation manual](https://yoshihiko.com/mikanbox/help_en.html).
 
@@ -58,7 +58,7 @@ See [Pages](https://yoshihiko.com/mikanbox/help_en.html#page-mgmt) and [Page edi
 - Component CRUD, part/wrapper/AI-document types, memos, CSS, and JavaScript.
 - Site settings, language, site memo, adding and stopping devices, and inviting and deleting users.
 - Changing your own display name (the field on your own user in "Devices and users"). The username cannot be changed.
-- Image upload, streaming delivery and deletion, stored in D1, up to 10 MB per file. Existing filenames are not overwritten.
+- Image upload, streaming delivery and deletion, stored in D1, up to 10 MB per file. A taken filename is not overwritten: the new file is saved with _1, _2, ... added before the extension.
 - ZIP downloads of JSON content and media; these are not a complete D1 backup/restore.
 - Bulk acquisition for pages, components, search, navigation, feeds, data backups and static builds avoids one query per content item. Platform data/CPU limits still apply.
 - Category deletion also removes the category from affected pages and records revisions. Active edits or concurrent changes cancel the entire operation.
@@ -113,7 +113,24 @@ See [Site](https://yoshihiko.com/mikanbox/help_en.html#site) for shared settings
 <a id="manual-update"></a>
 ### Manual updates (v0.6.6 and later)
 
-For routine updates, select Update on GitHub in Site settings, press Run workflow on GitHub, wait for success, then reload the management page. There is no automatic update. You do not need to sync your repository or download files to your computer each time. Each run fetches the latest published release from `yoshihik0/mikanBox-cloud`, including published prereleases, but excluding unreleased development changes. From v0.10.3 the workflow first resolves the commit the release tag points to, checks out only that commit and confirms it before preparing and deploying anything; the GitHub actions it uses (`actions/checkout` and others) are pinned to the commits of their official releases. Your copy of the workflow is not updated automatically: press **Sync fork** in your repository, or replace `.github/workflows/update-cloud.yml` with the latest one. An older workflow still updates, but without the commit check.
+#### Update from the admin screen (0.21.0 and later)
+
+1. On the Site screen, review the target version and release notes below the version information.
+2. Select **Update** and keep the page open while the update runs.
+3. Reload the admin screen when it finishes and check the installed version, articles, images and settings. Continue to use **Build static site** to publish changes to pages or media.
+
+The updater reuses the API token saved in Cloudflare publication settings. The token needs **Workers Scripts Edit** for the target account. The admin Worker's D1 binding applies migrations, so the token needs no **D1 Edit** permission for this update. A device enrolled with an add code can update after its three-day waiting period. Devices registered during initial setup can update immediately.
+
+The updater supports installations with the standard D1 binding `DB`, the admin asset binding `ASSETS` and a separate public Worker. It verifies the files attached to the official release before switching the management Worker. It stops if another version takes over during the update or if the live deployment splits traffic between versions. The screen reports package, permission or binding checks that fail.
+
+#### First transition and fallback methods
+
+Versions before 0.21.0 have no admin update button. Update once by downloading the release or using GitHub Actions. Use these options for custom bindings or when the target release has no update package. When upgrading an older installation, check intervening release notes for any required preparations. Download the source archive from [Releases](https://github.com/yoshihik0/mikanBox-cloud/releases) and use the installation's current Wrangler configuration and [download instructions](https://github.com/yoshihik0/mikanBox-cloud/blob/HEAD/docs/reference_ja.md#cloud-download-update).
+
+<a id="github-actions"></a>
+#### GitHub Actions
+
+Select **Update on GitHub** in Site settings, run the workflow on GitHub, wait for success, then reload the admin screen. Each run fetches the latest published release from `yoshihik0/mikanBox-cloud`, including published prereleases. From v0.10.3 the workflow resolves the release tag to a commit, checks out that commit and verifies it before deployment. The GitHub actions it uses are pinned to commits from their official releases. To update your copy of the workflow, select **Sync fork** or replace `.github/workflows/update-cloud.yml`. An older workflow still updates without the commit check.
 
 #### One-time setup
 
@@ -133,7 +150,7 @@ Save any needed backup before updating. Database migration and code deployment a
 
 Publication files are downloaded without executing code with management privileges. Public help permits only the product-provided script. Deleted pages still present on the public site remain marked as pending publication changes. Stopping a device also cancels its unused enrollment codes. Setup and recovery tokens can be consumed only once, including concurrent requests.
 
-The admin screen checks the releases published on GitHub (from v0.10.3 the release feed, so changes on a development branch alone do not change it) and shows the installed and latest versions and whether an update is available. Check again refreshes release information without reloading the screen and shows the result at the bottom right (from v0.11.1); reload the page after updating to see the installed version. See the manual update setup below. `CLOUD_RELEASE_MANIFEST_URL` optionally selects an HTTPS Cloud release JSON instead.
+The admin screen checks the releases published on GitHub (from v0.10.3 the release feed, so changes on a development branch alone do not change it) and shows the installed and latest versions and whether an update is available. Check again refreshes release information without reloading the screen and shows the result at the bottom right (from v0.11.1); reload the page after updating to see the installed version. `CLOUD_RELEASE_MANIFEST_URL` optionally selects an HTTPS Cloud release JSON for the version display. The admin update uses the official release packages.
 
 ### Delivery and withdrawal
 
@@ -194,7 +211,7 @@ Site → Recent operations shows the records in three tabs (Important, Site edit
 
 “Site edits” records every addition, change and deletion of pages, components, media and site settings (including the Cloudflare connection), whether it was made in the admin screen, in visual editing, through MCP or by importing data (from 0.16.0). Rewriting only the content of a page that is already public is recorded too. Saving the same item several times within 10 minutes by the same person is one line, and an import is one “Data imported” line. For site settings, only the names of the settings that changed are recorded, never their values.
 
-“Important” holds MCP enabled/stopped and key issued/revoked, devices registered/stopped and codes issued, deleted users, recovery, data restores and program updates. A program update is done from outside (the GitHub workflow), so it is recorded at the first admin or MCP request after the switch, as old version → new version (from 0.20.2; updating to 0.20.2 itself only remembers the version). The latest 50 important operations, the latest 50 failed sign-ins and the latest 500 site edits are kept, so a run of failed sign-ins or of edits never pushes out the important records. A fingerprint (SHA-256) of the content before and after each change is kept but not shown. IP addresses are partly hidden. Changes made to D1 directly in the Cloudflare dashboard or with wrangler are recorded with an empty actor, since who made them is unknown.
+“Important” holds MCP enabled/stopped and key issued/revoked, devices registered/stopped and codes issued, deleted users, recovery, data restores and program updates. An update from the admin screen records the start, success or failure. An external update performed by downloading or running GitHub Actions is recorded at the first admin or MCP request after the switch, as old version → new version (from 0.20.2; updating to 0.20.2 itself only remembers the version). The latest 50 important operations, the latest 50 failed sign-ins and the latest 500 site edits are kept, so a run of failed sign-ins or of edits never pushes out the important records. A fingerprint (SHA-256) of the content before and after each change is kept but not shown. IP addresses are partly hidden. Changes made to D1 directly in the Cloudflare dashboard or with wrangler are recorded with an empty actor, since who made them is unknown.
 
 “Check for tampering”, under the version and update display on the Site screen, looks for changes that are not in the history and shows the result under the button. It runs only when you press it, and page views are not affected. It checks two things.
 
@@ -218,9 +235,13 @@ The figures, "Save", "Read" and "Export the public site" look and work as in the
 
 Returns the database to a time within Cloudflare's retention period (the last 7 days on the free plan). The public site is not changed: to restore it, build the site.
 
-### Interrupted updates
+<a id="interrupted-updates"></a>
+<a id="cloud-update-recovery"></a>
+### Interrupted updates and rollback
 
-Program updates run the build, pending database migrations, and management Worker deployment in that order. A failed build leaves the database unchanged.
+If you close the browser or lose the connection, reopen the admin screen and select **Resume update** if it appears. If the update fails, check the failed step and the message on the screen. Reload the admin screen or open the deployment history for the **management Worker** in the Cloudflare dashboard to check which version is live. You can retry after correcting a permission or configuration issue. The updater skips D1 migrations already applied.
+
+Find the previously deployed Worker version ID in the Cloudflare dashboard's deployment history. You can use the dashboard even if the new admin screen is unavailable. Verify that version works with the current D1 schema, then select it and roll back. Worker rollback leaves the D1 schema and data at their current state. If the schema is incompatible, plan the Worker switch together with a D1 restore to before the update. A D1 restore also reverses subsequent edits.
 
 ### Cloud-specific MCP
 
@@ -487,3 +508,9 @@ Differences from the PHP editions and unused parts tidied up, on the way to a su
 ### Changes in 0.20.2
 
 - **Program updates are now recorded in “Important”.** The PHP editions already did; in Cloud the program is replaced from outside, so it was not recorded. The first request after the switch records old version → new version. MCP key issuing/revoking and enabling/stopping were already recorded.
+
+
+### Changes in 0.21.0
+
+- **You can update from the Site screen.** Review the version and release notes and start the update there. Use a download or GitHub Actions for the first transition to 0.21.0.
+- **Uploads with a filename already in use get a suffix such as `_1` or `_2` before the extension.** This applies to uploads from the admin screen and image uploads through MCP.

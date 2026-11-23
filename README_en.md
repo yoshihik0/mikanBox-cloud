@@ -97,9 +97,9 @@ There are no passwords. Only registered devices (browsers) can enter the admin s
 
 ## Updating
 
-When updating an existing site, do not create a new D1 database or Worker. You can update by downloading, or by running GitHub Actions manually.
+From 0.21.0, review the new version and release notes on the Site screen and select **Update**. To upgrade from a version earlier than 0.21.0 or update an installation with unsupported bindings, download the release or use GitHub Actions. All methods use the existing D1 database and Workers.
 
-- [Update procedure](docs/cloud_en.md#manual-updates-v066-and-later)
+- [Update procedure](docs/cloud_en.md#manual-update)
 
 ---
 

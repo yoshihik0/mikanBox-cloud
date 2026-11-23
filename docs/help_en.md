@@ -55,7 +55,7 @@
 }
 </style>
 
-# 🍊mikanBox User Manual <small class="manual-version">v2.30.3</small>
+# 🍊mikanBox User Manual <small class="manual-version">v2.30.4</small>
 
 🍊mikanBox comes in two versions: **🍊mikanBox** [SQLite Edition]{.type-badge .badge-sqlite}, which uses a SQLite database, and **🍊mikanBox flat** [flat Edition]{.type-badge .badge-flat}, a JSON file-based edition with no database. The basic usage is shared between both, so this help document covers both. Where the content differs between versions, the badges above are used to mark the difference.
 
@@ -173,7 +173,7 @@ This example protects the admin host with authentication and serves static files
 
 1. Require HTTPS and authentication across the admin host. If you use the management MCP endpoint, keep it on that host as well.
 2. Serve static files on the public host with PHP and CGI execution disabled. Create a dedicated media directory and disable directory listing. Apply the media directory's `.htaccess` rules for SVG, or configure the server to send the same `Content-Security-Policy: sandbox` header for SVG. Give the admin PHP process write access to the output and media directories. Give the public service the read access it needs to serve files. Keep application code, site data, and setup tokens outside the public host's served paths.
-3. Add the following to the admin host's `mikanBox/local-config.php`. Start a new file with `<?php`. Use the absolute path to an existing dedicated directory. On an existing site, move the files from the old `media/` directory before switching.
+3. To keep media within the public folder, serve `public/media/` directly and use [Place media in the output folder](#ssg-media-in-output). To keep it in a separate folder as shown in the table, move existing media to the new location and add the following to the admin host's `mikanBox/local-config.php`. Start a new file with `<?php`.
 
    ```php
    define('MIKANBOX_MEDIA_DIR', '/srv/mikanbox/assets');
@@ -529,7 +529,7 @@ The identifying slug that becomes part of the page's URL. Letters, digits, hyphe
 
 #### Output format
 
-Choose one output format: HTML, HTML + Markdown, Markdown, or a data format (JSON, XML, CSV, Text, JavaScript, CSS, [mikanBox DB](#mikanbox-db)). The default is HTML. The URL the page will be published at (for example `https://example.com/news-list.json`) is shown right below. Fields the chosen format does not use are hidden (for Markdown, the design component and the page CSS and JS; for data formats, also the OGP image, description and keywords). Without a published URL, formats with Markdown cannot be chosen. See [Output Formats](#output-formats).
+Choose one output format: HTML, HTML + Markdown, Markdown, or a data format (JSON, XML, CSV, Text, JavaScript, CSS, [mikanBox DB](#mikanbox-db)). The default is HTML. The URL the page will be published at (for example `https://example.com/news-list.json`) is shown right below. Fields the chosen format does not use are hidden (for Markdown, the design component and the page CSS and JS; for data formats, also the OGP image, description and keywords). See [Output Formats](#output-formats).
 
 #### Design Component
 
@@ -726,11 +726,11 @@ Static site generation never writes into, or deletes files from, the admin folde
 - **Generate static pages on this server** — Normally writes HTML into the site root. Specify an output directory only when a different location is needed. When a [public media URL](#php-media-location) is configured, the build uses it.
 - **Create an upload-ready folder (for local operation)** — Writes HTML and a copy of the configured media directory into a dedicated output folder. The exported pages reference the bundled `media/`. For safety, the site root, the mikanBox core, and the existing media folder cannot be selected as that destination.
 
-For an upload-ready folder, links can be written as portable relative paths (recommended), or fixed to a published URL. Relative links keep working when the folder is moved.
+For an upload-ready folder, links can be written as portable relative paths (recommended), or fixed to a published URL. Relative links keep working when the folder is moved. HTML `srcset` images and video `poster` images reference the bundled media even when you configure a separate public media URL. The same applies to the ZIP from **Export the public site**.
 
 The published root URL can be entered with either link style. Give the whole root of the published site, such as `https://example.com/site`. When the published URL is already decided, as with Cloudflare Pages or Netlify, enter that URL as it is (for example `https://yoursite.pages.dev`).
 
-The published root URL applies only while a static site is being written out. The admin panel and previews you run locally answer with the address you actually opened, so filling in a published root URL never points their images or links somewhere the site is not yet.
+The published root URL is used when building a static site. If you select [Place media in the output folder](#ssg-media-in-output), admin previews also load images from `media/` under that URL.
 
 - **Fixed published URL** — Required. Used both for the links inside pages and for `sitemap.xml` and `rss.xml`.
 - **Relative links** — Optional. Not used for the links inside pages. It is used only to generate `sitemap.xml` and `rss.xml`; left blank, neither file is generated.
@@ -740,6 +740,12 @@ The published root URL applies only while a static site is being written out. Th
 Specify where the static HTML files get written, as a path relative to the site root (the location where the `mikanBox` folder lives). For example, entering `blog` writes into a `blog/` folder directly under the site root, while entering `../` writes one level above the site root. Leaving this blank writes directly into the site root.
 
 An empty server-side output means the site root. When you select an upload-ready folder, `export` is supplied as the default output directory and can be changed to another dedicated folder.
+
+#### Place media in the output folder {#ssg-media-in-output}
+
+On the PHP editions, select “Generate static pages on this server,” enter the output directory and published root URL, and select “Place media in the output folder’s media/ directory.” Saving and building moves existing files into `media/` under the output directory. Future uploads go there as well. For example, if you administer the site at `/blog/` and publish at `/pub/`, use `../pub` and `https://example.com/pub`. Both HTML and images are served under `/pub/`.
+
+The destination `media/` must be empty or absent. Keep both directories on the same filesystem and give the admin PHP process permission to move the directory. Clearing the option and saving moves media back beside the application directory. Settings in `local-config.php` take precedence. Switching to “Create an upload-ready folder” preserves the upload location.
 
 #### Output Structure / URL Format
 
@@ -850,7 +856,7 @@ Choose the contents and press "Download".
 | Database [SQLite and Cloud editions]{.type-badge .badge-sqlite} | The database file in the SQLite edition; the D1 SQL file in Cloud. Page history is included. |
 
 - **Include page history** (SQLite and Cloud): the history of each page (the last 10 entries) is saved too. It is off at first. The flat edition has no page history.
-- **Filtered exports** (behavior from v2.30.2). When **Match the filtered lists** is checked and the page list is filtered by category, output format, or search, the export includes the matching pages and their layout components, parts, and literal local media references. It follows parts embedded inside other parts. Linked pages, pages listed by navigation, other pages embedded as content, and references assembled at runtime by JavaScript are outside this selection. With no page filter, or when saving media only, the applicable list filters still apply. Content settings are included in JSON exports. Database exports are unaffected.
+- **Filtered exports** (behavior from v2.30.2). When **Match the filtered lists** is checked and the page list is filtered by category, output format, or search, the export includes the matching pages and their layout components, parts, and literal local media references. It follows parts embedded inside other parts. When JavaScript contains a literal string using the configured public media URL, the corresponding file is included. Linked pages, pages listed by navigation, other pages embedded as content, and references assembled at runtime by JavaScript are outside this selection. With no page filter, or when saving media only, the applicable list filters still apply. Content settings are included in JSON exports. Database exports are unaffected.
 - The file also holds what is not public, such as drafts and notes: keep it somewhere safe and do not share it.
 - Users, devices, passwords and the MCP API key are not included. Only the content settings (site name, description, categories and the like) are saved; the site ID and the publishing settings are not.
 - Inside the ZIP: `data/settings.json`, `data/posts/pageID.json`, `data/components/ID.json`, `data/revisions/pageID.json` (history) and `media/filename`. The layout is the same in all three editions, so the file can be read into a site of another edition.
@@ -1755,7 +1761,7 @@ Body…
 
 - The front matter holds `title`, `date` (the update date), `description` (only when the page has its own summary), `url` (the HTML version's URL; omitted for Markdown-only pages) and `categories` (excluding those that start with "_"; omitted when there are none).
 - The wrapper (`_layout`, header, footer) is not used. The body is the saved Markdown as it is, not converted to HTML. HTML inside the body is output as text.
-- **A published URL is required**, because Markdown versions use absolute URLs throughout. When the upload folder uses relative links and the published root URL is empty, formats with Markdown cannot be chosen.
+- **In an upload folder with relative links and an empty published root URL**, the Markdown version also writes internal links and images as relative links, and the front matter has no `url`. Once the published root URL is set, they are written as absolute URLs.
 - The HTML version of an HTML + Markdown page carries `<link rel="alternate" type="text/markdown" href="…/ID.md">`. Like RSS autodiscovery, tools and AI can find the Markdown version from the HTML page.
 
 #### How Tags Are Handled in Markdown Versions
@@ -1770,7 +1776,7 @@ Code blocks, inline code and HTML comments are output exactly as written.
 
 #### Links and Images
 
-Every URL becomes absolute. `![](ogp.jpg)` and `media/…` become absolute media URLs. An internal link such as `[Details](about)` points at `/ID.md` when the target page publishes a Markdown version, and at its HTML URL otherwise. External links, `#`, `mailto:` and `tel:` stay as they are. Matching a link to a page is shared with the HTML version. After you change a target's output format, rebuild the static site and the Markdown versions that link to it get the new URL too.
+URLs normally become absolute (in an upload folder with relative links and an empty published root URL, they are relative to where the Markdown file is placed). `![](ogp.jpg)` and `media/…` become absolute media URLs. An internal link such as `[Details](about)` points at `/ID.md` when the target page publishes a Markdown version, and at its HTML URL otherwise. External links, `#`, `mailto:` and `tel:` stay as they are. Matching a link to a page is shared with the HTML version. After you change a target's output format, rebuild the static site and the Markdown versions that link to it get the new URL too.
 
 #### Footer Components
 

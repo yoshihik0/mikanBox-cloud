@@ -664,7 +664,8 @@ ${opts.mediaEnabled?`<div id="drop-zone">${getIcon('cloud')} ${t('hint_drop_uplo
 
     <script src="/mikanbox/preview-editor.js?v=${h(CLOUD_VERSION)}-2" defer></script>
     <script src="/mikanbox/cloud-editor.js?v=${h(CLOUD_VERSION)}" defer></script>
-    <script src="/mikanbox/cloud-admin.js?v=${h(CLOUD_VERSION)}-5" defer></script>
+    <script src="/mikanbox/cloud-admin.js?v=${h(CLOUD_VERSION)}-6" defer></script>
+    <script src="/mikanbox/cloud-update.js?v=${h(CLOUD_VERSION)}" defer></script>
     <script src="/mikanbox/cloud-media.js?v=${h(CLOUD_VERSION)}" defer></script>
     <script src="/mikanbox/cloud-zip.js?v=${h(CLOUD_VERSION)}" defer></script><script src="/mikanbox/cloud-export.js?v=${h(CLOUD_VERSION)}" defer></script><script src="/mikanbox/cloud-integrity.js?v=${h(CLOUD_VERSION)}" defer></script><script src="/mikanbox/data-transfer.js?v=${h(CLOUD_VERSION)}" defer></script><script src="/mikanbox/cloud-transfer.js?v=${h(CLOUD_VERSION)}" defer></script><script src="/mikanbox/cloud-publish.js?v=${h(CLOUD_VERSION)}-8" defer></script>
 </div>
@@ -1325,11 +1326,29 @@ export function renderSiteView(opts: {
   users?: User[]; username?:string;
   release?:CloudRelease;
   updateRepository?:string;
+  updateDeviceAllowed?:boolean;
   lang?:string;
   dataHtml?:string;
 }): string {
   const { t, settings, csrf, helpFile } = opts;
   const lang = opts.lang || settings.system_lang || '';
+  const en = lang === 'en';
+  const release = opts.release;
+  const updateVersion = release?.outdated ? release.version : undefined;
+  const updateAllowed = !!settings.cloud_connection_ready && opts.updateDeviceAllowed === true;
+  const updateLabels = {
+    updating: t('msg_system_updating'),
+    validating: en ? 'Checking the release and deployment settings…' : 'リリースとデプロイ設定を確認しています…',
+    uploading: en ? 'Uploading the management Worker…' : '管理用Workerをアップロードしています…',
+    migrating: en ? 'Applying database migrations…' : 'データベースを更新しています…',
+    deploying: en ? 'Deploying the management Worker…' : '管理用Workerをデプロイしています…',
+    verifying: en ? 'Waiting for the new version to respond…' : '新しいバージョンの応答を待っています…',
+    verifyingPaused: en ? 'The new version is still unverified. Resume to check again.' : '新しいバージョンはまだ確認できません。再開して確認してください。',
+    complete: t('msg_system_update_success', 'v{version}'),
+    failed: en ? 'The update could not continue.' : 'アップデートを続行できませんでした。',
+    interrupted: en ? 'The update was interrupted. Resume to check its progress.' : '通信が中断しました。再開して更新の進行状況を確認してください。',
+    refreshBusy: en ? 'Wait for the release check to finish.' : 'リリース情報の確認が終わるまでお待ちください。'
+  };
 
   return `
     <div id="site" class="section-anchor">
@@ -1355,17 +1374,34 @@ export function renderSiteView(opts: {
     </div>
 
         <div class="section-container section-tight">
+          <div id="cloud-update-panel"${release?.status==='error'?` data-failed="${h(t('version_latest')+': '+t('version_check_failed'))}"`:''}>
             <div class="system-version-row" id="cloud-version-row">
                 <span>${t('version_current')}: ${h(CLOUD_VERSION)} (Cloud)</span>
                 <span>${t('version_latest')}: ${opts.release?.version?'v'+h(opts.release.version):opts.release?.status==='error'?t('version_check_failed'):(lang==='en'?'Cloud release information not published':'Cloud版のリリース情報は未公開')}</span>
-                <a id="cloud-check-updates" href="/admin?view=site&amp;refresh_updates=1#cloud-version-row" data-done="${h(t('msg_updates_checked'))}"${opts.release?.status==='error'?` data-failed="${h(t('version_latest')+': '+t('version_check_failed'))}"`:''}>${t('btn_check_updates')}</a>
+                <a id="cloud-check-updates" href="/admin?view=site&amp;refresh_updates=1#cloud-version-row" data-refresh="#cloud-update-panel" data-done="${h(t('msg_updates_checked'))}">${t('btn_check_updates')}</a>
                 ${opts.release?.outdated?`<span style="font-weight:600">${lang==='en'?'A new version is available':'新しいバージョンがあります'}</span>`:''}
-                ${cloudUpdateUrl(opts.updateRepository)?`<a class="btn btn-small btn-blue" href="${h(cloudUpdateUrl(opts.updateRepository))}" target="_blank" rel="noopener noreferrer">${lang==='en'?'Update on GitHub':'GitHubでアップデート'}</a>`:''}
                 ${opts.release?.url?`<a href="${h(opts.release.url)}" target="_blank" rel="noopener noreferrer">${lang==='en'?'Cloud release':'Cloud版リリース'}</a>`:''}
             </div>
-            <small class="system-version-note">${lang==='en'?'Click “Update on GitHub”, then press “Run workflow” on the page that opens. After it succeeds, reload this screen.':'「GitHubでアップデート」をクリックし、移動したページで「Run workflow」を押すと更新します。成功後、この画面を再読み込みしてください。'}</small>
+            ${updateVersion?`<div class="panel-card mt-10"><p><strong>${en?'Release notes':'変更内容'} · v${h(updateVersion)}</strong></p>
+                ${release?.notes?`<div style="white-space:pre-wrap;overflow-wrap:anywhere">${h(release.notes)}</div>`:`<p class="sub-text">${en?'No release notes are available.':'変更内容は公開されていません。'}</p>`}
+                ${updateAllowed?'':opts.updateDeviceAllowed
+                  ? `<p><a href="#cloud-connection" data-cloud-update-setup>${en?'Set a Cloudflare API token under Cloudflare publication settings.':'「Cloudflare公開設定」でCloudflare APIトークンを設定してください。'}</a></p>`
+                  : `<p class="sub-text">${en?'Use a trusted device that has completed its waiting period to update.':'アップデートには、追加後の待機期間を過ぎた端末を使ってください。'}</p>`}
+            </div>`:''}
+            ${updateAllowed?`<form method="post" class="flex-row flex-row-wrap items-center mt-10" id="cloud-update-form"
+                data-version="${h(updateVersion||'')}" data-labels="${h(JSON.stringify(updateLabels))}">
+                ${csrfField(csrf)}<input type="hidden" name="save_action" value="cloud_update_step">
+                <button type="button" class="btn btn-small btn-blue" data-cloud-update-start${updateVersion?'':' style="display:none"'}>${t('btn_system_update')}</button>
+                <button type="button" class="btn btn-small btn-blue" data-cloud-update-resume style="display:none">${en?'Resume update':'更新を再開'}</button>
+                <span role="status" data-cloud-update-status></span>
+                <button type="button" class="btn btn-small btn-gray" data-cloud-update-reload style="display:none">${en?'Reload to verify the current version':'画面を再読み込みして現在のバージョンを確認'}</button>
+                <a href="${h(helpFile)}#cloud-update-recovery" data-cloud-update-recovery hidden>${en?'Recovery instructions':'復旧手順'}</a>
+            </form>`:''}
+          </div>
             <details class="section-accordion mt-10" style="${guideBoxStyle}"><summary class="header section-header accordion-summary" style="${guideSummaryStyle}"><h3 style="font-size: 0.95rem; margin: 0; color: var(--text); display: inline-flex; align-items: center; gap: 8px; pointer-events: none;">${lang==='en'?'Set up updates connected to GitHub':'GitHubと接続したアップデートの設定'}</h3><span class="accordion-arrow" style="font-size: 0.75rem; opacity: 0.5;">▼</span></summary><div class="token-guide-body" style="${guideBodyStyle}">
               <p><a href="${h(helpFile)}#manual-update" target="_blank" rel="noopener noreferrer">${lang==='en'?'First-time GitHub setup instructions':'GitHubでの初回設定手順'}</a></p>
+              ${cloudUpdateUrl(opts.updateRepository)?`<p><a class="btn btn-small btn-gray" href="${h(cloudUpdateUrl(opts.updateRepository))}" target="_blank" rel="noopener noreferrer">${en?'Update on GitHub':'GitHubでアップデート'}</a></p>
+                <small class="system-version-note">${en?'Press “Run workflow” on GitHub. After it succeeds, reload this screen.':'GitHubで「Run workflow」を押します。成功後、この画面を再読み込みしてください。'}</small>`:''}
               <form method="post" data-ajax>${csrfField(csrf)}<input type="hidden" name="save_action" value="save_cloud_update_repository">
                 <label>${lang==='en'?'Your GitHub repository (owner/repository)':'自分のGitHubリポジトリ（所有者/リポジトリ名）'} <input name="cloud_update_repository" value="${h(opts.updateRepository||'')}" placeholder="owner/repository" maxlength="200"></label>
                 <button type="submit" class="btn btn-gray btn-small">${t('btn_save')}</button>
@@ -1536,7 +1572,7 @@ export function renderSiteView(opts: {
                     ${lang==='en'?`<ol class="token-guide"><li>Sign in to Cloudflare with the account that hosts this site, and open <a href="https://dash.cloudflare.com/profile/api-tokens" target="_blank" rel="noopener">My Profile → API Tokens</a>.</li><li>Press <b>Create Token</b>, then <b>Get started</b> next to <b>Create Custom Token</b>.</li><li>Give it a name, such as “mikanBox publishing”.</li><li>Under <b>Permissions</b>, choose <b>Account</b> → <b>Workers Scripts</b> → <b>Edit</b>. To use the D1 backup and Time Travel features as well, add a second row: <b>Account</b> → <b>D1</b> → <b>Edit</b>.</li><li>Under <b>Account Resources</b>, choose <b>Include</b> → the account that hosts this site.</li><li>Press <b>Continue to summary</b>, then <b>Create Token</b>. Copy the long string that is shown. <b>It is shown only once.</b></li><li>Paste it into “Cloudflare API token” below and press Save. The account ID and Worker name are already filled in; leave them as they are.</li></ol><p class="sub-text">You create the token once. The site stores it encrypted and never shows it again. You only need a new one if it is deleted or revoked in Cloudflare, its permissions change, or the site’s secret key (JWT_SECRET) changes.</p>`:`<ol class="token-guide"><li>このサイトを置いているCloudflareのアカウントでログインし、<a href="https://dash.cloudflare.com/profile/api-tokens" target="_blank" rel="noopener">プロフィール → APIトークン</a>を開きます。</li><li>「トークンを作成する」を押し、「カスタムトークンを作成する」の「開始する」を押します。</li><li>トークン名を付けます。例：「mikanBox公開用」。</li><li>「権限」で、<b>アカウント</b> → <b>Workers スクリプト</b> → <b>編集</b> を選びます（英語表示では Account → Workers Scripts → Edit）。D1のバックアップとTime Travelも使う場合は、もう1行、<b>アカウント</b> → <b>D1</b> → <b>編集</b> を追加します。</li><li>「アカウントリソース」で、<b>含める</b> → このサイトを置いているアカウントを選びます。</li><li>「概要に進む」→「トークンを作成する」を押し、表示された長い文字列をコピーします。<b>表示されるのは1回だけです。</b></li><li>下の「Cloudflare APIトークン」欄に貼り付けて「保存」を押します。アカウントIDとWorker名は最初から入っているので、そのままにしてください。</li></ol><p class="sub-text">トークンは最初に1回作るだけです。サイトが暗号化して保存し、再表示しません。作り直すのは、Cloudflareで削除・失効させたとき、権限を変えたとき、サイトの秘密鍵（JWT_SECRET）を変えたときだけです。</p>`}
                     </div></details>
                     <div class="panel-card">
-                    <form method="post" class="grid-2col" data-ajax data-refresh="#cloud-connection, #publish-box"><input type="hidden" name="save_action" value="save_cloud_connection">${csrfField(csrf)}<div class="form-group"><label>${lang==='en'?'Cloudflare account ID':'CloudflareアカウントID'}</label><input type="text" name="cloud_account_id" value="${h(settings.cloud_account_id||'')}" required></div><div class="form-group"><label>${lang==='en'?'Worker name':'Worker名'}</label><input type="text" name="cloud_worker_name" value="${h(settings.cloud_worker_name||'')}" required></div><div class="form-group"><label>${lang==='en'?'Cloudflare API token':'Cloudflare APIトークン'}</label><input type="password" name="cloud_api_token" autocomplete="new-password" ${settings.cloud_connection_ready?'placeholder="•••••••• (set)"':'required'}></div><div class="form-actions"><button class="btn btn-gray btn-small">${t('btn_save')}</button> <span role="status">${settings.cloud_connection_ready?(lang==='en'?'Connection configured':'接続設定済み'):(lang==='en'?'Not configured':'未設定')}</span></div></form>
+                    <form method="post" class="grid-2col" data-ajax data-refresh="#cloud-connection, #publish-box, #cloud-update-panel"><input type="hidden" name="save_action" value="save_cloud_connection">${csrfField(csrf)}<div class="form-group"><label>${lang==='en'?'Cloudflare account ID':'CloudflareアカウントID'}</label><input type="text" name="cloud_account_id" value="${h(settings.cloud_account_id||'')}" required></div><div class="form-group"><label>${lang==='en'?'Worker name':'Worker名'}</label><input type="text" name="cloud_worker_name" value="${h(settings.cloud_worker_name||'')}" required></div><div class="form-group"><label>${lang==='en'?'Cloudflare API token':'Cloudflare APIトークン'}</label><input type="password" name="cloud_api_token" autocomplete="new-password" ${settings.cloud_connection_ready?'placeholder="•••••••• (set)"':'required'}></div><div class="form-actions"><button class="btn btn-gray btn-small">${t('btn_save')}</button> <span role="status">${settings.cloud_connection_ready?(lang==='en'?'Connection configured':'接続設定済み'):(lang==='en'?'Not configured':'未設定')}</span></div></form>
                     </div>
     </div></details></div></div>
     ${opts.accountsHtml||''}

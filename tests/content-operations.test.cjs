@@ -113,6 +113,6 @@ test('published conversion keeps the old file on the public site until the next 
   const r=await multipart(env,auth,{save_action:'convert_media_webp',file:'photo.png',source_file:'photo.png',new_filename:'photo.webp',source_etag:before.etag,image:new File([webp],'photo.webp',{type:'image/webp'})});
   assert.equal(r.data.success,true,r.data.message);assert.equal((await loadPage(env,'linked')).content_md,'photo.webp');
   const paths=JSON.parse(env.sqlite.prepare("SELECT value FROM settings WHERE key='static_publication'").get().value).paths;assert.ok(paths.includes('/media/photo.png')&&paths.includes('/media/photo.webp'));
-  const again=await uploadThroughAdmin(env,auth,'photo.png',image);assert.equal(again.success,false);assert.match(again.message,/公開中|still published/);
+  const again=await uploadThroughAdmin(env,auth,'photo.png',image);assert.equal(again.success,true,again.message);assert.equal(again.media.name,'photo_1.png','a name that is still published gets _1');
  }finally{cf.restore();}
 });

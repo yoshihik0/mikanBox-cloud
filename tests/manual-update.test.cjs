@@ -49,3 +49,22 @@ test('update links stay on GitHub and newer versions are visible in both languag
  }
  assert.doesNotMatch(renderSiteView({...base,lang:'en',updateRepository:'bad'}),/href="https:\/\/github.com/);
 });
+
+test('Cloud update previews escaped release notes and requires a configured trusted device',()=>{
+ const base={t:key=>key,csrf:'csrf',lang:'en',settings:{cloud_connection_ready:true},helpFile:'/public-help.html?language=en',
+  release:{status:'available',version:'99.0.0',outdated:true,notes:'Fix <img src=x onerror=alert(1)>'}};
+ const html=renderSiteView({...base,updateDeviceAllowed:true});
+ assert.match(html,/Release notes · v99\.0\.0/);
+ assert.match(html,/Fix &lt;img src=x onerror=alert\(1\)&gt;/);
+ assert.doesNotMatch(html,/Fix <img/);
+ assert.match(html,/data-version="99\.0\.0"/);
+ assert.match(html,/data-cloud-update-start>/);
+ assert.match(html,/value="cloud_update_step"/);
+ assert.match(html,/href="\/public-help\.html\?language=en#cloud-update-recovery"/);
+ const unconfigured=renderSiteView({...base,settings:{},updateDeviceAllowed:true});
+ assert.match(unconfigured,/Set a Cloudflare API token/);
+ assert.doesNotMatch(unconfigured,/data-cloud-update-start/);
+ const probation=renderSiteView({...base,updateDeviceAllowed:false});
+ assert.match(probation,/trusted device/);
+ assert.doesNotMatch(probation,/data-cloud-update-start/);
+});

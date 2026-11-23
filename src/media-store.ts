@@ -1,6 +1,7 @@
 import type {Env} from './types';
 import {mediaType,validMediaName,isCodeMedia,MEDIA_FILE_LIMIT,MEDIA_COUNT_LIMIT} from './media-policy';
 import {imageSize} from './image-size';
+import {isPublished} from './publication-state';
 /**
  * Media files live only on the public site; D1 keeps what each one is.
  * A file reaches the public site first (published from the browser, or by the server for MCP),
@@ -22,6 +23,19 @@ export async function inspectMedia(name:string,bytes:Uint8Array):Promise<MediaFi
 export async function getMedia(env:Env,key:string):Promise<MediaMeta|null>{
   if(!validMediaName(key))return null;
   return await env.DB.prepare('SELECT key,content_type,size,uploaded,etag,hash,width,height,source FROM media WHERE key=?').bind(key).first<MediaMeta>()||null;
+}
+/**
+ * A name for a new file that is neither recorded nor still published. As in the PHP editions, a taken name
+ * gets _1, _2, ... before the extension, so uploading the same name twice never fails.
+ */
+export async function freeMediaName(env:Env,name:string):Promise<string>{
+  const dot=name.lastIndexOf('.'),base=dot>0?name.slice(0,dot):name,ext=dot>0?name.slice(dot):'';
+  let candidate=name;
+  for(let n=1;await getMedia(env,candidate)||await isPublished(env,'/media/'+candidate);n++){
+    if(n>MEDIA_COUNT_LIMIT)throw new Error('Could not find a free filename.');
+    candidate=`${base}_${n}${ext}`;
+  }
+  return candidate;
 }
 /** The hash the last finished publication gave to a path, or null when it did not carry it. */
 export async function publishedHash(env:Env,path:string):Promise<string|null>{

@@ -1,30 +1,5 @@
 (() => {
   'use strict';
-  const ja=document.documentElement.lang==='ja';
-  const updateLink=document.getElementById('cloud-check-updates');
-  if(updateLink) updateLink.addEventListener('click',async event=>{
-    event.preventDefault();
-    if(updateLink.getAttribute('aria-busy')==='true')return;
-    updateLink.setAttribute('aria-busy','true');
-    try {
-      const response=await fetch(updateLink.href,{cache:'no-store'});
-      if(!response.ok)throw new Error('Update check failed');
-      const doc=new DOMParser().parseFromString(await response.text(),'text/html');
-      const replacement=doc.getElementById('cloud-version-row');
-      if(!replacement)throw new Error('Update check failed');
-      const current=document.getElementById('cloud-version-row');
-      current.querySelectorAll('span, a:not(#cloud-check-updates)').forEach(node=>node.remove());
-      for(const node of replacement.querySelectorAll('span, a:not(#cloud-check-updates)')) {
-        if(node.tagName==='SPAN')current.insertBefore(node,updateLink);
-        else current.appendChild(node);
-      }
-      // The answer is shown at the bottom right: the row often reads the same as before.
-      const fresh=replacement.querySelector('#cloud-check-updates');
-      if(fresh?.dataset.failed){updateLink.dataset.failed=fresh.dataset.failed;window.showToast?.(fresh.dataset.failed,true);}
-      else{delete updateLink.dataset.failed;window.showToast?.(updateLink.dataset.done||'');}
-    } catch { if(typeof window.showToast==='function')window.showToast(ja?'更新情報を確認できませんでした。':'Could not check for updates.',true); }
-    finally { updateLink.removeAttribute('aria-busy'); }
-  });
   // Unsaved changes (window.isDirty) and the confirmations are in cloud-editor.js and admin-ui.js.
   async function action(name,extra={}) {
     const form=new FormData();form.set('save_action',name);form.set('csrf_token',window.CSRF_TOKEN);form.set('ajax_request','1');
