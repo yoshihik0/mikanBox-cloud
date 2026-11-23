@@ -9,7 +9,15 @@ function environment() {
       sql,args:[],bind(...args){this.args=args.map(value=>value instanceof ArrayBuffer?new Uint8Array(value):value);return this;},
       async first(column){const row=sqlite.prepare(sql).get(...this.args);return column?(row?.[column]??null):(row??null);},
       async all(){return {success:true,results:sqlite.prepare(sql).all(...this.args)};},
-      async run(){const r=sqlite.prepare(sql).run(...this.args);return {success:true,results:[],meta:{changes:Number(r.changes),last_row_id:Number(r.lastInsertRowid)}};}
+      async run(){
+        const statement=sqlite.prepare(sql);
+        if(/\bRETURNING id\s*$/i.test(sql)){
+          const results=statement.all(...this.args);
+          return {success:true,results,meta:{changes:results.length}};
+        }
+        const r=statement.run(...this.args);
+        return {success:true,results:[],meta:{changes:Number(r.changes),last_row_id:Number(r.lastInsertRowid)}};
+      }
     };},
     async batch(statements){sqlite.exec('BEGIN');try{const results=[];for(const statement of statements)results.push(/^\s*select/i.test(statement.sql)?await statement.all():await statement.run());sqlite.exec('COMMIT');return results;}catch(e){sqlite.exec('ROLLBACK');throw e;}}
   };

@@ -249,19 +249,24 @@ export async function handleAdmin(request: Request, env: Env): Promise<Response>
           const conflict=(token:string)=>{
             const message=t(oldId?'page_id_conflict_rename':'page_id_conflict_message',id,oldId);
             if(!form.has('ajax_request')) throw new Error(message);
-            return json({success:false,message,page_id_conflict:{id,token,title:t('page_id_conflict_title'),overwrite:t('transfer_mode_overwrite'),change_id:t('page_id_conflict_change')}},409);
+            return json({success:false,message,page_id_conflict:{
+              id,token,title:t('page_id_conflict_title'),overwrite:t('transfer_mode_overwrite'),
+              change_id:t('page_id_conflict_change'),keep_backup:t('page_id_conflict_backup')
+            }},409);
           };
           const target=await getTarget();
           const token=target?await conflictToken(target.data):'';
           if(target&&val(form,'overwrite_page')!==token) return conflict(token);
+          let backupId: string | undefined;
           try {
-            await saveWithRevision(env,id,oldId,data,auth.user.username,val(form,'expected_revision'),target?.data);
+            backupId=await saveWithRevision(env,id,oldId,data,auth.user.username,val(form,'expected_revision'),target?.data,val(form,'backup_overwritten_page')==='1');
           } catch(error) {
             const changed=await getTarget();
             if(changed&&changed.data!==target?.data) return conflict(await conflictToken(changed.data));
             throw error;
           }
           editId=id;message=t('msg_page_saved',id);
+          if(backupId) message+=' '+t('msg_page_overwrite_backup',backupId);
           if(form.has('save_and_preview')) return redirect(`/preview/${id}`);
           break;
         }

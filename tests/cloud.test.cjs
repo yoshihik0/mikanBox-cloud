@@ -120,17 +120,26 @@ test('page ID collisions require approval of the current target and preserve rev
   assert.equal(conflict.response.status,409);
   assert.equal(conflict.data.success,false);
   assert.ok(conflict.data.page_id_conflict.token);
+  assert.ok(conflict.data.page_id_conflict.keep_backup);
   assert.equal((await loadPage(env,'first')).content_md,'two');assert.equal(env.sqlite.prepare('SELECT COUNT(*) n FROM post_revisions').get().n,1);
   await savePage(env,'occupied',page('pending','new target'));
-  const stale=await post(env,auth,{...rename,overwrite_page:conflict.data.page_id_conflict.token});
+  const stale=await post(env,auth,{...rename,overwrite_page:conflict.data.page_id_conflict.token,backup_overwritten_page:'1'});
   assert.equal(stale.response.status,409);
   assert.notEqual(stale.data.page_id_conflict.token,conflict.data.page_id_conflict.token);
   assert.equal((await loadPage(env,'occupied')).content_md,'new target');
-  const overwrite=await post(env,auth,{...rename,overwrite_page:stale.data.page_id_conflict.token});
+  assert.equal(await loadPage(env,'occupied-bk'),null);
+  await savePage(env,'occupied-bk/index',page('draft','directory alias'));
+  const overwrite=await post(env,auth,{...rename,overwrite_page:stale.data.page_id_conflict.token,backup_overwritten_page:'1'});
   assert.equal(overwrite.data.success,true);
   assert.equal(overwrite.data.editId,'occupied');
+  assert.match(overwrite.data.message,/occupied-bk-2/);
   assert.equal(await loadPage(env,'first'),null);
   assert.equal((await loadPage(env,'occupied')).content_md,'renamed content');
+  assert.equal((await loadPage(env,'occupied-bk')).content_md,'directory alias');
+  const backup=await loadPage(env,'occupied-bk-2');
+  assert.equal(backup.content_md,'new target');
+  assert.equal(backup.status,'draft');
+  assert.ok(backup.preview_token && backup.revision_tag);
   const revisions=env.sqlite.prepare('SELECT post_id,data FROM post_revisions ORDER BY id').all();
   assert.deepEqual(revisions.map(row=>[row.post_id,JSON.parse(row.data).content_md]),[
     ['occupied','one'],['occupied','new target'],['occupied','two']
@@ -138,8 +147,23 @@ test('page ID collisions require approval of the current target and preserve rev
   const create={...base,id:'occupied',content_md:'new page content'};
   const createConflict=await post(env,auth,create);
   assert.equal(createConflict.response.status,409);
-  assert.equal((await post(env,auth,{...create,overwrite_page:createConflict.data.page_id_conflict.token})).data.success,true);
+  assert.equal((await post(env,auth,{...create,overwrite_page:createConflict.data.page_id_conflict.token,backup_overwritten_page:'0'})).data.success,true);
   assert.equal((await loadPage(env,'occupied')).content_md,'new page content');
+  assert.equal(await loadPage(env,'occupied-bk-3'),null);
+});
+test('a failed draft backup rolls back the overwrite and its revisions',async()=>{
+  const env=environment(),auth=await login(env);
+  await savePage(env,'occupied',page('public_static','previous page'));
+  const form={save_action:'save_page',id:'occupied',title:'New',status:'draft',content_md:'replacement'};
+  const {data:conflict}=await post(env,auth,form);
+  env.sqlite.exec(`CREATE TRIGGER test_backup_failure BEFORE INSERT ON posts
+    WHEN NEW.id='occupied-bk' BEGIN SELECT RAISE(ABORT, 'backup failed'); END`);
+  const overwrite=await post(env,auth,{...form,overwrite_page:conflict.page_id_conflict.token,backup_overwritten_page:'1'});
+  assert.equal(overwrite.data.success,false);
+  assert.equal((await loadPage(env,'occupied')).content_md,'previous page');
+  assert.equal((await loadPage(env,'occupied')).status,'public_static');
+  assert.equal(await loadPage(env,'occupied-bk'),null);
+  assert.equal(env.sqlite.prepare('SELECT COUNT(*) n FROM post_revisions').get().n,0);
 });
 test('unsafe and reserved IDs are rejected without rewriting into another record',async()=>{
   const env=environment(),auth=await login(env);
