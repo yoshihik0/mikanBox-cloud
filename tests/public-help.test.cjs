@@ -10,7 +10,7 @@ test('public help has only four read-only tools and never exposes private data',
  await savePage(env,'help_en/index',{title:'Fake fallback',status:'public_dynamic',content_md:'## WRONG_DIRECTORY'});
  const rpc=async(name,args={})=>{const r=await worker.fetch(new Request('https://cloud.test/public-mcp',{method:'POST',body:JSON.stringify({jsonrpc:'2.0',id:1,method:name==='tools/list'?name:'tools/call',params:{name,arguments:args}})}),env);return r.json();};
  let r=await rpc('tools/list');assert.equal(r.result.tools.length,4);assert.ok(r.result.tools.every(t=>t.annotations.readOnlyHint));
- r=await rpc('search_help',{query:'画像',language:'ja'});assert.ok(JSON.parse(r.result.content[0].text).results.length);
+ r=await rpc('search_help',{query:'画像',language:'ja'});{const d=JSON.parse(r.result.content[0].text);assert.deepEqual(d.results,[]);assert.equal(d.help_url,'https://yoshihiko.com/mikanbox/help_ja.html?edition=cloud');assert.equal(d.official_public_mcp,'https://yoshihiko.com/mikanbox/mcp');}
  const data=await(await call(env,'/public-mcp?action=get_help_section&id=section-1')).text();assert.doesNotMatch(data,/PRIVATE_TEST_PAYLOAD_9d3b|private-help/);
  assert.notEqual((await call(env,'/public-help.html?language=en')).headers.get('content-type'),'text/html; charset=utf-8');
  r=await rpc('get_product_info',{language:'en'});assert.equal(JSON.parse(r.result.content[0].text).help_url,'https://yoshihiko.com/mikanbox/help_en.html?edition=cloud');
