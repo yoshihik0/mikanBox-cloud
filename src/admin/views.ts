@@ -1,13 +1,14 @@
 import { renderTransferSections, type TransferStats } from './data-section';
 // ==========================================
 // mikanBox Admin Views
-// SQLite版を参照したCloud専用テンプレート。未移植部分はdocs/cloud_ja.mdを参照。
+// SQLite版を参照したCloud専用テンプレート。
 // ==========================================
 
 import type { Settings, PageData, ComponentData } from '../types';
 import type { User } from '../accounts';
 import type { Revision } from '../revisions';
 import {CLOUD_VERSION} from '../version';
+import {officialHelpUrl} from '../public-help';
 import {mcpKeyList,MCP_KEY_NAME_MAX} from '../mcp';
 import {auditGroup,auditTargetText,auditUnusual,AUDIT_EVENTS} from '../audit';
 import {MEDIA_COUNT_LIMIT,D1_WARNING_BYTES} from '../media-policy';
@@ -108,7 +109,7 @@ function publishBox(csrf: string, t: (key: string, ...args: (string | number)[])
   // Publishing needs the Cloudflare API token from Site → Cloudflare publication settings; say so here, where the button is.
   const setup = cloudReady ? '' : `<p class="publish-setup" role="note">${t('cloud_publish_needs_token')} <a href="/admin?view=site#cloud-connection" data-open-cloud-connection>${t('cloud_publish_setup_link')}</a></p>`;
   // Without a public Worker of its own nothing is published (the server refuses); say so beside the button, always.
-  const worker = publicWorkerMissing ? `<p class="publish-setup" role="note" data-public-worker-missing>${t('cloud_publish_needs_public_worker')} <a href="/public-help.html?language=${ja ? 'ja' : 'en'}#public-worker" target="_blank" rel="noopener">${t('cloud_publish_public_worker_link')}</a></p>` : '';
+  const worker = publicWorkerMissing ? `<p class="publish-setup" role="note" data-public-worker-missing>${t('cloud_publish_needs_public_worker')} <a href="${officialHelpUrl(ja ? 'ja' : 'en')}#public-worker" target="_blank" rel="noopener">${t('cloud_publish_public_worker_link')}</a></p>` : '';
   const destination = publicUrl ? `<span class="publish-status">${t('build_status_destination')}: <a href="${h(publicUrl)}" target="_blank" rel="noopener noreferrer">${h(publicUrl)}</a></span>` : '';
   return `<form method="post" class="publish-box mt-10" id="publish-box">${csrfField(csrf)}<input type="hidden" name="save_action" value="build_ssg"><button class="btn btn-blue btn-small">${getIcon('cloud')} <span data-publish-label>${t('btn_ssg_build')}</span></button><span class="publish-status" data-publish-status role="status">${h(summary)}${when ? ` ${t('build_status_last')}: ${when}` : ''}</span>${destination}${worker}${setup}</form>`;
 }
@@ -242,7 +243,7 @@ ${opts.mediaEnabled?`<div id="drop-zone">${getIcon('cloud')} ${t('hint_drop_uplo
 
     <script>window.__MIKAN_UI = ${JSON.stringify({confirmTitle:t('btn_delete'),confirmOk:t('btn_delete_confirm'),cancel:t('btn_cancel'),saveFailed:t('err_save_failed'),done:t('msg_update_success'),networkError:t('err_network_error')}).replace(/</g,'\\u003c')};window.__CLOUD_EDITOR = ${JSON.stringify({editLabel:t('btn_edit'),closeLabel:t('btn_close'),editIcon:getIcon('edit'),loadFailed:t('err_editor_load_failed'),saving:t('msg_saving'),unsavedTitle:t('modal_unsaved_title'),unsavedText:t('visual_js_confirm_leave'),ok:t('btn_ok'),confirmDelete:t('hint_confirm_delete'),deleteTitle:t('btn_delete'),deleteOk:t('btn_delete_confirm'),saveFailed:t('err_save_failed'),done:t('msg_update_success'),networkError:t('err_network_error')}).replace(/</g,'\\u003c')};</script>
     <script src="/mikanbox/admin-ui.js?v=${h(CLOUD_VERSION)}"></script>
-    <script src="/mikanbox/ai-question.js?v=${h(CLOUD_VERSION)}" data-mcp-endpoint="/public-mcp" data-help-ja="/public-help.html?language=ja" data-help-en="/public-help.html?language=en" defer></script>
+    <script src="/mikanbox/ai-question.js?v=${h(CLOUD_VERSION)}" data-mcp-endpoint="/public-mcp" defer></script>
     <script>
     // The save marker is a one-time notification, not part of navigation state.
     const currentUrl = new URL(window.location.href);

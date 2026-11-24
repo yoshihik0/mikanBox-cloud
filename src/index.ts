@@ -29,7 +29,7 @@ async function route(request: Request, env: Env): Promise<Response> {
   const url=new URL(request.url),pathname=url.pathname;
   if(pathname.startsWith('/admin')||pathname.startsWith('/mcp')||pathname.startsWith('/mikanBox/'))await noteVersion(env,CLOUD_VERSION);   // no request: the record must not carry the address of whoever happened to come first
   if(['/mcp','/mikanBox/mcp','/mikanBox/mcp.php'].includes(pathname)){let actor='MCP';return withAudit(request,env,()=>handleMcp(request,env,name=>{if(name)actor='MCP ('+name+')';}),async()=>actor);}
-  if(['/public-mcp','/mikanBox/public-mcp.php','/public-help.html'].includes(pathname))return handlePublicHelp(request,env);
+  if(['/public-mcp','/mikanBox/public-mcp.php'].includes(pathname))return handlePublicHelp(request,env);
   if(['/admin','/admin/','/admin.php','/mikanBox/admin.php'].includes(pathname)) return withAudit(request,env,()=>handleAdmin(request,env),userOf(request,env));
   if(['/admin/visual','/admin/visual/'].includes(pathname)) return withAudit(request,env,()=>handleVisual(request,env),userOf(request,env));
   if(!['GET','HEAD'].includes(request.method)) return new Response('Method Not Allowed',{status:405,headers:{Allow:'GET, HEAD'}});

@@ -9,7 +9,7 @@
 このリポジトリは、Cloudflare WorkersとD1の上で動く **Cloudflare版**（🍊mikanBox Cloud）です。管理画面と公開サイトを別々のWorkerで運用し、公開サイトは静的ファイルだけで配信します。
 
 > [!NOTE]
-> Cloudflare版は開発中です。機能と対応状況は[Cloud版マニュアル](docs/cloud_ja.md)を確認してください。
+> Cloudflare版は開発中です。機能と対応状況は[操作マニュアル](https://yoshihiko.com/mikanbox/help_ja.html?edition=cloud)を確認してください。
 
 ---
 
@@ -80,7 +80,7 @@ AIにインストールを依頼する方法と、自分でコマンドを実行
 https://github.com/yoshihik0/mikanBox-cloud からCloudflareにインストールしてください
 ```
 
-AIがファイル取得・設定・配置を進め、利用者はCloudflareの認可、アドレスの選択、普段のブラウザでの初回端末登録を行います。画面を見ながら進められる[画像付きインストールガイド](public/mikanbox/guides/install-ja.html)もあります。
+AIがファイル取得・設定・配置を進め、利用者はCloudflareの認可、アドレスの選択、普段のブラウザでの初回端末登録を行います。手順は[操作マニュアル](https://yoshihiko.com/mikanbox/help_ja.html?edition=cloud#cloud-install)にあります。
 
 **自分で行う場合**
 
@@ -89,9 +89,9 @@ AIがファイル取得・設定・配置を進め、利用者はCloudflareの�
 3. D1の作成、設定ファイルの用意、デプロイを実行
 4. 公開サイトのアドレスを開き、初回の端末を登録
 
-2以降の詳しいコマンドと設定は、[新規インストールと公開](docs/cloud_ja.md#新規インストールと公開)を参照してください。設定ファイルと秘密情報はGitHubに公開しないでください。
+2以降の詳しいコマンドと設定は、[コマンドで自分で設置する](https://yoshihiko.com/mikanbox/help_ja.html?edition=cloud#cloud-install-commands)を参照してください。設定ファイルと秘密情報はGitHubに公開しないでください。
 
-パスワードはありません。管理画面に入れるのは、登録した端末（ブラウザ）だけです。端末の追加や、すべての端末を失ったときの復旧は、[マニュアル](docs/cloud_ja.md#端末認証)を参照してください。
+パスワードはありません。管理画面に入れるのは、登録した端末（ブラウザ）だけです。端末の追加や、すべての端末を失ったときの復旧は、[操作マニュアル](https://yoshihiko.com/mikanbox/help_ja.html?edition=cloud#cloud-auth)を参照してください。
 
 ---
 
@@ -99,8 +99,7 @@ AIがファイル取得・設定・配置を進め、利用者はCloudflareの�
 
 0.21.0以降は、管理画面の「サイト」で更新先と変更内容を確認し、「更新する」を押すとアップデートできます。0.21.0より前の版からの初回移行や、対応外の構成では、ダウンロードまたはGitHub Actionsで更新します。どの方法も既存のD1とWorkerを使います。
 
-- [アップデート手順](docs/cloud_ja.md#manual-update)
-- [画像付きアップデートガイド](public/mikanbox/guides/update-ja.html)
+- [アップデート手順](https://yoshihiko.com/mikanbox/help_ja.html?edition=cloud#site-version-cloud)
 
 ---
 
@@ -138,7 +137,6 @@ PHP版と同じく、AIが生成したHTMLページをそのまま貼り付け�
 
 - 管理用MCPは `/mcp`（Cloud専用のAPIキーが必要）。ページ・コンポーネント・画像の読み書きができます。
 - 公開ヘルプMCPは `/public-mcp`（キー不要・読み取り専用）。
-- 人向けのCloudヘルプは `/public-help.html?language=ja` です。
 
 ---
 
@@ -151,12 +149,11 @@ Cloudflare版は、PHP版とUIや操作をそろえることを目標に開発�
 - 外部取得の `EXT_MD` と、動画・音声のアップロードは未対応です。
 - SQLiteファイルそのものの入出力はありません。PHP版のデータはJSONのZIPにして取り込めます。flat版はデータがもともとJSONファイルなので書き出しは不要で、データフォルダの `posts/`・`components/` をそのままZIPにできます。SQLite版は管理画面からJSON（ZIP）で書き出せます。WordPress XML・CSVの取込もあります。バックアップ・復元はCloud専用のJSONで行います（ZIP/XMLの取込では画像・アカウント・サイト設定は取り込みません）。
 
-詳しくは[Cloud版マニュアル](docs/cloud_ja.md)を参照してください。
+詳しくは[操作マニュアル](https://yoshihiko.com/mikanbox/help_ja.html?edition=cloud)を参照してください。
 
 ---
 
 ## ドキュメント
 
-- [Cloud版マニュアル（日本語）](docs/cloud_ja.md)
-- [Cloud manual (English)](docs/cloud_en.md)
-- [操作マニュアル（共通）](https://yoshihiko.com/mikanbox/help_ja.html)
+- [操作マニュアル（日本語）](https://yoshihiko.com/mikanbox/help_ja.html?edition=cloud)
+- [Operation manual (English)](https://yoshihiko.com/mikanbox/help_en.html?edition=cloud)

@@ -1,9 +1,15 @@
 import {copyFile,readFile,writeFile} from 'node:fs/promises';
 import {existsSync} from 'node:fs';
-const documents={};
-for(const lang of ['ja','en'])documents[lang]=await readFile(new URL(`../docs/cloud_${lang}.md`,import.meta.url),'utf8');
-await writeFile(new URL('../src/cloud-help-data.json',import.meta.url),JSON.stringify(documents,null,2)+'\n');
-console.log('Bundled the two Cloud-specific manuals.');
+// The public help MCP falls back to a bundled copy of the one public manual: the workspace-root
+// help_ja.md / help_en.md, which are published as the official site's help pages. The bundle in
+// src/ is committed, so a checkout without the workspace (CI, the update workflow) uses it as it is.
+const manual=lang=>new URL(`../../help_${lang}.md`,import.meta.url);
+if(['ja','en'].every(lang=>existsSync(manual(lang)))){
+  const documents={};
+  for(const lang of ['ja','en'])documents[lang]=await readFile(manual(lang),'utf8');
+  await writeFile(new URL('../src/cloud-help-data.json',import.meta.url),JSON.stringify(documents,null,2)+'\n');
+  console.log('Bundled the official manual for the public help MCP.');
+}else console.log('Workspace manuals not found: using the committed src/cloud-help-data.json.');
 // The shared admin behaviour (toast, in-screen confirmation, no-reload actions, editor motion) is
 // canonical in shared/admin-ui.js. It is copied here when the workspace has shared/ (development).
 // The copy in public/mikanbox/ is committed, so a checkout without shared/ (CI, the update

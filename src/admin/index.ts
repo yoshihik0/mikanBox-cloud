@@ -28,12 +28,13 @@ import {assertNotPublished,checkPublicationLock,isPublished} from '../publicatio
 import {publicationManifest,readPublicationEntry} from '../static-publication';
 import { MEDIA_FILE_LIMIT,imageType,validMediaName,mediaType,isCodeMedia } from '../media-policy';
 import { getSystemLanguage, createTranslator } from '../i18n';
+import { officialHelpUrl } from '../public-help';
 import { stashPreview, loadStashedForm } from '../preview-stash';
 import { renderLoginPage, renderAdminShell, renderPagesView, renderPageEditor, renderDesignView, renderDesignEditor, renderMediaView, renderSiteView, renderDataSection, pageListQuery, PAGE_FORMAT_FILTERS } from './views';
 const html = (body: string, status = 200) => new Response(body, {status, headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store'}});
 const json = (body: unknown, status = 200) => Response.json(body,{status,headers:{'Cache-Control':'no-store'}});
 const val = (f: FormData, key: string) => String(f.get(key) || '');
-const help = (lang: string) => `/public-help.html?language=${lang}`;
+const help = officialHelpUrl;
 /** Page fields from the editor form, including the output format fields (2.17.0). */
 async function editorPageWithFormat(env:Env,form:FormData,current:PageData|null):Promise<PageData> {
   const input:Record<string,unknown>={};

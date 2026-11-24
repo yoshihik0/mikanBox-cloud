@@ -47,7 +47,7 @@ test('the admin screen refuses publication and says where to set the public Work
  const {response,data}=await post(env,auth,{save_action:'publication_begin',rebuild:'1',excluded:'[]',media_only:''});
  assert.equal(data.success,false);assert.match(data.message,/CLOUDFLARE_PUBLIC_WORKER_NAME/);assert.ok(response.status>=400);
  const page=await (await call(env,'/admin',undefined,auth.cookie)).text();
- assert.match(page,/data-public-worker-missing>[^<]*<a href="\/public-help\.html\?language=(ja|en)#public-worker"/);
+ assert.match(page,/data-public-worker-missing>[^<]*<a href="https:\/\/yoshihiko\.com\/mikanbox\/help_(ja|en)\.html\?edition=cloud#public-worker"/);
  env.CLOUDFLARE_PUBLIC_WORKER_NAME='public-site';env.PUBLIC_SITE_URL='https://public.example.test';
  assert.doesNotMatch(await (await call(env,'/admin',undefined,auth.cookie)).text(),/data-public-worker-missing/);
  delete env.CLOUDFLARE_PUBLIC_WORKER_NAME;env.SITE_ENVIRONMENT='local';

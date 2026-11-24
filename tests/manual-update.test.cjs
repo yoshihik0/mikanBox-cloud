@@ -36,7 +36,7 @@ test('the updater runs only the release commit the workflow resolved',async()=>{
  assert.match(workflow,/MIKANBOX_UPDATE_COMMIT: \$\{\{ steps\.release\.outputs\.sha \}\}/);
 });
 test('update links stay on GitHub and newer versions are visible in both languages',()=>{
- const base={t:x=>x,csrf:'csrf',settings:{},helpFile:'/public-help.html',users:[],username:'admin'};
+ const base={t:x=>x,csrf:'csrf',settings:{},helpFile:'https://yoshihiko.com/mikanbox/help_ja.html?edition=cloud',users:[],username:'admin'};
  for(const lang of ['ja','en']) {
   const html=renderSiteView({...base,lang,release:{status:'available',version:'99.0.0',outdated:true}});
   assert.doesNotMatch(html,/Run workflow|save_cloud_update_repository/);
@@ -46,7 +46,7 @@ test('update links stay on GitHub and newer versions are visible in both languag
 });
 
 test('Cloud update previews escaped release notes and requires a configured trusted device',()=>{
- const base={t:key=>key,csrf:'csrf',lang:'en',settings:{cloud_connection_ready:true},helpFile:'/public-help.html?language=en',
+ const base={t:key=>key,csrf:'csrf',lang:'en',settings:{cloud_connection_ready:true},helpFile:'https://yoshihiko.com/mikanbox/help_en.html?edition=cloud',
   release:{status:'available',version:'99.0.0',outdated:true,notes:'Fix <img src=x onerror=alert(1)>'}};
  const html=renderSiteView({...base,updateDeviceAllowed:true});
  assert.match(html,/Release notes · v99\.0\.0/);
@@ -55,7 +55,7 @@ test('Cloud update previews escaped release notes and requires a configured trus
  assert.match(html,/data-version="99\.0\.0"/);
  assert.match(html,/data-cloud-update-start>/);
  assert.match(html,/value="cloud_update_step"/);
- assert.match(html,/href="\/public-help\.html\?language=en#cloud-update-recovery"/);
+ assert.match(html,/href="https:\/\/yoshihiko\.com\/mikanbox\/help_en\.html\?edition=cloud#cloud-update-recovery"/);
  const unconfigured=renderSiteView({...base,settings:{},updateDeviceAllowed:true});
  assert.match(unconfigured,/Set a Cloudflare API token/);
  assert.doesNotMatch(unconfigured,/data-cloud-update-start/);

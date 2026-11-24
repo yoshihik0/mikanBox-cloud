@@ -9,7 +9,7 @@
 This repository is the **Cloudflare edition** (🍊mikanBox Cloud), which runs on Cloudflare Workers and D1. The admin site and the public site run as separate Workers, and the public site is delivered as static files only.
 
 > [!NOTE]
-> The Cloudflare edition is under development. See the [Cloud manual](docs/cloud_en.md) for current features and support status.
+> The Cloudflare edition is under development. See the [operation manual](https://yoshihiko.com/mikanbox/help_en.html?edition=cloud) for current features and support status.
 
 ---
 
@@ -89,9 +89,9 @@ The AI fetches the files, configures, and deploys. You authorize Cloudflare, cho
 3. Create the D1 database, prepare the configuration files, and deploy
 4. Open the public site's address and register the first device
 
-For the detailed commands and settings from step 2 onward, see [New installation and publication](docs/cloud_en.md#new-installation-and-publication). Never publish configuration files or secrets to GitHub.
+For the detailed commands and settings from step 2 onward, see [Install with commands](https://yoshihiko.com/mikanbox/help_en.html?edition=cloud#cloud-install-commands). Never publish configuration files or secrets to GitHub.
 
-There are no passwords. Only registered devices (browsers) can enter the admin screen. For adding devices and recovering after losing every device, see the [manual](docs/cloud_en.md#device-authentication).
+There are no passwords. Only registered devices (browsers) can enter the admin screen. For adding devices and recovering after losing every device, see the [operation manual](https://yoshihiko.com/mikanbox/help_en.html?edition=cloud#cloud-auth).
 
 ---
 
@@ -99,7 +99,7 @@ There are no passwords. Only registered devices (browsers) can enter the admin s
 
 From 0.21.0, review the new version and release notes on the Site screen and select **Update**. To upgrade from a version earlier than 0.21.0 or update an installation with unsupported bindings, download the release or use GitHub Actions. All methods use the existing D1 database and Workers.
 
-- [Update procedure](docs/cloud_en.md#manual-update)
+- [Update procedure](https://yoshihiko.com/mikanbox/help_en.html?edition=cloud#site-version-cloud)
 
 ---
 
@@ -137,7 +137,6 @@ As in the PHP editions, you can paste AI-generated HTML pages as they are and pu
 
 - The admin MCP is at `/mcp` (requires a Cloud-specific API key). It reads and writes pages, components, and images.
 - The public help MCP is at `/public-mcp` (no key needed, read-only).
-- Human-readable Cloud help is at `/public-help.html?language=en`.
 
 ---
 
@@ -150,12 +149,11 @@ The Cloudflare edition is developed to match the PHP editions' UI and operations
 - The external-fetch `EXT_MD` tag and video/audio uploads on D1 are not supported.
 - SQLite files themselves cannot be imported or exported. Data from the PHP editions can be imported as a ZIP of JSON files. The flat edition already stores its data as JSON, so no export is needed: zip the `posts/` and `components/` folders from its data folder as they are. The SQLite edition can export JSON (ZIP) from its admin screen. WordPress XML and CSV imports are also available. Backup and restore use the Cloud-specific JSON (ZIP/XML imports do not bring in images, accounts, or site settings).
 
-See the [Cloud manual](docs/cloud_en.md) for details.
+See the [operation manual](https://yoshihiko.com/mikanbox/help_en.html?edition=cloud) for details.
 
 ---
 
 ## Documentation
 
-- [Cloud manual (English)](docs/cloud_en.md)
-- [Cloud マニュアル（日本語）](docs/cloud_ja.md)
-- [Operation manual (shared)](https://yoshihiko.com/mikanbox/help_en.html)
+- [Operation manual (English)](https://yoshihiko.com/mikanbox/help_en.html?edition=cloud)
+- [操作マニュアル（日本語）](https://yoshihiko.com/mikanbox/help_ja.html?edition=cloud)

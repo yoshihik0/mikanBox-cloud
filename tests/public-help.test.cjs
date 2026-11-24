@@ -12,7 +12,8 @@ test('public help has only four read-only tools and never exposes private data',
  let r=await rpc('tools/list');assert.equal(r.result.tools.length,4);assert.ok(r.result.tools.every(t=>t.annotations.readOnlyHint));
  r=await rpc('search_help',{query:'画像',language:'ja'});assert.ok(JSON.parse(r.result.content[0].text).results.length);
  const data=await(await call(env,'/public-mcp?action=get_help_section&id=section-1')).text();assert.doesNotMatch(data,/PRIVATE_TEST_PAYLOAD_9d3b|private-help/);
- const help=await(await call(env,'/public-help.html?language=en')).text();assert.doesNotMatch(help,/WRONG_DIRECTORY|PRIVATE_TEST_PAYLOAD_9d3b/);
+ assert.notEqual((await call(env,'/public-help.html?language=en')).headers.get('content-type'),'text/html; charset=utf-8');
+ r=await rpc('get_product_info',{language:'en'});assert.equal(JSON.parse(r.result.content[0].text).help_url,'https://yoshihiko.com/mikanbox/help_en.html?edition=cloud');
  r=await rpc('get_settings');assert.equal(r.result.isError,true);
  assert.equal((await call(env,'/mcp')).status,401);
  const cross=await worker.fetch(new Request('https://cloud.test/public-mcp?action=get_product_info',{headers:{Origin:'https://evil.test'}}),env);assert.equal(cross.status,403);
@@ -99,8 +100,3 @@ test('navigation, search, feeds and static builds stay within Free D1 query limi
  queries=0;await require('../.test-build/src/ssg.js').buildStatic(env,new Request('https://cloud.test/'));assert.ok(queries<10);assert.equal(env.sqlite.prepare('SELECT COUNT(*) n FROM static_pages').get().n,env.sqlite.prepare("SELECT COUNT(*) n FROM posts WHERE status LIKE 'public%'").get().n); // the search page is public too
 });
 
-test('public help uses a fresh nonce only for the bundled script',async()=>{
- const {environment,call}=require('./fixtures.cjs');const env=environment();const a=await call(env,'/public-help.html'),b=await call(env,'/public-help.html');const csp=a.headers.get('content-security-policy'),csp2=b.headers.get('content-security-policy');
- const nonce=csp.match(/script-src 'nonce-([^']+)'/)[1];assert.notEqual(csp,csp2);assert.match(await a.text(),new RegExp('<script nonce="'+nonce+'" src="/mikanbox/ai-question.js" data-webmcp="off"'));assert.doesNotMatch(csp,/script-src 'self'/);
- assert.match(csp,/form-action 'none'/);assert.match(csp,/frame-src 'none'/);assert.match(csp,/object-src 'none'/);
-});
