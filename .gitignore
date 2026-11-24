@@ -1,26 +1,15 @@
 node_modules/
-.npm-cache/
 .wrangler/
 .build/
+.build-release/
+.build-update/
 .test-build/
 .dev.vars*
 .env*
-.baseline/
-artifacts/
 *.sqlite*
 .DS_Store
 
-.publication/
-.backups/
-.build-production/
-.build-release/
-
-.build-split/
-
 # Installation-specific Cloudflare targets
 wrangler.production.json
-wrangler.split.json
 wrangler.public.json
-
 wrangler.update.json
-.build-update/
