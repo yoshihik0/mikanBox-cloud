@@ -1,10 +1,7 @@
 # Cloudflare edition development
 
-Follow the workspace root `AGENTS.md`, including its single-owner workflow and
-release order. Deploy and verify the local Cloud release candidate on the
-existing Cloudflare installation before pushing to GitHub. Publish the verified
-candidate and update public documentation in the same task. Review and preserve
-pending project work, and include all related completed changes in the release.
+When working in the mikanBox workspace, read and follow the shared project
+instructions and release order in `../AGENTS.md`.
 
 - Develop Cloud alongside both PHP editions. Keep shared UI, wording, and
   interactions aligned, and update all affected editions in the same task.
