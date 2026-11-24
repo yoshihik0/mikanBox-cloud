@@ -39,9 +39,9 @@ There are no passwords. The Devices and users section is normally closed, and ch
 
 ### Standard content
 
-Initial setup imports the SQLite edition's standard content in the selected language: eight pages and eleven components for each of Japanese and English, including home, 404, search, examples, layouts, headers, footers, cards, and AI instruction samples. The read-only source is `../shared/import/`. Run `npm run sync:defaults` inside Cloud to refresh its copy without modifying either PHP edition.
+Initial setup imports the SQLite edition's standard content in the selected language: eight pages and eleven components for each of Japanese and English, including home, 404, search, examples, layouts, headers, footers, cards, and AI instruction samples.
 
-Existing pages and components are preserved. On this review deployment, the temporary homepage is replaced only if it exactly matches the unedited page originally created during deployment. Settings, accounts, secrets, and the previous Cloud database are not part of this import.
+Existing pages and components are preserved. The temporary homepage is replaced only if it matches the original placeholder. Settings, accounts, secrets, and the previous Cloud database are not part of this import.
 
 The standard search form's `/index.php?page=search&q=...` and `/search?q=...` work. Results contain published pages only and exclude drafts, pending pages, and DB pages. AI instruction component IDs such as `DESIGN_sample.md` and `DESIGN.md` are supported. `{{AI_QUESTION}}` and `{{AI_QUESTION:section-id}}` are supported. External `EXT_MD` fetching remains unsupported. Sample images are not included; upload your images from the media screen.
 
@@ -263,7 +263,7 @@ Check the Cloud site's identity with `get_site_info` before writing. Its `versio
 
 The management Worker serves the anonymous, read-only `/public-mcp` endpoint with four tools: `search_help`, `get_help_section`, `get_product_info`, and `get_agent_instructions`. `/mcp` remains the authenticated administration endpoint. `/mikanBox/public-mcp.php` aliases the public endpoint.
 
-Only the exact published `help_ja`/`help_en` pages are read. If unavailable, the bundled Cloud-specific manual is used. Draft, pending, DB, AI instructions, other pages and administrator data are excluded. After changing the Cloud manuals, run `node scripts/sync-cloud-help.mjs`; check/test/build also run it automatically. Read the manual at `/public-help.html?language=en` or `ja` on the management Worker.
+Only the exact published `help_ja`/`help_en` pages are read. If unavailable, the bundled Cloud-specific manual is used. Draft, pending, DB, AI instructions, other pages and administrator data are excluded. Read the manual at `/public-help.html?language=en` or `ja` on the management Worker.
 
 Compatible browsers can access the four help tools from the management screen. On the static public site, WebMCP can register the tools, but calls fail because the public site serves static files only. Registration depends on support for the [Chrome WebMCP API](https://developer.chrome.com/docs/ai/webmcp/imperative-api).
 
@@ -348,19 +348,19 @@ Dates and times in the admin screen are shown in the viewer's own time zone (Jap
 
 The basics of operation, the motion of opening and closing editors, previews and MCP follow PHP 2.19.0. Updating requires D1 migration `0018` (the table holding previews for a short time).
 
-- **Operation basics.** The browser's `alert`, `confirm` and `prompt` are gone from the admin screen (a test fails if one returns). Results go to the toast at the bottom right and confirmations are asked in the screen. This covers the copy success and failure messages, the missing CSV file, adding a category (an input field), deleting media, and the confirmations before restoring a backup or D1.
+- **Operation basics.** The browser's `alert`, `confirm` and `prompt` are gone from the admin screen. Results go to the toast at the bottom right and confirmations are asked in the screen. This covers the copy success and failure messages, the missing CSV file, adding a category (an input field), deleting media, and the confirmations before restoring a backup or D1.
 - **Actions without a reload.** Saving and deleting pages and components (a delete asks in the screen, then closes the editor and refreshes the list), saving the memo, site settings and update source, the actions under Devices and users (issuing and cancelling codes, stopping a device, the expiry period, the display name, deleting a user), publishing (afterwards only the list and the publish box are refreshed), and choosing or adding a category all run in the current screen. A new page or component becomes the editor of an existing one after its first save, without moving the screen (Delete and the revision list appear).
 - **Opening and closing editors.** Page and design editors grow and shrink in. Opening scrolls to the top of the editor; closing refreshes the list and returns to the row that was edited. Filters, search and the list page are kept, unsaved changes are asked about in the screen, and Back/Forward work.
 - **Where the whole screen is still reloaded (exceptions, with reasons).** Changing the language (every label changes); restoring a backup (the whole site and the accounts are replaced); switching media storage and cancelling its migration (the storage screen's premise changes); restoring D1 to a time (the whole database changes); stopping your own device (you are signed out); saving the connection settings and downloading a backup or SQL (the publish and backup sections change, or a file is saved).
 - **Preview.** It shows the content being edited (see Preview above).
 - **MCP.** Added `preview_page` (read-only). Added `version` to `get_site_info`, the connection guidance (read the tool list again when the version changes) and the built-in document `mikanbox-output-formats` at the end of `get_ai_context`. The AI instruction sample has one more line about output formats.
-- **Other.** `/admin.php` is the same screen as `/admin` (the shared preview script uses that address). The shared `admin-ui.js` is copied from `shared/admin-ui.js` on every `npm run check`, `npm test` and `npm run build`.
+- **Other.** `/admin.php` is the same screen as `/admin`.
 
 ### Changes in 0.9.1
 
-Updating to 0.9.0 failed in the GitHub update workflow: the shared `admin-ui.js` was copied from a `shared/` folder outside the repository, which does not exist there. Where `shared/` is absent (CI and the update workflow) the committed `public/mikanbox/admin-ui.js` is now used as it is; a development workspace with `shared/` beside it still copies it.
+Fixed a failure when updating to 0.9.0 with GitHub Actions.
 
-The operations rewritten in 0.9.0 were each pressed in a development environment, and two problems were fixed: changing the language did not switch the screen (the language select is in a different form than the one that triggered the reload), and issuing a device code did not show the code (the form was replaced before the code could be put in).
+Fixed two issues where the screen kept the previous language after a change and newly issued device codes failed to appear.
 
 ### Changes in 0.9.2
 
@@ -395,7 +395,7 @@ One arrangement only, on the way to a supported release.
 - **Media is stored in D1 only.** Storing media in R2 and the migration from D1 to R2 were removed, so the site keeps working without a payment method registered with Cloudflare. Media may total 400 MB; near the limit a notice appears on the media screen and under Site → Storage usage (formerly "Media storage").
 - **A site that keeps images in R2 cannot be updated to this version.** The update stops at the D1 change and no data is altered. Stay on 0.11.1.
 - **History keeps the newest 10 entries per page** (as in the SQLite edition). Before, there was no limit and the screen listed the last 50. The update removes entries older than the tenth of each page; save a JSON backup first if you want to keep them.
-- **Only the separated arrangement remains.** The management Worker returns the admin screen, MCP and previews whether or not a public Worker is set. The publication to a single Worker kept for development (`SITE_ENVIRONMENT=local`) and the old `npm run publish:static` command were removed. Without a public Worker, as before, a notice under the build button says where to set it and nothing is deployed.
+- **Only the separated arrangement remains.** The management Worker returns the admin screen, MCP and previews whether or not a public Worker is set. The old `npm run publish:static` command was removed. Without a public Worker, as before, a notice under the build button says where to set it and nothing is deployed.
 - The only script sent to the public site is `ai-question.js`, which public pages load (admin scripts are not sent; this was already so in the separated arrangement).
 
 ### Changes in 0.12.1
