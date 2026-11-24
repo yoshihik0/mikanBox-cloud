@@ -1,9 +1,10 @@
 # Cloudflare edition development
 
-Follow the workspace root AGENTS.md, including its single-owner, no-branch
-workflow and prompt GitHub publication. Existing pending changes are project
-work: review, preserve, and include related completed changes rather than
-publishing a partial snapshot.
+Follow the workspace root `AGENTS.md`, including its single-owner workflow and
+release order. Deploy and verify the local Cloud release candidate on the
+existing Cloudflare installation before pushing to GitHub. Publish the verified
+candidate and update public documentation in the same task. Review and preserve
+pending project work, and include all related completed changes in the release.
 
 - Develop Cloud alongside both PHP editions. Keep shared UI, wording, and
   interactions aligned, and update all affected editions in the same task.
