@@ -23,7 +23,7 @@ export interface PublicationManifest {entries:PublicationItem[];count:number;tot
 export const PUBLICATION_PUBLIC_ASSETS=['/mikanbox/ai-question.js'] as const;
 const assetTypes=new Map<string,string>(PUBLICATION_PUBLIC_ASSETS.map(path=>[path,path.endsWith('.css')?'text/css; charset=utf-8':path.endsWith('.json')?'application/json; charset=utf-8':'text/javascript; charset=utf-8']));
 const imageTypes:Record<string,string>={jpg:'image/jpeg',jpeg:'image/jpeg',png:'image/png',gif:'image/gif',webp:'image/webp',svg:'image/svg+xml',...CODE_MEDIA_TYPES};
-const blockedRoots=new Set(['preview','admin','api','mcp','public-mcp','media','mikanbox','component-js','sitemap.xml','rss.xml','podcast.xml']);
+const blockedRoots=new Set(['preview','admin','api','mcp','media','mikanbox','component-js','sitemap.xml','rss.xml','podcast.xml']);
 const encode=new TextEncoder();
 // Everything on the public site may be read by the admin screen (another origin) to export the site and its media.
 const STATIC_HEADERS=`/*

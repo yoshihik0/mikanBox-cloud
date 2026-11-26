@@ -1,4 +1,4 @@
-const reserved = new Set(['mikanbox', 'media', 'api', 'admin', 'mcp', 'public-mcp', 'component-js', 'sitemap.xml', 'rss.xml', 'podcast.xml']);
+const reserved = new Set(['mikanbox', 'media', 'api', 'admin', 'mcp', 'component-js', 'sitemap.xml', 'rss.xml', 'podcast.xml']);
 export function validId(id: string, component = false): boolean {
   if (!id || id.length > 200 || id.includes('..')) return false;
   return component ? /^[A-Za-z0-9_-]+(?:\.md)?$/.test(id) : /^[A-Za-z0-9_-]+(?:\/[A-Za-z0-9_-]+)*$/.test(id);

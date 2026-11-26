@@ -28,7 +28,7 @@ import {assertNotPublished,checkPublicationLock,isPublished} from '../publicatio
 import {publicationManifest,readPublicationEntry} from '../static-publication';
 import { MEDIA_FILE_LIMIT,imageType,validMediaName,mediaType,isCodeMedia } from '../media-policy';
 import { getSystemLanguage, createTranslator } from '../i18n';
-import { officialHelpUrl } from '../public-help';
+import { officialHelpUrl } from '../help-links';
 import { stashPreview, loadStashedForm } from '../preview-stash';
 import { renderLoginPage, renderAdminShell, renderPagesView, renderPageEditor, renderDesignView, renderDesignEditor, renderMediaView, renderSiteView, renderDataSection, pageListQuery, PAGE_FORMAT_FILTERS } from './views';
 const html = (body: string, status = 200) => new Response(body, {status, headers:{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store'}});

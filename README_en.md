@@ -136,7 +136,6 @@ The upload options "Limit long edge to" and "Convert to WebP" store images small
 As in the PHP editions, you can paste AI-generated HTML pages as they are and publish them, and manage instructions to AI (such as DESIGN.md) as components.
 
 - The admin MCP is at `/mcp` (requires a Cloud-specific API key). It reads and writes pages, components, and images.
-- The public help MCP is at `/public-mcp` (no key needed, read-only).
 
 ---
 

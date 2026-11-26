@@ -8,7 +8,7 @@ import type { Settings, PageData, ComponentData } from '../types';
 import type { User } from '../accounts';
 import type { Revision } from '../revisions';
 import {CLOUD_VERSION} from '../version';
-import {officialHelpUrl} from '../public-help';
+import {officialHelpUrl} from '../help-links';
 import {mcpKeyList,MCP_KEY_NAME_MAX} from '../mcp';
 import {auditGroup,auditTargetText,auditUnusual,AUDIT_EVENTS} from '../audit';
 import {MEDIA_COUNT_LIMIT,D1_WARNING_BYTES} from '../media-policy';
@@ -243,7 +243,7 @@ ${opts.mediaEnabled?`<div id="drop-zone">${getIcon('cloud')} ${t('hint_drop_uplo
 
     <script>window.__MIKAN_UI = ${JSON.stringify({confirmTitle:t('btn_delete'),confirmOk:t('btn_delete_confirm'),cancel:t('btn_cancel'),saveFailed:t('err_save_failed'),done:t('msg_update_success'),networkError:t('err_network_error')}).replace(/</g,'\\u003c')};window.__CLOUD_EDITOR = ${JSON.stringify({editLabel:t('btn_edit'),closeLabel:t('btn_close'),editIcon:getIcon('edit'),loadFailed:t('err_editor_load_failed'),saving:t('msg_saving'),unsavedTitle:t('modal_unsaved_title'),unsavedText:t('visual_js_confirm_leave'),ok:t('btn_ok'),confirmDelete:t('hint_confirm_delete'),deleteTitle:t('btn_delete'),deleteOk:t('btn_delete_confirm'),saveFailed:t('err_save_failed'),done:t('msg_update_success'),networkError:t('err_network_error')}).replace(/</g,'\\u003c')};</script>
     <script src="/mikanbox/admin-ui.js?v=${h(CLOUD_VERSION)}"></script>
-    <script src="/mikanbox/ai-question.js?v=${h(CLOUD_VERSION)}" data-mcp-endpoint="/public-mcp" defer></script>
+    <script src="/mikanbox/ai-question.js?v=${h(CLOUD_VERSION)}" defer></script>
     <script>
     // The save marker is a one-time notification, not part of navigation state.
     const currentUrl = new URL(window.location.href);

@@ -381,7 +381,7 @@ export class MikanBoxRenderer {
     else if (jsTags) html=html.includes('</body>')?html.replace('</body>',jsTags+'</body>'):html+jsTags;
     if (hasAiQuestion) {
       const pageAttribute = publicPageUrl ? ` data-page-url="${escapeHtml(publicPageUrl)}"` : '';
-      const aiScript = `<script src="/mikanbox/ai-question.js" data-webmcp="off"${pageAttribute} defer></script>`;
+      const aiScript = `<script src="/mikanbox/ai-question.js"${pageAttribute} defer></script>`;
       html = html.includes('</body>') ? html.replace('</body>', () => aiScript + '</body>') : html + aiScript;
     }
     html = html.replace(/\x04COMMENT(\d+)\x04/g,(_,index)=>comments[Number(index)] || '');
@@ -615,12 +615,13 @@ export class MikanBoxRenderer {
 
   // ---- replaceSpecialTags (非同期) ----
   private async replaceSpecialTags(html: string): Promise<string> {
-    const aiQuestion = /\{\{\s*AI_QUESTION\s*(?::\s*(?:sources\s*=([^{}\r\n]*)|([A-Za-z0-9_-]+))\s*)?\}\}/g;
-    html = html.replace(aiQuestion, (_, sources, section) => {
-      let attributes = '';
-      if (section) attributes = ` data-section="${escapeHtml(section)}"`;
-      else if (sources !== undefined) attributes = ` data-sources="${escapeHtml(sources.trim())}"`;
-      return `<div data-mikanbox-ai-question${attributes}></div>`;
+    // {{AI_QUESTION}} refers to the page itself, {{AI_QUESTION:sources=URL | URL}} to the given
+    // public references. Any other form (such as the removed help-section form) shows nothing.
+    const aiQuestion = /\{\{\s*AI_QUESTION\s*(?::([^{}\r\n]*))?\}\}/g;
+    html = html.replace(aiQuestion, (_, option?: string) => {
+      if (option === undefined) return '<div data-mikanbox-ai-question></div>';
+      const sources = option.match(/^\s*sources\s*=([\s\S]*)$/);
+      return sources ? `<div data-mikanbox-ai-question data-sources="${escapeHtml(sources[1].trim())}"></div>` : '';
     });
     const searchResults=new Map<string,string>();
     for(const tag of html.matchAll(/\{\{\s*SEARCH_RESULTS\s*(?::\s*([A-Za-z0-9_-]+)\s*)?\}\}/g)) {

@@ -38,7 +38,7 @@ test('publication uses distinct HTML paths and delivers AI question boxes withou
   await snapshot(value,'test','Exact');await snapshot(value,'test/index','Directory');
   const assets=await buildPublicationAssets(value,request);
   const html=decode.decode(assets.get('/index.html').body);
-  assert.match(html,/data-webmcp="off"/);assert.doesNotMatch(html,/data-mcp-endpoint/);
+  assert.doesNotMatch(html,/webmcp|data-mcp-endpoint/);
   assert.match(html,/data-page-url="https:\/\/public.test\/"/);assert.match(html,/data-sources="https:\/\/public.test\/faq.md"/);
   assert.match(decode.decode(assets.get('/faq.md').body),/Answer/);
   assert.equal(decode.decode(assets.get('/test.html').body),'Exact');assert.equal(decode.decode(assets.get('/test/index.html').body),'Directory');
@@ -58,7 +58,7 @@ test('the search page is published and index.php leads to it',async()=>{
 });
 test('reserved pages and malicious path variants cannot be exported or fetched',async()=>{
   const value=env();
-  for(const id of ['admin','api/x','mcp','public-mcp','media/x','mikanbox/x','component-js/x'])await snapshot(value,id,'FORBIDDEN');
+  for(const id of ['admin','api/x','mcp','media/x','mikanbox/x','component-js/x'])await snapshot(value,id,'FORBIDDEN');
   const manifest=await publicationManifest(value);assert.equal(manifest.entries.some(e=>e.kind==='page'),false);
   for(const path of ['/admin.html','/api/x.html','/mcp.html','/media/../secret.png','/media/%2e%2e.png','/media/x.png?x=1','//index.html','/mikanbox/config.json','/mikanbox/../../.env','/media/x.mp3','/admin','/data/settings.json'])assert.equal(await readPublicationEntry(value,request,path),null,path);
 });

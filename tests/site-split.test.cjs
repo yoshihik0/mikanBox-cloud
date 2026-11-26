@@ -16,7 +16,7 @@ test('the admin Worker serves no site content without a session',async()=>{
   const response=await call(env,url);assert.equal(response.status,404,url);assert.equal(response.headers.get('X-Robots-Tag'),'noindex, nofollow');
   assert.doesNotMatch(await response.text(),/cardJS|PNG|<h1|urlset/,url);
  }
- assert.equal((await call(env,'/public-mcp')).status!==404,true);
+ assert.equal((await call(env,'/public-mcp')).status,404);
 });
 test('signed-in users are sent to a sandboxed preview of the same path',async()=>{
  const env=split(environment()),auth=await login(env);await savePage(env,'about',page('draft','Draft body'));
